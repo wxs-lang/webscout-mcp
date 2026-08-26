@@ -30,5 +30,23 @@ jobs:
           pip install mcp || true
           pip install -e .
 
+      - name: Debug - show environment
+        run: |
+          python --version
+          pip list
+          python -c "import webscout_mcp; print('webscout_mcp version:', webscout_mcp.__version__)"
+
+      - name: Debug - collect tests only
+        run: python -m pytest tests/ --collect-only -q 2>&1 | head -100
+
       - name: Run tests
-        run: python -m pytest tests/ -v --tb=short
+        run: |
+          python -m pytest tests/ -v --tb=long 2>&1 | tee test_output.txt
+          exit ${PIPESTATUS[0]}
+
+      - name: Upload test output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-output
+          path: test_output.txt
