@@ -26,7 +26,7 @@ jobs:
         run: |
           pip install httpx beautifulsoup4 lxml
           pip install trafilatura readability-lxml
-          pip install pytest pytest-asyncio
+          pip install pytest "pytest-asyncio==0.23.8"
           pip install mcp || true
           pip install -e .
 
@@ -35,7 +35,7 @@ jobs:
           python -c "import webscout_mcp; print('import ok, version:', webscout_mcp.__version__)"
 
       - name: Collect only
-        run: python -m pytest tests/ --collect-only -q
+        run: python -m pytest tests/ --collect-only -q -W ignore::DeprecationWarning
 
       - name: Run tests
-        run: python -m pytest tests/ -v --tb=short
+        run: python -m pytest tests/ -v --tb=short -W ignore::DeprecationWarning
