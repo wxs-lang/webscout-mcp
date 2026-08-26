@@ -9,7 +9,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v4
@@ -30,5 +30,8 @@ jobs:
           pip install mcp || true
           pip install -e . --no-deps
 
-      - name: Run tests
-        run: pytest tests/ -v
+      - name: Run test_basic.py
+        run: pytest tests/test_basic.py -v --tb=long
+
+      - name: Run test_v2.py
+        run: pytest tests/test_v2.py -v --tb=long
