@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "webscout-mcp"
-version = "0.3.0"
+version = "0.4.0"
 description = "A smart web search & fetch MCP server with built-in caching, rate-limiting, and content extraction"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -36,6 +36,13 @@ dependencies = [
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21",
+    "pytest-cov>=4.0",
+    "mypy>=1.0",
+    "ruff>=0.1",
+    "black>=23.0",
+    "pre-commit>=3.0",
+    "build>=1.0",
+    "twine>=4.0",
 ]
 
 [project.scripts]
@@ -47,3 +54,26 @@ include = ["webscout_mcp*"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+ignore_missing_imports = true
+exclude = ["venv/", "build/", "dist/"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+extend-exclude = ["venv/", "build/", "dist/"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.black]
+line-length = 100
+target-version = ["py310"]
+extend-exclude = "venv/|build/|dist/"
