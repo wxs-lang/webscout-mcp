@@ -2,16 +2,16 @@
 
 Exposes the following tools to AI agents:
 
-- ``web_search`` — Search the web via Bing.
-- ``web_fetch`` — Fetch a single URL and extract main content.
-- ``web_crawl`` — Crawl a website with depth/page limits.
-- ``web_extract`` — Extract structured data from a page using CSS selectors.
-- ``cache_stats`` — Show cache statistics.
-- ``cache_clear`` — Clear the cache.
+- ``web_search`` - Search the web (Bing + DuckDuckGo failover, no API key).
+- ``web_fetch`` - Fetch a single URL and extract main content.
+- ``web_crawl`` - Crawl a website with depth/page limits (concurrent).
+- ``web_extract`` - Extract structured data from a page using CSS selectors.
+- ``cache_stats`` - Show cache statistics.
+- ``cache_clear`` - Clear the cache.
 """
-
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any, Optional
 
@@ -22,18 +22,16 @@ from .config import Config
 from .crawler import Crawler
 from .extractor import DataExtractor, ExtractionRule
 from .fetcher import Fetcher
+from .logging import get_logger, setup_logging
+from .robots import RobotsChecker
 from .search import SearchEngine
+
+log = get_logger(__name__)
 
 
 def create_server(config: Optional[Config] = None) -> MCPServer:
-    """Create and configure the MCP server.
-
-    Args:
-        config: Optional Config instance.  If None, loads from environment.
-
-    Returns:
-        A configured ``MCPServer`` instance.
-    """
+    """Create and configure the MCP server."""
+    setup_logging()
     cfg = config or Config.from_env()
     cfg.ensure_dirs()
 
@@ -44,21 +42,23 @@ def create_server(config: Optional[Config] = None) -> MCPServer:
     )
     fetcher = Fetcher(cfg, cache)
     search_engine = SearchEngine(cfg, cache)
-    crawler = Crawler(cfg, fetcher)
+    robots_checker = RobotsChecker(cfg, respect_robots=cfg.respect_robots)
+    crawler = Crawler(cfg, fetcher, robots_checker)
     extractor = DataExtractor(cfg, fetcher)
 
     mcp = MCPServer(
         name="webscout",
         instructions=(
             "Web search and fetch tools for AI agents. "
-            "Use web_search to find information, web_fetch to read a specific "
-            "page's main content, web_crawl to explore a site, and "
+            "Use web_search to find information (Bing + DuckDuckGo failover), "
+            "web_fetch to read a specific page's main content, "
+            "web_crawl to explore a site concurrently, and "
             "web_extract to pull structured data via CSS selectors. "
-            "All results are cached locally to avoid redundant requests."
+            "All results are cached locally to avoid redundant requests. "
+            "Crawler respects robots.txt by default."
         ),
     )
 
-    # --- web_search ---
     @mcp.tool()
     async def web_search(
         query: str,
@@ -68,34 +68,38 @@ def create_server(config: Optional[Config] = None) -> MCPServer:
     ) -> str:
         """Search the web and return structured results.
 
-        Args:
-            query: The search query string.
-            max_results: Maximum number of results to return (1-25).
-            region: Search region code, e.g. 'wt-wt' (worldwide), 'us-en', 'cn-zh'.
-            safe_search: Enable safe search filtering.
-
-        Returns:
-            A JSON string with search results including title, url, and snippet.
+        Uses Bing first, automatically falls back to DuckDuckGo HTML if Bing
+        fails or returns nothing. No API key required.
         """
         max_results = max(1, min(max_results, 25))
-        results = await search_engine.search(
-            query=query,
-            max_results=max_results,
-            region=region,
-            safe_search=safe_search,
-        )
+        try:
+            results = await search_engine.search(
+                query=query,
+                max_results=max_results,
+                region=region,
+                safe_search=safe_search,
+            )
+        except Exception as exc:
+            log.error("web_search failed", query=query, error=str(exc))
+            return json.dumps(
+                {"error": f"Search failed: {exc}", "query": query},
+                ensure_ascii=False, indent=2,
+            )
         output = [
             {
                 "position": r.position,
                 "title": r.title,
                 "url": r.url,
                 "snippet": r.snippet,
+                "backend": r.backend,
             }
             for r in results
         ]
-        return json.dumps({"query": query, "count": len(output), "results": output}, ensure_ascii=False, indent=2)
+        return json.dumps(
+            {"query": query, "count": len(output), "results": output},
+            ensure_ascii=False, indent=2,
+        )
 
-    # --- web_fetch ---
     @mcp.tool()
     async def web_fetch(
         url: str,
@@ -104,28 +108,13 @@ def create_server(config: Optional[Config] = None) -> MCPServer:
         max_chars: int = 8000,
         bypass_cache: bool = False,
     ) -> str:
-        """Fetch a URL and return its content, optionally extracting the main article.
-
-        Args:
-            url: The URL to fetch (must start with http:// or https://).
-            extract: If true, extract main article content (removes nav, ads, etc.).
-            output_format: Output format when extract=true: 'markdown', 'text', or 'html'.
-            max_chars: Maximum characters to return (content is truncated beyond this).
-            bypass_cache: If true, skip cached version and re-fetch.
-
-        Returns:
-            A JSON string with the fetched content, title, status, and metadata.
-        """
+        """Fetch a URL and return its content, optionally extracting the main article."""
         result = await fetcher.fetch(
-            url=url,
-            extract=extract,
-            output_format=output_format,
-            max_chars=max_chars,
-            bypass_cache=bypass_cache,
+            url=url, extract=extract, output_format=output_format,
+            max_chars=max_chars, bypass_cache=bypass_cache,
         )
         return json.dumps(result.to_dict(), ensure_ascii=False, indent=2)
 
-    # --- web_crawl ---
     @mcp.tool()
     async def web_crawl(
         seed_url: str,
@@ -133,51 +122,25 @@ def create_server(config: Optional[Config] = None) -> MCPServer:
         max_pages: int = 10,
         same_domain_only: bool = True,
         extract: bool = True,
+        concurrency: int = 5,
     ) -> str:
         """Crawl a website starting from a seed URL, respecting depth and page limits.
 
-        Args:
-            seed_url: The starting URL for the crawl.
-            max_depth: Maximum link depth to follow (0 = seed page only).
-            max_pages: Maximum number of pages to crawl.
-            same_domain_only: If true, only crawl pages on the same domain as seed_url.
-            extract: If true, extract main content from each crawled page.
-
-        Returns:
-            A JSON string with all crawled pages, their content, and any errors.
+        Fetches pages concurrently within each depth level. Respects robots.txt
+        by default.
         """
         max_depth = max(0, min(max_depth, 5))
         max_pages = max(1, min(max_pages, 50))
+        concurrency = max(1, min(concurrency, 20))
         result = await crawler.crawl(
-            seed_url=seed_url,
-            max_depth=max_depth,
-            max_pages=max_pages,
-            same_domain_only=same_domain_only,
-            extract=extract,
+            seed_url=seed_url, max_depth=max_depth, max_pages=max_pages,
+            same_domain_only=same_domain_only, extract=extract, concurrency=concurrency,
         )
         return json.dumps(result.to_dict(), ensure_ascii=False, indent=2)
 
-    # --- web_extract ---
     @mcp.tool()
-    async def web_extract(
-        url: str,
-        rules: str,
-    ) -> str:
-        """Extract structured data from a web page using CSS selectors.
-
-        Args:
-            url: The URL of the page to extract data from.
-            rules: A JSON array of extraction rules. Each rule is an object with:
-                - name (required): output key name
-                - selector (required): CSS selector string
-                - attribute (optional): HTML attribute to extract (e.g. 'href', 'src')
-                - multiple (optional): boolean, return list of all matches
-                - regex (optional): regex pattern to apply to extracted text
-                - default (optional): default value if nothing matches
-
-        Returns:
-            A JSON string with the extracted structured data.
-        """
+    async def web_extract(url: str, rules: str) -> str:
+        """Extract structured data from a web page using CSS selectors."""
         try:
             rules_data = json.loads(rules)
             if not isinstance(rules_data, list):
@@ -185,22 +148,20 @@ def create_server(config: Optional[Config] = None) -> MCPServer:
             extraction_rules = [ExtractionRule(**r) for r in rules_data]
         except (json.JSONDecodeError, TypeError) as exc:
             return json.dumps({"error": f"Invalid rules JSON: {exc}"}, ensure_ascii=False)
-
         result = await extractor.extract_from_url(url, extraction_rules)
         return json.dumps(result, ensure_ascii=False, indent=2)
 
-    # --- cache_stats ---
     @mcp.tool()
     def cache_stats() -> str:
         """Return cache statistics: entry count, total size, TTL, and limits."""
         stats = cache.stats()
         return json.dumps(stats, ensure_ascii=False, indent=2)
 
-    # --- cache_clear ---
     @mcp.tool()
     def cache_clear() -> str:
         """Clear all cached entries. Returns the number of entries deleted."""
         deleted = cache.clear()
+        log.info("cache cleared", entries=deleted)
         return json.dumps({"cleared": deleted, "status": "ok"}, ensure_ascii=False)
 
     return mcp

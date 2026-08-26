@@ -9,7 +9,6 @@ from typing import Optional
 
 
 def _default_cache_dir() -> Path:
-    """Return the default cache directory."""
     xdg_cache = os.environ.get("XDG_CACHE_HOME")
     if xdg_cache:
         return Path(xdg_cache) / "webscout"
@@ -21,39 +20,35 @@ class Config:
     """Runtime configuration for webscout-mcp.
 
     All values can be overridden via environment variables with the
-    ``WEBSCOUT_`` prefix, e.g. ``WEBSCOUT_CACHE_TTL=3600``.
+    ``WEBSCOUT_`` prefix.
     """
 
-    # --- Cache ---
     cache_dir: Path = field(default_factory=_default_cache_dir)
-    cache_ttl: int = 7200  # seconds, default 2h
+    cache_ttl: int = 7200
     cache_max_size_mb: int = 512
 
-    # --- HTTP / fetching ---
     request_timeout: float = 15.0
     max_retries: int = 3
-    retry_backoff: float = 0.5  # seconds, exponential
+    retry_backoff: float = 0.5
     user_agent: str = (
-        "Mozilla/5.0 (compatible; webscout-mcp/0.1; "
-        "+https://github.com/webscout-mcp/webscout-mcp)"
+        "Mozilla/5.0 (compatible; webscout-mcp/0.2; "
+        "+https://github.com/wxs-lang/webscout-mcp)"
     )
-    max_content_length: int = 5 * 1024 * 1024  # 5 MB
+    max_content_length: int = 5 * 1024 * 1024
 
-    # --- Rate limiting (per domain) ---
     rate_limit_per_second: float = 2.0
     rate_limit_burst: int = 5
 
-    # --- Search ---
     search_max_results: int = 10
     search_safe_search: bool = True
 
-    # --- Crawler ---
     crawler_max_depth: int = 2
     crawler_max_pages: int = 20
     crawler_same_domain_only: bool = True
+    crawler_concurrency: int = 5
+    respect_robots: bool = True
 
-    # --- Extraction ---
-    extract_output_format: str = "markdown"  # markdown | text | html
+    extract_output_format: str = "markdown"
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -70,6 +65,8 @@ class Config:
             "WEBSCOUT_SEARCH_MAX_RESULTS": ("search_max_results", int),
             "WEBSCOUT_CRAWLER_MAX_DEPTH": ("crawler_max_depth", int),
             "WEBSCOUT_CRAWLER_MAX_PAGES": ("crawler_max_pages", int),
+            "WEBSCOUT_CRAWLER_CONCURRENCY": ("crawler_concurrency", int),
+            "WEBSCOUT_RESPECT_ROBOTS": ("respect_robots", lambda v: v.lower() in ("1", "true", "yes")),
             "WEBSCOUT_EXTRACT_OUTPUT_FORMAT": ("extract_output_format", str),
         }
         for env_key, (attr, converter) in env_map.items():
@@ -78,9 +75,8 @@ class Config:
                 try:
                     kwargs[attr] = converter(raw)
                 except (ValueError, TypeError):
-                    pass  # keep default on invalid value
+                    pass
         return cls(**kwargs)
 
     def ensure_dirs(self) -> None:
-        """Create cache directory if it doesn't exist."""
         self.cache_dir.mkdir(parents=True, exist_ok=True)
