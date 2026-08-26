@@ -4,8 +4,8 @@ Supports multiple search engines (Bing, DuckDuckGo HTML) and tries them in
 order until one returns results. Each backend is a self-contained HTML
 scraper - no API keys required.
 
-Backends are tried in the order configured by ``search_backends`` (env:
-``WEBSCOUT_SEARCH_BACKENDS``, comma-separated). Default: ``bing,duckduckgo``.
+Backends are tried in the order configured by search_backends (env:
+WEBSCOUT_SEARCH_BACKENDS, comma-separated). Default: bing,duckduckgo.
 """
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ import json
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Optional
-from urllib.parse import quote_plus, urlparse, parse_qs, unquote
+from urllib.parse import urlparse, parse_qs, unquote
 
 import httpx
 from bs4 import BeautifulSoup
@@ -47,10 +47,10 @@ class SearchBackend(ABC):
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
-            self._client = httpx.AsyncClient(
-                timeout=httpx.Timeout(self.config.request_timeout),
-                follow_redirects=True,
-                headers={
+            client_kwargs: dict = {
+                "timeout": httpx.Timeout(self.config.request_timeout),
+                "follow_redirects": True,
+                "headers": {
                     "User-Agent": (
                         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                         "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -58,7 +58,15 @@ class SearchBackend(ABC):
                     ),
                     "Accept-Language": "en-US,en;q=0.9",
                 },
-            )
+            }
+            proxies: dict[str, str] = {}
+            if self.config.proxy_http:
+                proxies["http://"] = self.config.proxy_http
+            if self.config.proxy_https:
+                proxies["https://"] = self.config.proxy_https
+            if proxies:
+                client_kwargs["proxies"] = proxies
+            self._client = httpx.AsyncClient(**client_kwargs)
         return self._client
 
     async def close(self) -> None:
@@ -67,7 +75,7 @@ class SearchBackend(ABC):
 
     @abstractmethod
     async def search(
-        self, query: str, max_results: int, safe_search: bool
+        self, query: str, max_results: int, safe_search: bool, region: str = "wt-wt"
     ) -> list[SearchResult]:
         ...
 
@@ -78,14 +86,17 @@ class BingBackend(SearchBackend):
     BING_URL = "https://www.bing.com/search"
 
     async def search(
-        self, query: str, max_results: int, safe_search: bool
+        self, query: str, max_results: int, safe_search: bool, region: str = "wt-wt"
     ) -> list[SearchResult]:
         client = await self._get_client()
+        lang, cc = self._parse_region(region)
         params = {
             "q": query,
             "count": min(max_results + 5, 50),
-            "setlang": "en",
+            "setlang": lang,
         }
+        if cc and cc != "WT":
+            params["cc"] = cc
         if safe_search:
             params["adlt"] = "moderate"
         else:
@@ -99,6 +110,13 @@ class BingBackend(SearchBackend):
         if not results:
             raise SearchError(query, self.name, "no results parsed from Bing HTML")
         return results
+
+    @staticmethod
+    def _parse_region(region: str) -> tuple[str, str]:
+        parts = region.lower().replace("_", "-").split("-")
+        lang = parts[0] if parts else "en"
+        cc = parts[1].upper() if len(parts) > 1 else ""
+        return lang, cc
 
     @staticmethod
     def _parse_results(html: str, max_results: int) -> list[SearchResult]:
@@ -136,19 +154,19 @@ class BingBackend(SearchBackend):
 
 
 class DuckDuckGoHTMLBackend(SearchBackend):
-    """DuckDuckGo HTML version (https://html.duckduckgo.com/html/).
-
-    No JavaScript, no API key. Works well as a fallback when Bing is
-    blocked or changes its markup.
-    """
+    """DuckDuckGo HTML version (https://html.duckduckgo.com/html/)."""
     name = "duckduckgo"
     DDG_URL = "https://html.duckduckgo.com/html/"
 
     async def search(
-        self, query: str, max_results: int, safe_search: bool
+        self, query: str, max_results: int, safe_search: bool, region: str = "wt-wt"
     ) -> list[SearchResult]:
         client = await self._get_client()
         data = {"q": query}
+        if region and region.lower() != "wt-wt":
+            parts = region.lower().replace("_", "-").split("-")
+            if len(parts) >= 2:
+                data["kl"] = f"{parts[1]}-{parts[0]}"
         if safe_search:
             data["kp"] = "1"
         else:
@@ -221,7 +239,7 @@ class SearchEngine:
     ) -> None:
         self.config = config
         self.cache = cache
-        backend_names = backends or self._parse_backend_list(config)
+        backend_names = backends or config.search_backends
         self._backends: list[SearchBackend] = []
         for name in backend_names:
             cls = _BACKENDS.get(name.lower())
@@ -233,15 +251,23 @@ class SearchEngine:
             log.warning("no valid backends configured, falling back to bing")
             self._backends.append(BingBackend(config))
 
-    @staticmethod
-    def _parse_backend_list(config: Config) -> list[str]:
-        import os
-        raw = os.environ.get("WEBSCOUT_SEARCH_BACKENDS", "bing,duckduckgo")
-        return [b.strip() for b in raw.split(",") if b.strip()]
-
     async def close(self) -> None:
         for backend in self._backends:
             await backend.close()
+
+    @staticmethod
+    def _deduplicate_results(results: list[SearchResult]) -> list[SearchResult]:
+        """Remove duplicate URLs, preserving order and renumbering positions."""
+        seen_urls: set[str] = set()
+        unique: list[SearchResult] = []
+        for r in results:
+            normalized = r.url.rstrip("/").lower()
+            if normalized not in seen_urls:
+                seen_urls.add(normalized)
+                unique.append(r)
+        for i, r in enumerate(unique, start=1):
+            r.position = i
+        return unique
 
     async def search(
         self,
@@ -250,21 +276,22 @@ class SearchEngine:
         region: str = "wt-wt",
         safe_search: Optional[bool] = None,
     ) -> list[SearchResult]:
-        """Perform a web search with automatic backend failover."""
         limit = max_results or self.config.search_max_results
         safe = safe_search if safe_search is not None else self.config.search_safe_search
         backend_names = ",".join(b.name for b in self._backends)
-        cache_key = f"search:{backend_names}:{query}:{limit}:{safe}"
+        cache_key = f"search:{backend_names}:{query}:{limit}:{safe}:{region}"
+
         if self.cache:
             cached = self.cache.get(cache_key)
             if cached:
                 raw = json.loads(cached["value"])
                 return [SearchResult(**item) for item in raw]
+
         failures: dict[str, str] = {}
         for backend in self._backends:
             try:
                 log.info("searching", backend=backend.name, query=query, max_results=limit)
-                results = await backend.search(query, limit, safe)
+                results = await backend.search(query, limit, safe, region)
                 if results:
                     if self.cache:
                         self.cache.set(
@@ -273,7 +300,7 @@ class SearchEngine:
                             content_type="application/json",
                         )
                     log.info("search succeeded", backend=backend.name, query=query, count=len(results))
-                    return results
+                    return self._deduplicate_results(results)
                 failures[backend.name] = "returned empty results"
             except SearchError as exc:
                 failures[backend.name] = str(exc)
@@ -281,4 +308,5 @@ class SearchEngine:
             except Exception as exc:
                 failures[backend.name] = f"{type(exc).__name__}: {exc}"
                 log.warning("search backend unexpected error", backend=backend.name, query=query, error=type(exc).__name__)
+
         raise AllBackendsFailedError(query, failures)
