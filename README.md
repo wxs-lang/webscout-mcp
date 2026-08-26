@@ -36,17 +36,24 @@ That's it. Your agent gets six tools:
 
 ## CLI usage
 
-In addition to running as an MCP server, you can use webscout-mcp directly from the command line:
-
 ```bash
 # Search the web (outputs JSON)
 webscout-mcp search "python async libraries" --max-results 5
 
-# Fetch a page (raw content)
+# Fetch a page
 webscout-mcp fetch https://example.com --extract --format markdown --raw
 
 # Crawl a site
 webscout-mcp crawl https://example.com --depth 2 --pages 10
+
+# Parse a sitemap
+webscout-mcp sitemap https://example.com/sitemap.xml
+
+# Discover sitemaps for a domain
+webscout-mcp sitemap https://example.com --discover
+
+# Export search results to CSV
+webscout-mcp export search --query "python" --format csv --output results.csv
 
 # Start MCP server (default if no command given)
 webscout-mcp serve --transport stdio
@@ -60,7 +67,7 @@ webscout-mcp serve --transport stdio
 web_search(query="best python async libraries", max_results=5)
 ```
 
-Returns structured results with title, URL, snippet, and which backend served the request (`bing` or `duckduckgo`). If Bing fails or changes its markup, the engine automatically falls back to DuckDuckGo's HTML version - no configuration needed.
+Returns structured results with title, URL, snippet, and which backend served the request (`bing` or `duckduckgo`). If Bing fails or changes its markup, the engine automatically falls back to DuckDuckGo's HTML version.
 
 ### Fetch a page
 
@@ -68,22 +75,7 @@ Returns structured results with title, URL, snippet, and which backend served th
 web_fetch(url="https://example.com", extract=true, output_format="markdown")
 ```
 
-`extract=true` runs trafilatura (with readability-lxml fallback) to strip nav, ads, and sidebars - you get clean article content, not raw HTML.
-
-### Extract structured data
-
-```json
-web_extract(
-  url="https://example.com/products",
-  rules='[
-    {"name": "titles", "selector": ".product h2", "multiple": true},
-    {"name": "prices", "selector": ".price", "regex": "\\$([\\d.]+)", "multiple": true},
-    {"name": "links", "selector": "a.product", "attribute": "href", "multiple": true}
-  ]'
-)
-```
-
-Each rule supports `selector`, `attribute`, `multiple`, `regex`, and `default`.
+`extract=true` runs trafilatura (with readability-lxml fallback) to strip nav, ads, and sidebars.
 
 ### Crawl a site
 
@@ -91,42 +83,57 @@ Each rule supports `selector`, `attribute`, `multiple`, `regex`, and `default`.
 web_crawl(seed_url="https://example.com", max_depth=2, max_pages=10, concurrency=5)
 ```
 
-Pages at each depth level are fetched concurrently (controlled by `concurrency`, default 5). The crawler respects `robots.txt` by default - disallowed URLs are skipped and counted in `skipped_robots`. Same-domain restriction is on by default.
+Pages at each depth level are fetched concurrently. The crawler respects `robots.txt` by default.
 
 ## Use as a Python library
 
 ```python
 import asyncio
-from webscout_mcp import Config, Fetcher, SearchEngine
+from webscout_mcp import Config, Fetcher, SearchEngine, Exporter, SitemapParser
 
 async def main():
     config = Config.from_env()
     config.ensure_dirs()
 
+    # Fetch
     fetcher = Fetcher(config)
     result = await fetcher.fetch("https://example.com", extract=True)
     print(result.title)
-    print(result.content[:500])
     await fetcher.close()
 
+    # Search
     search = SearchEngine(config)
     results = await search.search("python async", max_results=5)
     for r in results:
         print(f"{r.position}. {r.title} - {r.url} ({r.backend})")
     await search.close()
 
+    # Export to Markdown
+    md = Exporter.search_to_markdown(results, title="Python Async Search")
+    print(md)
+
+    # Parse sitemap
+    parser = SitemapParser(config)
+    sitemap = await parser.fetch_sitemap("https://example.com/sitemap.xml")
+    print(f"Found {sitemap.url_count} URLs")
+    await parser.close()
+
 asyncio.run(main())
 ```
 
 ## How it works
 
-- **Search** tries Bing first, then DuckDuckGo HTML - both via direct HTTP scraping, no API key. Results are cached by query.
-- **Fetching** uses httpx with exponential-backoff retries (all httpx errors + HTTP 5xx), per-domain token-bucket rate limiting, and a 5 MB content cap.
-- **Content extraction** uses trafilatura primary, readability-lxml automatic fallback - the same libraries behind many read-it-later services.
-- **Caching** is SQLite with TTL and a size cap; old entries are evicted automatically. Repeat fetches and searches cost nothing.
-- **Crawling** is concurrent BFS with configurable depth, page count, concurrency, same-domain restriction, and robots.txt compliance. Uses raw HTML from the initial fetch to avoid double-fetching each page.
-- **Proxy support** route all HTTP/HTTPS requests through a proxy via config or env vars.
-- **Logging** is structured and configurable via `WEBSCOUT_LOG_LEVEL` (DEBUG/INFO/WARNING/ERROR) and `WEBSCOUT_LOG_JSON=1` for JSON output.
+- **Search** tries Bing first, then DuckDuckGo HTML - both via direct HTTP scraping, no API key
+- **Fetching** uses httpx with exponential-backoff retries, per-domain rate limiting, and 5 MB cap
+- **Content extraction** uses trafilatura primary, readability-lxml automatic fallback
+- **Caching** is SQLite with TTL and size cap; old entries evicted automatically
+- **Crawling** is concurrent BFS with depth, page count, concurrency, same-domain, and robots.txt limits
+- **Incremental crawling** only re-fetches changed pages using ETag/Last-Modified conditional requests
+- **Sitemap support** parses sitemap.xml and sitemap indexes, discovers sitemaps via robots.txt
+- **Export** converts results to JSON, CSV, or Markdown
+- **Browser fingerprint rotation** random User-Agents + realistic headers to avoid anti-bot detection
+- **Proxy support** route all HTTP/HTTPS requests through a proxy
+- **TOML config** configure via `~/.config/webscout/config.toml` in addition to env vars
 
 Everything runs locally. No data leaves your machine.
 
@@ -136,7 +143,7 @@ All settings have sensible defaults. Override via environment variables (`WEBSCO
 
 ### Config file
 
-Create `~/.config/webscout/config.toml` (or `$XDG_CONFIG_HOME/webscout/config.toml`):
+Create `~/.config/webscout/config.toml`:
 
 ```toml
 [cache]
@@ -166,8 +173,6 @@ level = "WARNING"
 json = false
 ```
 
-Environment variables override config file values.
-
 ### Environment variables
 
 | Variable | Default | What it does |
@@ -190,12 +195,6 @@ Environment variables override config file values.
 | `WEBSCOUT_LOG_LEVEL` | `WARNING` | Log verbosity |
 | `WEBSCOUT_LOG_JSON` | `0` | Set to `1` for JSON-formatted logs |
 
-CLI flags override env vars:
-
-```bash
-webscout-mcp --cache-ttl 3600 --cache-dir /tmp/webscout serve
-```
-
 ## Transports
 
 ```bash
@@ -208,9 +207,20 @@ webscout-mcp serve --transport sse --host 0.0.0.0 --port 8000
 
 ## Changelog
 
+### 0.4.0
+
+- **Export module**: export search/fetch/crawl results to JSON, CSV, or Markdown
+- **Sitemap support**: parse sitemap.xml and sitemap indexes, discover sitemaps via robots.txt
+- **Incremental crawler**: only re-fetch changed pages using ETag/Last-Modified conditional requests
+- **Browser fingerprint rotation**: random User-Agents + realistic headers to avoid anti-bot detection
+- **New CLI commands**: `sitemap` (parse/discover sitemaps), `export` (export to JSON/CSV/Markdown)
+- **GitHub Actions CI**: automated testing on Python 3.10/3.11/3.12 + auto-publish to PyPI
+- **Code quality**: mypy type checking, ruff linting, black formatting, pre-commit hooks
+- **New Python API**: `Exporter`, `SitemapParser`, `IncrementalCrawler`, `UserAgentRotator`
+
 ### 0.3.0
 
-- **TOML config file support**: configure via `~/.config/webscout/config.toml` in addition to env vars
+- **TOML config file support**: configure via `~/.config/webscout/config.toml`
 - **HTTP/HTTPS proxy support**: route all requests through a proxy
 - **Dual content extraction**: trafilatura primary, readability-lxml automatic fallback
 - **Search result deduplication**: duplicate URLs removed, positions renumbered
@@ -227,7 +237,6 @@ webscout-mcp serve --transport sse --host 0.0.0.0 --port 8000
 - CLI subcommands: `search`, `fetch`, `crawl`, `serve`
 - Structured logging with console and JSON formatters
 - Custom exception hierarchy for better error handling
-- New config: `WEBSCOUT_SEARCH_BACKENDS`, `WEBSCOUT_CRAWLER_CONCURRENCY`, `WEBSCOUT_RESPECT_ROBOTS`
 
 ### 0.1.0
 
@@ -244,6 +253,15 @@ git clone https://github.com/wxs-lang/webscout-mcp.git
 cd webscout-mcp
 pip install -e ".[dev]"
 pytest
+
+# Code quality
+ruff check .
+black .
+mypy webscout_mcp/
+
+# Pre-commit hooks
+pre-commit install
+pre-commit run --all-files
 ```
 
 ## License
