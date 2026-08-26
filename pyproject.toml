@@ -9,8 +9,20 @@ description = "A smart web search & fetch MCP server with built-in caching, rate
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
-authors = [{name = "webscout-mcp contributors"}]
+authors = [
+    {name = "webscout-mcp contributors"},
+]
+maintainers = [
+    {name = "wxs-lang", email = "393456156@qq.com"},
+]
 keywords = ["mcp", "model-context-protocol", "web-search", "web-scraping", "ai-agent", "caching"]
+urls = {
+    Homepage = "https://github.com/wxs-lang/webscout-mcp",
+    Repository = "https://github.com/wxs-lang/webscout-mcp.git",
+    Documentation = "https://github.com/wxs-lang/webscout-mcp#readme",
+    Issues = "https://github.com/wxs-lang/webscout-mcp/issues",
+    Changelog = "https://github.com/wxs-lang/webscout-mcp/blob/main/CHANGELOG.md",
+}
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
