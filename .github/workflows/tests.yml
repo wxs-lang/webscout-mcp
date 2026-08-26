@@ -26,9 +26,17 @@ jobs:
         run: |
           pip install httpx beautifulsoup4 lxml
           pip install trafilatura readability-lxml
-          pip install pytest pytest-asyncio
+          pip install "pytest==7.4.4" "pytest-asyncio==0.21.1"
           pip install mcp || true
           pip install -e . --no-deps
 
+      - name: Show versions
+        run: |
+          python --version
+          pytest --version
+
+      - name: Collect only
+        run: python -m pytest tests/ --collect-only -q
+
       - name: Run tests
-        run: pytest tests/ -v --tb=short
+        run: python -m pytest tests/ -v --tb=short
