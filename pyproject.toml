@@ -35,7 +35,6 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
-    "pytest-asyncio>=0.21",
 ]
 
 [project.scripts]
@@ -45,7 +44,6 @@ webscout-mcp = "webscout_mcp.__main__:main"
 include = ["webscout_mcp*"]
 
 [tool.pytest.ini_options]
-asyncio_mode = "auto"
 testpaths = ["tests"]
 
 [tool.mypy]
