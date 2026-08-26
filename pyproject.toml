@@ -45,7 +45,7 @@ webscout-mcp = "webscout_mcp.__main__:main"
 include = ["webscout_mcp*"]
 
 [tool.pytest.ini_options]
-asyncio_mode = "strict"
+asyncio_mode = "auto"
 testpaths = ["tests"]
 
 [tool.mypy]
