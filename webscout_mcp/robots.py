@@ -1,11 +1,12 @@
 """robots.txt compliance checker.
 
-Fetches, parses, and caches ``robots.txt`` for each domain.  Uses the
-standard-library :mod:`urllib.robotparser` under the hood, wrapped for
-async use with caching and sensible fallbacks.
+Fetches, parses, and caches robots.txt for each domain. Uses the
+standard-library urllib.robotparser under the hood, wrapped for async use
+with caching and sensible fallbacks.
 
-When a site's robots.txt cannot be fetched (timeout, 5xx, etc.), the
-checker defaults to *allow* and logs a warning.
+When a site's robots.txt cannot be fetched (timeout, 5xx, etc.), the checker
+defaults to *allow* and logs a warning - better to crawl than to silently
+block everything when a site is temporarily down.
 """
 from __future__ import annotations
 
@@ -26,7 +27,6 @@ log = get_logger(__name__)
 
 @dataclass
 class _RobotsEntry:
-    """Cached robots.txt entry for a single domain."""
     parser: Optional[RobotFileParser] = None
     fetched_at: float = 0.0
     failed: bool = False
@@ -51,11 +51,19 @@ class RobotsChecker:
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
-            self._client = httpx.AsyncClient(
-                timeout=httpx.Timeout(self.config.request_timeout),
-                follow_redirects=True,
-                headers={"User-Agent": self.config.user_agent},
-            )
+            client_kwargs: dict = {
+                "timeout": httpx.Timeout(self.config.request_timeout),
+                "follow_redirects": True,
+                "headers": {"User-Agent": self.config.user_agent},
+            }
+            proxies: dict[str, str] = {}
+            if self.config.proxy_http:
+                proxies["http://"] = self.config.proxy_http
+            if self.config.proxy_https:
+                proxies["https://"] = self.config.proxy_https
+            if proxies:
+                client_kwargs["proxies"] = proxies
+            self._client = httpx.AsyncClient(**client_kwargs)
         return self._client
 
     async def close(self) -> None:
@@ -87,6 +95,7 @@ class RobotsChecker:
                 response = await client.get(robots_url)
                 if response.status_code == 404:
                     entry.parser = None
+                    log.debug("no robots.txt (404)", domain=domain)
                 elif response.status_code >= 400:
                     entry.failed = True
                     log.warning("robots.txt fetch failed", domain=domain, status=response.status_code)
@@ -100,6 +109,7 @@ class RobotsChecker:
                             entry.crawl_delay = float(delay)
                     except Exception:
                         pass
+                    log.debug("robots.txt parsed", domain=domain, crawl_delay=entry.crawl_delay)
             except Exception as exc:
                 entry.failed = True
                 log.warning("robots.txt fetch error", domain=domain, error=type(exc).__name__)
@@ -126,3 +136,4 @@ class RobotsChecker:
 
     def clear_cache(self) -> None:
         self._cache.clear()
+        log.debug("robots.txt cache cleared")

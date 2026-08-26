@@ -3,6 +3,10 @@
 Performs a BFS crawl starting from a seed URL, fetching pages concurrently
 within each depth level. Respects depth, page-count, same-domain, and
 robots.txt constraints.
+
+Concurrency is controlled by crawler_concurrency (default 5) via an
+asyncio.Semaphore. Each depth level is fetched as a batch before moving to
+the next level, preserving BFS ordering.
 """
 from __future__ import annotations
 
@@ -26,7 +30,6 @@ log = get_logger(__name__)
 
 @dataclass
 class CrawlResult:
-    """Result of a crawl operation."""
     seed_url: str
     pages_crawled: int = 0
     pages: list[FetchResult] = field(default_factory=list)
@@ -69,7 +72,6 @@ class Crawler:
         extract: bool = True,
         concurrency: Optional[int] = None,
     ) -> CrawlResult:
-        """Crawl a website starting from ``seed_url``."""
         depth = max_depth if max_depth is not None else self.config.crawler_max_depth
         page_limit = max_pages if max_pages is not None else self.config.crawler_max_pages
         same_domain = (
@@ -80,9 +82,11 @@ class Crawler:
         concur = concurrency or self.config.crawler_concurrency
         seed_url = normalize_url(seed_url)
         seed_domain = urlparse(seed_url).netloc.lower()
+
         result = CrawlResult(seed_url=seed_url)
         visited: set[str] = set()
         semaphore = asyncio.Semaphore(concur)
+
         current_level: deque[tuple[str, int]] = deque([(seed_url, 0)])
         while current_level and result.pages_crawled < page_limit:
             next_level: deque[tuple[str, int]] = deque()
@@ -95,12 +99,14 @@ class Crawler:
                 batch.append((url, dep))
             if not batch:
                 break
+
             log.info("crawling depth level", depth=batch[0][1], batch_size=len(batch), total_crawled=result.pages_crawled)
             tasks = [
                 self._crawl_page(url, dep, extract, semaphore, result)
                 for url, dep in batch
             ]
             page_results = await asyncio.gather(*tasks, return_exceptions=True)
+
             for (url, dep), pr in zip(batch, page_results):
                 if isinstance(pr, Exception):
                     result.errors.append({"url": url, "depth": dep, "error": str(pr)})
@@ -121,6 +127,7 @@ class Crawler:
                                 continue
                         next_level.append((link, dep + 1))
             current_level = next_level
+
         log.info("crawl complete", seed=seed_url, pages=result.pages_crawled, errors=len(result.errors), skipped_robots=result.skipped_robots)
         return result
 
@@ -132,7 +139,6 @@ class Crawler:
         semaphore: asyncio.Semaphore,
         result: CrawlResult,
     ) -> Optional[tuple[FetchResult, list[str]]]:
-        """Fetch a single page and extract its links."""
         if self.config.respect_robots:
             try:
                 allowed = await self.robots.is_allowed(url)
@@ -142,16 +148,18 @@ class Crawler:
                     return None
             except Exception as exc:
                 log.warning("robots.txt check failed, allowing", url=url, error=str(exc))
+
         async with semaphore:
             page = await self.fetcher.fetch(url, extract=extract, max_chars=4000)
+
         if page.error:
             result.errors.append({"url": url, "depth": depth, "error": page.error})
             return None
+
         links: list[str] = []
         try:
-            raw_page = await self.fetcher.fetch(url, extract=False, max_chars=200000)
-            if not raw_page.error:
-                links = self._extract_links(raw_page.content, url)
+            if page.raw_html:
+                links = self._extract_links(page.raw_html, url)
                 result.links_found += len(links)
         except Exception:
             pass
@@ -159,7 +167,6 @@ class Crawler:
 
     @staticmethod
     def _extract_links(html: str, base_url: str) -> list[str]:
-        """Extract all absolute http(s) links from HTML."""
         links: list[str] = []
         try:
             soup = BeautifulSoup(html, "lxml")
