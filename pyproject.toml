@@ -4,13 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "webscout-mcp"
-version = "0.1.0"
-description = "A smart web search & fetch MCP server with built-in caching, rate-limiting, and content extraction"
+version = "0.2.0"
+description = "A smart web search and fetch MCP server. No API keys required."
 readme = "README.md"
-requires-python = ">=3.10"
 license = {text = "MIT"}
-authors = [{name = "webscout-mcp contributors"}]
-keywords = ["mcp", "model-context-protocol", "web-search", "web-scraping", "ai-agent", "caching"]
+requires-python = ">=3.10"
+authors = [
+    {name = "wxs-lang"}
+]
+keywords = ["mcp", "web-search", "web-crawler", "ai", "claude", "cursor"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -22,26 +24,31 @@ classifiers = [
     "Topic :: Internet :: WWW/HTTP :: Indexing/Search",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
+
 dependencies = [
-    "mcp>=1.0.0",
-    "httpx>=0.25.0",
-    "beautifulsoup4>=4.12.0",
-    "lxml>=5.0.0",
-    "trafilatura>=1.6.0",
+    "mcp>=1.0",
+    "httpx>=0.25",
+    "beautifulsoup4>=4.12",
+    "lxml>=4.9",
+    "trafilatura>=1.6",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21",
+    "build>=1.0",
+    "twine>=4.0",
 ]
 
 [project.scripts]
 webscout-mcp = "webscout_mcp.__main__:main"
 
 [tool.setuptools.packages.find]
+where = ["."]
 include = ["webscout_mcp*"]
+exclude = ["tests*"]
 
 [tool.pytest.ini_options]
-asyncio_mode = "auto"
 testpaths = ["tests"]
+asyncio_mode = "auto"
