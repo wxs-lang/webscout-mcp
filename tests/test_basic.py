@@ -249,3 +249,138 @@ class TestURLSecurity:
         assert extract_domain("https://example.com/path") == "example.com"
         assert extract_domain("http://sub.example.com:8080/page") == "sub.example.com"
         assert extract_domain("not a url") == ""
+
+
+# --- Memory Cache (LRU) ---
+
+class TestLRUCache:
+    def test_set_and_get(self):
+        import time
+        from webscout_mcp.cache import LRUCache
+        cache = LRUCache(max_size=3)
+        future = time.time() + 3600
+        cache.set("key1", "value1", "text/plain", time.time(), future)
+        result = cache.get("key1")
+        assert result is not None
+        assert result[0] == "value1"
+        assert result[1] == "text/plain"
+
+    def test_get_missing(self):
+        from webscout_mcp.cache import LRUCache
+        cache = LRUCache(max_size=3)
+        assert cache.get("missing") is None
+
+    def test_lru_eviction(self):
+        import time
+        from webscout_mcp.cache import LRUCache
+        cache = LRUCache(max_size=2)
+        future = time.time() + 3600
+        cache.set("key1", "value1", "text/plain", time.time(), future)
+        cache.set("key2", "value2", "text/plain", time.time(), future)
+        cache.set("key3", "value3", "text/plain", time.time(), future)
+        # key1 should be evicted (LRU)
+        assert cache.get("key1") is None
+        assert cache.get("key2") is not None
+        assert cache.get("key3") is not None
+
+    def test_lru_order_update(self):
+        import time
+        from webscout_mcp.cache import LRUCache
+        cache = LRUCache(max_size=2)
+        future = time.time() + 3600
+        cache.set("key1", "value1", "text/plain", time.time(), future)
+        cache.set("key2", "value2", "text/plain", time.time(), future)
+        # Access key1 to make it most recently used
+        cache.get("key1")
+        # Add key3 - should evict key2 (now LRU)
+        cache.set("key3", "value3", "text/plain", time.time(), future)
+        assert cache.get("key1") is not None
+        assert cache.get("key2") is None
+        assert cache.get("key3") is not None
+
+    def test_expired_entry(self):
+        import time
+        from webscout_mcp.cache import LRUCache
+        cache = LRUCache(max_size=3)
+        cache.set("key1", "value1", "text/plain", time.time(), time.time() - 1)  # expired
+        assert cache.get("key1") is None
+
+    def test_delete(self):
+        import time
+        from webscout_mcp.cache import LRUCache
+        cache = LRUCache(max_size=3)
+        future = time.time() + 3600
+        cache.set("key1", "value1", "text/plain", time.time(), future)
+        cache.delete("key1")
+        assert cache.get("key1") is None
+
+    def test_clear(self):
+        import time
+        from webscout_mcp.cache import LRUCache
+        cache = LRUCache(max_size=3)
+        future = time.time() + 3600
+        cache.set("key1", "value1", "text/plain", time.time(), future)
+        cache.set("key2", "value2", "text/plain", time.time(), future)
+        cache.clear()
+        assert cache.size == 0
+        assert cache.hits == 0
+        assert cache.misses == 0
+
+    def test_hit_rate_statistics(self):
+        import time
+        from webscout_mcp.cache import LRUCache
+        cache = LRUCache(max_size=3)
+        future = time.time() + 3600
+        cache.set("key1", "value1", "text/plain", time.time(), future)
+        # 2 hits, 1 miss
+        cache.get("key1")
+        cache.get("key1")
+        cache.get("missing")
+        assert cache.hits == 2
+        assert cache.misses == 1
+        assert abs(cache.hit_rate - 2/3) < 0.01
+
+
+class TestLayeredCache:
+    def test_memory_cache_layer(self):
+        """Test that memory cache provides faster access after first fetch."""
+        import tempfile
+        from pathlib import Path
+        from webscout_mcp.cache import Cache
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache = Cache(Path(tmpdir) / "test.db", ttl=3600, max_size_mb=10, memory_cache_size=5)
+            cache.set("https://example.com", "hello world", "text/plain")
+            # First access - should be cached (set writes to both layers)
+            result1 = cache.get("https://example.com")
+            assert result1 is not None
+            assert result1["cached"] is True
+            # Clear memory cache to force disk read
+            cache._memory.clear()
+            # Second access - should come from disk
+            result2 = cache.get("https://example.com")
+            assert result2 is not None
+            assert result2["cache_layer"] == "disk"
+            # Third access - should come from memory
+            result3 = cache.get("https://example.com")
+            assert result3 is not None
+            assert result3["cache_layer"] == "memory"
+
+    def test_memory_cache_stats(self):
+        """Test that memory cache statistics are included in stats()."""
+        import tempfile
+        from pathlib import Path
+        from webscout_mcp.cache import Cache
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache = Cache(Path(tmpdir) / "test.db", ttl=3600, max_size_mb=10, memory_cache_size=5)
+            cache.set("https://example.com", "hello", "text/plain")
+            cache.get("https://example.com")  # memory hit (set populates memory)
+            cache._memory.clear()
+            cache.get("https://example.com")  # disk miss, populates memory
+            cache.get("https://example.com")  # memory hit
+            stats = cache.stats()
+            assert "memory_cache" in stats
+            assert stats["memory_cache"]["entries"] == 1
+            assert stats["memory_cache"]["hits"] >= 1
+            assert "hit_rate" in stats["memory_cache"]
