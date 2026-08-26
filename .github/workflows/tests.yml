@@ -30,13 +30,8 @@ jobs:
           pip install mcp || true
           pip install -e . --no-deps
 
-      - name: Show versions
-        run: |
-          pytest --version
-          pip show pytest-asyncio | grep Version
+      - name: Run tests without async
+        run: pytest tests/ -v --tb=long -k "not test_token_bucket"
 
-      - name: Collect only
-        run: pytest tests/ --collect-only -v 2>&1 | head -80
-
-      - name: Run all tests
-        run: pytest tests/ -v --tb=long
+      - name: Run async test alone
+        run: pytest tests/test_basic.py::TestUtils::test_token_bucket -v --tb=long
