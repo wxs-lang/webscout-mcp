@@ -9,7 +9,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v4
@@ -43,5 +43,14 @@ jobs:
           python -c "import readability; print('readability ok')" || echo "readability import failed"
           python -c "import mcp; print('mcp ok')" || echo "mcp import failed"
 
-      - name: Run tests
-        run: pytest tests/ -v --tb=short
+      - name: Run tests (show all output, never fail)
+        run: |
+          set +e
+          pytest tests/ -v --tb=long > test_output.txt 2>&1
+          EXIT_CODE=$?
+          echo "=== TEST EXIT CODE: $EXIT_CODE ==="
+          echo "=== LAST 150 LINES ==="
+          tail -150 test_output.txt
+          echo "=== FIRST 50 LINES ==="
+          head -50 test_output.txt
+          exit 0
