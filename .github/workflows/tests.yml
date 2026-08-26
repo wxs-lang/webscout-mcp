@@ -34,23 +34,23 @@ jobs:
       - name: Install project
         run: pip install -e . --no-deps || echo "project install failed, continuing"
 
-      - name: Verify imports
-        run: |
-          python -c "import httpx; print('httpx ok')"
-          python -c "import bs4; print('bs4 ok')"
-          python -c "import lxml; print('lxml ok')"
-          python -c "import trafilatura; print('trafilatura ok')" || echo "trafilatura import failed"
-          python -c "import readability; print('readability ok')" || echo "readability import failed"
-          python -c "import mcp; print('mcp ok')" || echo "mcp import failed"
-
-      - name: Run tests (show all output, never fail)
+      - name: Run tests and save output
         run: |
           set +e
+          echo "=== PYTHON VERSION ==="
+          python --version
+          echo "=== PIP LIST ==="
+          pip list
+          echo "=== RUNNING TESTS ==="
           pytest tests/ -v --tb=long > test_output.txt 2>&1
           EXIT_CODE=$?
-          echo "=== TEST EXIT CODE: $EXIT_CODE ==="
-          echo "=== LAST 150 LINES ==="
-          tail -150 test_output.txt
-          echo "=== FIRST 50 LINES ==="
-          head -50 test_output.txt
-          exit 0
+          echo "=== TEST EXIT CODE: $EXIT_CODE ===" >> test_output.txt
+          cat test_output.txt
+          exit $EXIT_CODE
+
+      - name: Upload test output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-output
+          path: test_output.txt
