@@ -30,27 +30,17 @@ jobs:
           pip install mcp || true
           pip install -e . --no-deps
 
-      - name: Debug imports
-        run: |
-          set +e
-          echo "=== Python version ==="
-          python --version
-          echo "=== Import webscout_mcp ==="
-          python -c "import webscout_mcp; print('ok')" 2>&1
-          echo "=== Import cache ==="
-          python -c "from webscout_mcp.cache import Cache; print('ok')" 2>&1
-          echo "=== Import config ==="
-          python -c "from webscout_mcp.config import Config; print('ok')" 2>&1
-          echo "=== Import extractor ==="
-          python -c "from webscout_mcp.extractor import DataExtractor, ExtractionRule; print('ok')" 2>&1
-          echo "=== Import utils ==="
-          python -c "from webscout_mcp.utils import TokenBucket, is_valid_url, normalize_url, truncate_text; print('ok')" 2>&1
-          echo "=== Import test_basic modules ==="
-          python -c "import tests.test_basic; print('ok')" 2>&1
-          exit 0
+      - name: Run TestConfig
+        run: pytest tests/test_basic.py::TestConfig -v --tb=long
 
-      - name: Run test_basic.py
-        run: pytest tests/test_basic.py -v --tb=long
+      - name: Run TestCache
+        run: pytest tests/test_basic.py::TestCache -v --tb=long
 
-      - name: Run test_v2.py
-        run: pytest tests/test_v2.py -v --tb=long
+      - name: Run TestUtils
+        run: pytest tests/test_basic.py::TestUtils -v --tb=long
+
+      - name: Run TestExtractor
+        run: pytest tests/test_basic.py::TestExtractor -v --tb=long
+
+      - name: Run TestServer
+        run: pytest tests/test_basic.py::TestServer -v --tb=long
