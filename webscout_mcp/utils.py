@@ -1,8 +1,9 @@
-"""Utility helpers: rate limiter, URL normalisation, content detection."""
-
+"""Utility helpers: rate limiter, URL normalisation, content detection, security checks."""
 from __future__ import annotations
 
 import asyncio
+import ipaddress
+import socket
 import time
 from collections import defaultdict
 from typing import Optional
@@ -41,7 +42,6 @@ class TokenBucket:
                 self._buckets[domain] + elapsed * self.rate,
             )
             self._last_refill[domain] = now
-
             if self._buckets[domain] < 1.0:
                 wait = (1.0 - self._buckets[domain]) / self.rate
                 await asyncio.sleep(wait)
@@ -52,7 +52,6 @@ class TokenBucket:
                     self._buckets[domain] + elapsed * self.rate,
                 )
                 self._last_refill[domain] = now
-
             self._buckets[domain] -= 1.0
 
 
@@ -90,3 +89,81 @@ def truncate_text(text: str, max_chars: int = 8000) -> str:
     if len(text) <= max_chars:
         return text
     return text[:max_chars] + f"\n\n... [truncated, {len(text) - max_chars} chars omitted]"
+
+
+# --- URL Security (SSRF Protection) ---
+
+# Sensitive ports that should never be accessed via web scraping
+SENSITIVE_PORTS = {
+    22,    # SSH
+    23,    # Telnet
+    25,    # SMTP
+    53,    # DNS
+    110,   # POP3
+    143,   # IMAP
+    3306,  # MySQL
+    5432,  # PostgreSQL
+    6379,  # Redis
+    27017, # MongoDB
+    9200,  # Elasticsearch
+    11211, # Memcached
+    2375,  # Docker
+    2376,  # Docker TLS
+}
+
+
+def is_safe_url(url: str, *, allow_private: bool = False) -> tuple[bool, str]:
+    """Check if a URL is safe to fetch (SSRF protection).
+
+    Args:
+        url: The URL to check.
+        allow_private: If True, allow private/internal IP addresses (not recommended).
+
+    Returns:
+        A tuple of (is_safe, reason). If is_safe is False, reason explains why.
+    """
+    if not is_valid_url(url):
+        return False, "Invalid URL or unsupported scheme"
+
+    try:
+        parsed = urlparse(url.strip())
+        hostname = parsed.hostname or ""
+        port = parsed.port
+
+        # Check for localhost variants
+        localhost_variants = {"localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]"}
+        if hostname.lower() in localhost_variants:
+            if not allow_private:
+                return False, f"Access to localhost is blocked: {hostname}"
+
+        # Check sensitive ports
+        if port and port in SENSITIVE_PORTS:
+            return False, f"Access to sensitive port {port} is blocked"
+
+        # Resolve hostname and check for private IPs
+        if not allow_private and hostname.lower() not in localhost_variants:
+            try:
+                addr_infos = socket.getaddrinfo(hostname, None)
+                for addr_info in addr_infos:
+                    ip = addr_info[4][0]
+                    try:
+                        ip_obj = ipaddress.ip_address(ip)
+                        if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_reserved:
+                            return False, f"Hostname resolves to private/internal IP: {ip}"
+                    except ValueError:
+                        continue
+            except socket.gaierror:
+                # DNS resolution failed - let the fetcher handle this error
+                pass
+
+        return True, "URL is safe"
+    except Exception as exc:
+        return False, f"URL validation error: {exc}"
+
+
+def extract_domain(url: str) -> str:
+    """Extract the domain from a URL (without port)."""
+    try:
+        return urlparse(url).hostname or ""
+    except Exception:
+        return ""

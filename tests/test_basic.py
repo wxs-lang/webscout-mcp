@@ -192,3 +192,60 @@ class TestServer:
                 assert server is not None
         except Exception as exc:
             pytest.skip(f"Server creation failed (mcp version incompatibility): {exc}")
+
+
+# --- URL Security (SSRF Protection) ---
+
+class TestURLSecurity:
+    def test_safe_public_url(self):
+        from webscout_mcp.utils import is_safe_url
+        is_safe, reason = is_safe_url("https://example.com/page")
+        assert is_safe is True
+        assert "safe" in reason.lower()
+
+    def test_block_localhost(self):
+        from webscout_mcp.utils import is_safe_url
+        for url in [
+            "http://localhost/admin",
+            "http://127.0.0.1:8080/",
+            "http://0.0.0.0/",
+        ]:
+            is_safe, reason = is_safe_url(url)
+            assert is_safe is False
+            assert "localhost" in reason.lower() or "private" in reason.lower() or "blocked" in reason.lower()
+
+    def test_block_sensitive_ports(self):
+        from webscout_mcp.utils import is_safe_url
+        for url in [
+            "http://example.com:22/",
+            "http://example.com:3306/",
+            "http://example.com:6379/",
+            "http://example.com:27017/",
+        ]:
+            is_safe, reason = is_safe_url(url)
+            assert is_safe is False
+            assert "port" in reason.lower()
+
+    def test_block_invalid_scheme(self):
+        from webscout_mcp.utils import is_safe_url
+        for url in [
+            "ftp://example.com/",
+            "file:///etc/passwd",
+            "gopher://example.com/",
+            "not a url",
+        ]:
+            is_safe, reason = is_safe_url(url)
+            assert is_safe is False
+
+    def test_allow_private_when_enabled(self):
+        from webscout_mcp.utils import is_safe_url
+        is_safe, reason = is_safe_url("http://localhost:3000/", allow_private=True)
+        # When allow_private is True, localhost should be allowed
+        # (but sensitive ports may still be blocked)
+        assert "localhost" not in reason.lower() or is_safe is True
+
+    def test_extract_domain(self):
+        from webscout_mcp.utils import extract_domain
+        assert extract_domain("https://example.com/path") == "example.com"
+        assert extract_domain("http://sub.example.com:8080/page") == "sub.example.com"
+        assert extract_domain("not a url") == ""
