@@ -30,5 +30,22 @@ jobs:
           pip install mcp || true
           pip install -e . --no-deps
 
-      - name: Run tests
-        run: python -m pytest tests/ -v --tb=short
+      - name: Show versions
+        run: |
+          python --version
+          python -m pytest --version
+
+      - name: Collect only
+        run: python -m pytest tests/ --collect-only -q 2>&1 | head -60
+
+      - name: Run tests with full output
+        run: |
+          set +e
+          python -m pytest tests/ -v --tb=long > /tmp/test_output.txt 2>&1
+          EXIT_CODE=$?
+          echo "=== EXIT CODE: $EXIT_CODE ==="
+          echo "=== LAST 80 LINES ==="
+          tail -80 /tmp/test_output.txt
+          echo "=== FIRST 30 LINES ==="
+          head -30 /tmp/test_output.txt
+          exit $EXIT_CODE
