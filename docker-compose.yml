@@ -1,14 +1,12 @@
 # Docker Compose for webscout-mcp
 # https://github.com/wxs-lang/webscout-mcp
-
 version: "3.8"
-
 services:
   webscout-mcp:
     build:
       context: .
       dockerfile: Dockerfile
-    image: wxs-lang/webscout-mcp:latest
+    image: wxslang/webscout-mcp:latest
     container_name: webscout-mcp
     restart: unless-stopped
     ports:
@@ -32,7 +30,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
-
 volumes:
   webscout-cache:
     driver: local
