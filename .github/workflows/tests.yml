@@ -9,7 +9,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v4
@@ -22,37 +22,13 @@ jobs:
       - name: Upgrade pip
         run: python -m pip install --upgrade pip setuptools wheel
 
-      - name: Install core dependencies
+      - name: Install dependencies
         run: |
           pip install httpx beautifulsoup4 lxml
           pip install trafilatura readability-lxml
           pip install pytest pytest-asyncio
+          pip install mcp || true
+          pip install -e . --no-deps
 
-      - name: Install mcp (optional)
-        run: pip install mcp || echo "mcp install failed, continuing"
-
-      - name: Install project
-        run: pip install -e . --no-deps || echo "project install failed, continuing"
-
-      - name: Test import webscout_mcp
-        run: |
-          python -c "import webscout_mcp; print('import ok, version:', webscout_mcp.__version__)"
-          python -c "from webscout_mcp import Config, Cache, Fetcher, SearchEngine; print('core imports ok')"
-
-      - name: Run test_basic.py
-        run: |
-          set +e
-          pytest tests/test_basic.py -v --tb=long > test_basic_output.txt 2>&1
-          EXIT_CODE=$?
-          echo "=== test_basic EXIT CODE: $EXIT_CODE ==="
-          tail -80 test_basic_output.txt
-          exit 0
-
-      - name: Run test_v2.py
-        run: |
-          set +e
-          pytest tests/test_v2.py -v --tb=long > test_v2_output.txt 2>&1
-          EXIT_CODE=$?
-          echo "=== test_v2 EXIT CODE: $EXIT_CODE ==="
-          tail -80 test_v2_output.txt
-          exit 0
+      - name: Run tests
+        run: pytest tests/ -v
