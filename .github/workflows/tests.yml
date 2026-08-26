@@ -26,21 +26,12 @@ jobs:
         run: |
           pip install httpx beautifulsoup4 lxml
           pip install trafilatura readability-lxml
-          pip install pytest pytest-asyncio
+          pip install "pytest<8" pytest-asyncio
           pip install mcp || true
           pip install -e . --no-deps
 
-      - name: Run TestConfig
-        run: pytest tests/test_basic.py::TestConfig -v --tb=long
+      - name: Show pytest version
+        run: pytest --version
 
-      - name: Run TestCache
-        run: pytest tests/test_basic.py::TestCache -v --tb=long
-
-      - name: Run TestUtils
-        run: pytest tests/test_basic.py::TestUtils -v --tb=long
-
-      - name: Run TestExtractor
-        run: pytest tests/test_basic.py::TestExtractor -v --tb=long
-
-      - name: Run TestServer
-        run: pytest tests/test_basic.py::TestServer -v --tb=long
+      - name: Run all tests
+        run: pytest tests/ -v --tb=long
