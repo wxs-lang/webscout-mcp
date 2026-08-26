@@ -9,7 +9,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v4
@@ -31,7 +31,7 @@ jobs:
           pip install -e . --no-deps
 
       - name: Run test_basic.py
-        run: pytest tests/test_basic.py -v --tb=long 2>&1 | tail -50
+        run: pytest tests/test_basic.py -v --tb=short
 
       - name: Run test_v2.py
-        run: pytest tests/test_v2.py -v --tb=long 2>&1 | tail -50
+        run: pytest tests/test_v2.py -v --tb=short
