@@ -16,15 +16,6 @@ maintainers = [
     {name = "wxs-lang", email = "393456156@qq.com"},
 ]
 keywords = ["mcp", "model-context-protocol", "web-search", "web-scraping", "ai-agent", "caching"]
-
-[project.urls]
-Homepage = "https://github.com/wxs-lang/webscout-mcp"
-Repository = "https://github.com/wxs-lang/webscout-mcp.git"
-Documentation = "https://github.com/wxs-lang/webscout-mcp#readme"
-Issues = "https://github.com/wxs-lang/webscout-mcp/issues"
-Changelog = "https://github.com/wxs-lang/webscout-mcp/blob/main/CHANGELOG.md"
-
-[project]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -36,7 +27,6 @@ classifiers = [
     "Topic :: Internet :: WWW/HTTP :: Indexing/Search",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
-
 dependencies = [
     "mcp>=1.0.0",
     "httpx>=0.25.0",
@@ -46,6 +36,13 @@ dependencies = [
     "readability-lxml>=0.8.0",
     "tomli>=2.0.0; python_version < '3.11'",
 ]
+
+[project.urls]
+Homepage = "https://github.com/wxs-lang/webscout-mcp"
+Repository = "https://github.com/wxs-lang/webscout-mcp.git"
+Documentation = "https://github.com/wxs-lang/webscout-mcp#readme"
+Issues = "https://github.com/wxs-lang/webscout-mcp/issues"
+Changelog = "https://github.com/wxs-lang/webscout-mcp/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 dev = [
