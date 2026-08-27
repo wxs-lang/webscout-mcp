@@ -16,13 +16,14 @@ maintainers = [
     {name = "wxs-lang", email = "393456156@qq.com"},
 ]
 keywords = ["mcp", "model-context-protocol", "web-search", "web-scraping", "ai-agent", "caching"]
-urls = {
-    Homepage = "https://github.com/wxs-lang/webscout-mcp",
-    Repository = "https://github.com/wxs-lang/webscout-mcp.git",
-    Documentation = "https://github.com/wxs-lang/webscout-mcp#readme",
-    Issues = "https://github.com/wxs-lang/webscout-mcp/issues",
-    Changelog = "https://github.com/wxs-lang/webscout-mcp/blob/main/CHANGELOG.md",
-}
+
+[project.urls]
+Homepage = "https://github.com/wxs-lang/webscout-mcp"
+Repository = "https://github.com/wxs-lang/webscout-mcp.git"
+Documentation = "https://github.com/wxs-lang/webscout-mcp#readme"
+Issues = "https://github.com/wxs-lang/webscout-mcp/issues"
+Changelog = "https://github.com/wxs-lang/webscout-mcp/blob/main/CHANGELOG.md"
+
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -34,6 +35,7 @@ classifiers = [
     "Topic :: Internet :: WWW/HTTP :: Indexing/Search",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
+
 dependencies = [
     "mcp>=1.0.0",
     "httpx>=0.25.0",
