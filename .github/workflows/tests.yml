@@ -5,48 +5,136 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
+    name: Test (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Set up Python 3.11
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            setup.cfg
+            requirements*.txt
 
       - name: Upgrade pip
         run: python -m pip install --upgrade pip setuptools wheel
 
-      - name: Install all dependencies
+      - name: Install system dependencies
         run: |
-          pip install httpx beautifulsoup4 lxml
-          pip install trafilatura readability-lxml
-          pip install pytest
-          pip install mcp || true
-          pip install -e .
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libxml2-dev \
+            libxslt1-dev \
+            libjpeg-dev \
+            zlib1g-dev
 
-      - name: Debug - show environment
+      - name: Install package with all dependencies
+        run: |
+          pip install -e ".[all,dev,test]" || pip install -e .
+          pip install pytest pytest-cov pytest-asyncio pytest-xdist anyio
+
+      - name: Show environment
         run: |
           python --version
           pip list
           python -c "import webscout_mcp; print('webscout_mcp version:', webscout_mcp.__version__)"
 
-      - name: Debug - collect tests only
-        run: python -m pytest tests/ --collect-only -q 2>&1 | head -100
+      - name: Collect tests
+        run: python -m pytest tests/ --collect-only -q 2>&1 | tail -20
 
-      - name: Run tests
+      - name: Run tests with coverage
         run: |
-          python -m pytest tests/ -v --tb=long 2>&1 | tee test_output.txt
+          python -m pytest tests/ \
+            -v \
+            --tb=short \
+            --cov=webscout_mcp \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            --cov-report=html:htmlcov \
+            --junitxml=test-results.xml \
+            -n auto \
+            2>&1 | tee test_output.txt
           exit ${PIPESTATUS[0]}
 
-      - name: Upload test output
+      - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-output
-          path: test_output.txt
+          name: test-results-py${{ matrix.python-version }}
+          path: |
+            test-results.xml
+            test_output.txt
+            coverage.xml
+            htmlcov/
+          retention-days: 14
+
+      - name: Test summary
+        if: always()
+        uses: test-summary/action@v2
+        with:
+          paths: test-results.xml
+
+  coverage:
+    name: Coverage Report
+    runs-on: ubuntu-latest
+    needs: test
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -e ".[all,dev,test]" || pip install -e .
+          pip install pytest pytest-cov pytest-asyncio anyio
+
+      - name: Run tests with coverage
+        run: |
+          python -m pytest tests/ \
+            --cov=webscout_mcp \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            --cov-fail-under=70
+
+      - name: Upload coverage to Codecov
+        if: success()
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+
+      - name: Check coverage threshold
+        run: |
+          COVERAGE=$(python -c "import xml.etree.ElementTree as ET; tree=ET.parse('coverage.xml'); root=tree.getroot(); print(float(root.attrib['line-rate'])*100)")
+          echo "Total coverage: ${COVERAGE}%"
+          if (( $(echo "$COVERAGE < 70" | bc -l) )); then
+            echo "Coverage below 70% threshold!"
+            exit 1
+          fi
