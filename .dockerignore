@@ -75,3 +75,27 @@ logs/
 *.bak
 *.swp
 *~
+
+# Data and cache directories
+data/
+cache/
+tmp/
+temp/
+
+# Config files with secrets
+config.yaml
+config.yml
+*.pem
+*.key
+*.crt
+
+# Node (if any frontend)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Project-specific
+webscout_mcp.egg-info/
+*.egg-info/
+.installed.cfg

@@ -1,6 +1,8 @@
 # Docker Compose for webscout-mcp
+# Usage: docker-compose up -d
 # https://github.com/wxs-lang/webscout-mcp
 version: "3.8"
+
 services:
   webscout-mcp:
     build:
@@ -13,7 +15,10 @@ services:
       - "8000:8000"  # SSE transport port
     volumes:
       - webscout-cache:/home/appuser/.cache/webscout
+      - webscout-data:/home/appuser/data
+      - webscout-logs:/home/appuser/logs
     environment:
+      - PYTHONUNBUFFERED=1
       - WEBSCOUT_LOG_LEVEL=INFO
       - WEBSCOUT_CACHE_TTL=7200
       - WEBSCOUT_CACHE_MAX_SIZE_MB=512
@@ -23,13 +28,66 @@ services:
       - WEBSCOUT_SEARCH_MAX_RESULTS=10
       - WEBSCOUT_CRAWLER_CONCURRENCY=5
       - WEBSCOUT_RESPECT_ROBOTS=true
+      - WEBSCOUT_REDIS_URL=redis://redis:6379/0
     command: ["serve", "--transport", "sse", "--host", "0.0.0.0", "--port", "8000"]
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      test: ["CMD", "python", "-c", "from webscout_mcp.health import health_checker; status = health_checker.check_liveness(); import sys; sys.exit(0 if status.status == 'healthy' else 1)"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s
+    networks:
+      - webscout-network
+    depends_on:
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+        reservations:
+          cpus: "0.5"
+          memory: 256M
+    security_opt:
+      - no-new-privileges:true
+
+  # Redis for distributed caching and rate limiting
+  redis:
+    image: redis:7-alpine
+    container_name: webscout-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - webscout-network
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
 volumes:
   webscout-cache:
     driver: local
+  webscout-data:
+    driver: local
+  webscout-logs:
+    driver: local
+  redis-data:
+    driver: local
+
+networks:
+  webscout-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
