@@ -1,35 +1,37 @@
 """Tests for competitor analyzer, knowledge graph, metrics, and browser fingerprint modules."""
+
 import pytest
+
+from webscout_mcp.browser_fingerprint import (
+    BrowserFingerprint,
+    FingerprintGenerator,
+    generate_fingerprint,
+)
 from webscout_mcp.competitor_analyzer import (
-    SiteMetrics,
     ComparisonResult,
     CompetitorAnalyzer,
+    SiteMetrics,
     compare_sites,
 )
 from webscout_mcp.knowledge_graph import (
     Entity,
-    Relationship,
     KnowledgeGraph,
     KnowledgeGraphBuilder,
+    Relationship,
     build_knowledge_graph,
 )
 from webscout_mcp.metrics import (
     Counter,
     Gauge,
     Histogram,
-    Summary,
     MetricsRegistry,
+    Summary,
     WebScoutMetrics,
     get_metrics,
 )
-from webscout_mcp.browser_fingerprint import (
-    BrowserFingerprint,
-    FingerprintGenerator,
-    generate_fingerprint,
-)
-
 
 # ============ Competitor Analyzer Tests ============
+
 
 class TestCompetitorAnalyzer:
     """Test CompetitorAnalyzer class."""
@@ -71,7 +73,7 @@ class TestCompetitorAnalyzer:
             content_metrics={"word_count": 100, "readability_score": 40},
         )
         result = analyzer.compare([site1, site2])
-        assert result.num_sites == 2 if hasattr(result, 'num_sites') else len(result.sites) == 2
+        assert result.num_sites == 2 if hasattr(result, "num_sites") else len(result.sites) == 2
         assert result.winner == "Site 1"
         assert len(result.recommendations) > 0
         assert "Site 1" in result.summary
@@ -96,6 +98,7 @@ class TestCompetitorAnalyzer:
 
 
 # ============ Knowledge Graph Tests ============
+
 
 class TestKnowledgeGraph:
     """Test KnowledgeGraphBuilder class."""
@@ -186,6 +189,7 @@ class TestKnowledgeGraph:
 
 # ============ Metrics Tests ============
 
+
 class TestMetrics:
     """Test metrics classes."""
 
@@ -267,6 +271,7 @@ class TestMetrics:
 
 
 # ============ Browser Fingerprint Tests ============
+
 
 class TestBrowserFingerprint:
     """Test FingerprintGenerator class."""

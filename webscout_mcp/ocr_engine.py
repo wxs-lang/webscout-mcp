@@ -13,10 +13,13 @@ Features:
 - Batch processing
 - Image format support (PNG, JPG, TIFF, PDF)
 """
+
 from __future__ import annotations
+
 import os
 from dataclasses import dataclass, field
-from typing import Optional, List, Tuple
+from typing import List, Optional, Tuple
+
 from .logging import get_logger
 
 log = get_logger(__name__)
@@ -25,6 +28,7 @@ log = get_logger(__name__)
 @dataclass
 class OCRResult:
     """OCR result for a single image."""
+
     text: str = ""
     confidence: float = 0.0
     lines: List[dict] = field(default_factory=list)
@@ -82,6 +86,7 @@ class OCREngine:
         if self.backend == "tesseract":
             try:
                 import pytesseract
+
                 if self.tesseract_cmd:
                     pytesseract.pytesseract.tesseract_cmd = self.tesseract_cmd
                 self._engine = pytesseract
@@ -93,6 +98,7 @@ class OCREngine:
         elif self.backend == "paddleocr":
             try:
                 from paddleocr import PaddleOCR
+
                 self._engine = PaddleOCR(use_angle_cls=True, lang=self.languages[0] if self.languages else "en")
                 log.debug("PaddleOCR backend initialized")
             except ImportError:
@@ -102,6 +108,7 @@ class OCREngine:
         elif self.backend == "easyocr":
             try:
                 import easyocr
+
                 self._engine = easyocr.Reader(self.languages, gpu=False)
                 log.debug("EasyOCR backend initialized")
             except ImportError:
@@ -126,7 +133,7 @@ class OCREngine:
             return image_path
 
         try:
-            from PIL import Image, ImageFilter, ImageEnhance
+            from PIL import Image, ImageEnhance, ImageFilter
 
             img = Image.open(image_path)
 
@@ -160,6 +167,7 @@ class OCREngine:
             OCRResult with recognized text and metadata.
         """
         import time
+
         result = OCRResult(backend=self.backend, languages=self.languages)
 
         if not os.path.exists(image_path):
@@ -182,6 +190,7 @@ class OCREngine:
             # Get image dimensions
             try:
                 from PIL import Image
+
                 with Image.open(processed_path) as img:
                     result.image_width, result.image_height = img.size
             except ImportError:
@@ -230,14 +239,16 @@ class OCREngine:
                 conf = data["conf"][i]
                 if conf > 0:
                     confidences.append(conf)
-                    result.words.append({
-                        "text": text,
-                        "confidence": conf,
-                        "left": data["left"][i],
-                        "top": data["top"][i],
-                        "width": data["width"][i],
-                        "height": data["height"][i],
-                    })
+                    result.words.append(
+                        {
+                            "text": text,
+                            "confidence": conf,
+                            "left": data["left"][i],
+                            "top": data["top"][i],
+                            "width": data["width"][i],
+                            "height": data["height"][i],
+                        }
+                    )
 
         result.text = " ".join(texts)
         result.confidence = round(sum(confidences) / len(confidences), 2) if confidences else 0.0
@@ -269,11 +280,13 @@ class OCREngine:
                     bbox, (text, conf) = word_info
                     texts.append(text)
                     confidences.append(conf)
-                    result.words.append({
-                        "text": text,
-                        "confidence": conf,
-                        "bbox": bbox,
-                    })
+                    result.words.append(
+                        {
+                            "text": text,
+                            "confidence": conf,
+                            "bbox": bbox,
+                        }
+                    )
 
         result.text = "\n".join(texts)
         result.confidence = round(sum(confidences) / len(confidences), 2) if confidences else 0.0
@@ -288,11 +301,13 @@ class OCREngine:
         for bbox, text, conf in output:
             texts.append(text)
             confidences.append(conf)
-            result.words.append({
-                "text": text,
-                "confidence": conf,
-                "bbox": bbox,
-            })
+            result.words.append(
+                {
+                    "text": text,
+                    "confidence": conf,
+                    "bbox": bbox,
+                }
+            )
 
         result.text = " ".join(texts)
         result.confidence = round(sum(confidences) / len(confidences), 2) if confidences else 0.0

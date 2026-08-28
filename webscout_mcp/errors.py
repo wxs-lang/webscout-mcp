@@ -24,9 +24,11 @@ Exception Categories:
   - StorageError
   - AIServiceError
 """
+
 from __future__ import annotations
-from typing import Optional, Dict, Any, List
+
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 
 class WebScoutError(Exception):
@@ -79,14 +81,17 @@ class WebScoutError(Exception):
 
 # ============ Configuration Errors ============
 
+
 class ConfigurationError(WebScoutError):
     """Invalid or missing configuration."""
+
     code = "WS100"
     retryable = False
 
 
 class MissingConfigError(ConfigurationError):
     """Required configuration value is missing."""
+
     code = "WS101"
 
     def __init__(self, key: str, **kwargs: Any) -> None:
@@ -99,6 +104,7 @@ class MissingConfigError(ConfigurationError):
 
 class InvalidConfigError(ConfigurationError):
     """Configuration value is invalid."""
+
     code = "WS102"
 
     def __init__(self, key: str, value: Any, reason: str = "", **kwargs: Any) -> None:
@@ -111,14 +117,17 @@ class InvalidConfigError(ConfigurationError):
 
 # ============ Network Errors ============
 
+
 class NetworkError(WebScoutError):
     """Base class for network-related errors."""
+
     code = "WS200"
     retryable = True
 
 
 class ConnectionError(NetworkError):
     """Failed to establish a connection."""
+
     code = "WS201"
 
     def __init__(self, url: str = "", reason: str = "", **kwargs: Any) -> None:
@@ -131,6 +140,7 @@ class ConnectionError(NetworkError):
 
 class TimeoutError(NetworkError):
     """Operation timed out."""
+
     code = "WS202"
 
     def __init__(self, operation: str = "", timeout: float = 0, **kwargs: Any) -> None:
@@ -143,12 +153,14 @@ class TimeoutError(NetworkError):
 
 class SSLError(NetworkError):
     """SSL/TLS certificate or handshake error."""
+
     code = "WS203"
     retryable = False
 
 
 class DNSResolutionError(NetworkError):
     """DNS resolution failed."""
+
     code = "WS204"
 
     def __init__(self, hostname: str = "", **kwargs: Any) -> None:
@@ -161,6 +173,7 @@ class DNSResolutionError(NetworkError):
 
 class HTTPError(NetworkError):
     """HTTP error response."""
+
     code = "WS205"
 
     def __init__(
@@ -182,14 +195,17 @@ class HTTPError(NetworkError):
 
 # ============ Search Errors ============
 
+
 class SearchError(WebScoutError):
     """Base class for search-related errors."""
+
     code = "WS300"
     retryable = True
 
 
 class SearchBackendError(SearchError):
     """Search backend failed."""
+
     code = "WS301"
 
     def __init__(self, backend: str = "", reason: str = "", **kwargs: Any) -> None:
@@ -202,55 +218,67 @@ class SearchBackendError(SearchError):
 
 class NoResultsError(SearchError):
     """Search returned no results."""
+
     code = "WS302"
     retryable = False
 
 
 # ============ Fetch Errors ============
 
+
 class FetchError(WebScoutError):
     """Base class for content fetch errors."""
+
     code = "WS400"
     retryable = True
 
 
 class ContentExtractionError(FetchError):
     """Failed to extract content from page."""
+
     code = "WS401"
 
 
 class PageLoadError(FetchError):
     """Page failed to load."""
+
     code = "WS402"
 
 
 # ============ Parse Errors ============
 
+
 class ParseError(WebScoutError):
     """Base class for parsing errors."""
+
     code = "WS500"
     retryable = False
 
 
 class HTMLParseError(ParseError):
     """Failed to parse HTML."""
+
     code = "WS501"
 
 
 class JSONParseError(ParseError):
     """Failed to parse JSON."""
+
     code = "WS502"
 
 
 class PDFParseError(ParseError):
     """Failed to parse PDF."""
+
     code = "WS503"
 
 
 # ============ Validation Errors ============
 
+
 class ValidationError(WebScoutError):
     """Input validation failed."""
+
     code = "WS600"
     retryable = False
 
@@ -273,6 +301,7 @@ class ValidationError(WebScoutError):
 
 class InvalidURLError(ValidationError):
     """URL is invalid."""
+
     code = "WS601"
 
     def __init__(self, url: str = "", reason: str = "", **kwargs: Any) -> None:
@@ -286,26 +315,32 @@ class InvalidURLError(ValidationError):
 
 # ============ Authentication Errors ============
 
+
 class AuthenticationError(WebScoutError):
     """Authentication failed."""
+
     code = "WS700"
     retryable = False
 
 
 class InvalidTokenError(AuthenticationError):
     """API token is invalid or expired."""
+
     code = "WS701"
 
 
 class PermissionDeniedError(AuthenticationError):
     """Insufficient permissions."""
+
     code = "WS702"
 
 
 # ============ Rate Limit Errors ============
 
+
 class RateLimitError(WebScoutError):
     """Rate limit exceeded."""
+
     code = "WS800"
     retryable = True
 
@@ -326,14 +361,17 @@ class RateLimitError(WebScoutError):
 
 # ============ Security Errors ============
 
+
 class SecurityError(WebScoutError):
     """Base class for security-related errors."""
+
     code = "WS900"
     retryable = False
 
 
 class SSRFError(SecurityError):
     """Potential SSRF attack detected."""
+
     code = "WS901"
 
     def __init__(self, url: str = "", reason: str = "", **kwargs: Any) -> None:
@@ -346,23 +384,28 @@ class SSRFError(SecurityError):
 
 class InputValidationError(SecurityError):
     """Input failed security validation."""
+
     code = "WS902"
 
 
 class SensitiveDataError(SecurityError):
     """Sensitive data detected in output."""
+
     code = "WS903"
 
 
 # ============ Plugin Errors ============
 
+
 class PluginError(WebScoutError):
     """Base class for plugin errors."""
+
     code = "WSA00"
 
 
 class PluginNotFoundError(PluginError):
     """Plugin not found."""
+
     code = "WSA01"
 
     def __init__(self, plugin_name: str = "", **kwargs: Any) -> None:
@@ -375,66 +418,80 @@ class PluginNotFoundError(PluginError):
 
 class PluginLoadError(PluginError):
     """Failed to load plugin."""
+
     code = "WSA02"
 
 
 # ============ Cache Errors ============
 
+
 class CacheError(WebScoutError):
     """Base class for cache errors."""
+
     code = "WSB00"
 
 
 class CacheMissError(CacheError):
     """Cache miss (not always an error)."""
+
     code = "WSB01"
 
 
 # ============ Storage Errors ============
 
+
 class StorageError(WebScoutError):
     """Base class for storage errors."""
+
     code = "WSC00"
     retryable = True
 
 
 class DatabaseError(StorageError):
     """Database operation failed."""
+
     code = "WSC01"
 
 
 class FileStorageError(StorageError):
     """File storage operation failed."""
+
     code = "WSC02"
 
 
 # ============ AI Service Errors ============
 
+
 class AIServiceError(WebScoutError):
     """Base class for AI service errors."""
+
     code = "WSD00"
     retryable = True
 
 
 class ModelNotFoundError(AIServiceError):
     """AI model not found."""
+
     code = "WSD01"
     retryable = False
 
 
 class HallucinationDetectedError(AIServiceError):
     """Potential hallucination detected in AI output."""
+
     code = "WSD02"
     retryable = False
 
 
 class OutputValidationError(AIServiceError):
     """AI output failed validation."""
+
     code = "WSD03"
     retryable = True
 
 
 # ============ Error Registry ============
+
 
 class ErrorRegistry:
     """Registry for looking up error classes by code."""
@@ -470,6 +527,7 @@ _register_all()
 
 
 # ============ Error Handling Utilities ============
+
 
 def safe_execute(
     func: callable,

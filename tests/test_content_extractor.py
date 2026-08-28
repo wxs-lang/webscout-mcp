@@ -1,13 +1,14 @@
 """Tests for content extractor module."""
+
 import pytest
+
 from webscout_mcp.content_extractor import (
-    ExtractedContent,
-    ContentQualityAssessor,
-    MultiAlgorithmExtractor,
     ContentExtractor,
+    ContentQualityAssessor,
+    ExtractedContent,
+    MultiAlgorithmExtractor,
     extract_content,
 )
-
 
 # Sample HTML for testing
 SAMPLE_HTML = """

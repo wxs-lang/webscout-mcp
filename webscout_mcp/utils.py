@@ -1,4 +1,5 @@
 """Utility helpers: rate limiter, URL normalisation, content detection, security checks."""
+
 from __future__ import annotations
 
 import asyncio
@@ -95,18 +96,18 @@ def truncate_text(text: str, max_chars: int = 8000) -> str:
 
 # Sensitive ports that should never be accessed via web scraping
 SENSITIVE_PORTS = {
-    22,    # SSH
-    23,    # Telnet
-    25,    # SMTP
-    53,    # DNS
-    110,   # POP3
-    143,   # IMAP
+    22,  # SSH
+    23,  # Telnet
+    25,  # SMTP
+    53,  # DNS
+    110,  # POP3
+    143,  # IMAP
     3306,  # MySQL
     5432,  # PostgreSQL
     6379,  # Redis
-    27017, # MongoDB
+    27017,  # MongoDB
     9200,  # Elasticsearch
-    11211, # Memcached
+    11211,  # Memcached
     2375,  # Docker
     2376,  # Docker TLS
 }

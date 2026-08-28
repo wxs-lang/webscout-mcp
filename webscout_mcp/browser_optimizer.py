@@ -12,12 +12,15 @@ Features:
 - Anti-detection enhancements
 - Performance metrics tracking
 """
+
 from __future__ import annotations
-import time
-import random
+
 import math
+import random
+import time
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict, Any, Tuple, Callable
+from typing import Any, Callable, Dict, List, Optional, Tuple
+
 from .logging import get_logger
 
 log = get_logger(__name__)
@@ -26,6 +29,7 @@ log = get_logger(__name__)
 @dataclass
 class BrowserMetrics:
     """Browser performance metrics."""
+
     page_load_time_ms: float = 0.0
     dom_content_loaded_ms: float = 0.0
     network_requests: int = 0
@@ -55,6 +59,7 @@ class BrowserMetrics:
 @dataclass
 class BrowserSession:
     """Browser session with state tracking."""
+
     session_id: str = ""
     url: str = ""
     cookies: List[Dict[str, Any]] = field(default_factory=list)
@@ -148,18 +153,8 @@ class HumanBehaviorSimulator:
         for i in range(num_points):
             t = i / (num_points - 1)
             # Cubic Bezier curve
-            x = (
-                (1 - t) ** 3 * start[0]
-                + 3 * (1 - t) ** 2 * t * cp1[0]
-                + 3 * (1 - t) * t ** 2 * cp2[0]
-                + t ** 3 * end[0]
-            )
-            y = (
-                (1 - t) ** 3 * start[1]
-                + 3 * (1 - t) ** 2 * t * cp1[1]
-                + 3 * (1 - t) * t ** 2 * cp2[1]
-                + t ** 3 * end[1]
-            )
+            x = (1 - t) ** 3 * start[0] + 3 * (1 - t) ** 2 * t * cp1[0] + 3 * (1 - t) * t**2 * cp2[0] + t**3 * end[0]
+            y = (1 - t) ** 3 * start[1] + 3 * (1 - t) ** 2 * t * cp1[1] + 3 * (1 - t) * t**2 * cp2[1] + t**3 * end[1]
             path.append((int(x), int(y)))
 
         return path
@@ -195,19 +190,23 @@ class HumanBehaviorSimulator:
                 scroll_amount = random.randint(100, 500)
                 current_position = min(max_scroll, current_position + scroll_amount)
 
-            actions.append({
-                "position": current_position,
-                "pause_seconds": self.random_pause(500, 3000),
-                "direction": "up" if scroll_amount < 0 else "down",
-            })
+            actions.append(
+                {
+                    "position": current_position,
+                    "pause_seconds": self.random_pause(500, 3000),
+                    "direction": "up" if scroll_amount < 0 else "down",
+                }
+            )
 
         # Sometimes scroll back to top
         if random.random() < 0.3:
-            actions.append({
-                "position": 0,
-                "pause_seconds": self.random_pause(500, 1500),
-                "direction": "up",
-            })
+            actions.append(
+                {
+                    "position": 0,
+                    "pause_seconds": self.random_pause(500, 1500),
+                    "direction": "up",
+                }
+            )
 
         return actions
 
@@ -348,6 +347,7 @@ class BrowserInstancePool:
     def _create_instance(self, url: str = "") -> BrowserSession:
         """Create a new browser session."""
         import uuid
+
         session = BrowserSession(
             session_id=str(uuid.uuid4())[:8],
             url=url,
@@ -433,6 +433,7 @@ class BrowserOptimizer:
             session = self.pool.acquire(url)
         else:
             import uuid
+
             session = BrowserSession(
                 session_id=str(uuid.uuid4())[:8],
                 url=url,

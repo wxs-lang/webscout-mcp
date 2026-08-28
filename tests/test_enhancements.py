@@ -8,18 +8,21 @@ Tests for enhanced features:
 - Crawler smart link filtering
 - Error classification
 """
+
 import asyncio
+
 import pytest
+
 from webscout_mcp import Config
-from webscout_mcp.search import (
-    SearchEngine,
-    SearchResult,
-    SearchBackend,
-    BingBackend,
-    DuckDuckGoHTMLBackend,
-)
 from webscout_mcp.crawler import Crawler, CrawlResult
 from webscout_mcp.fetcher import Fetcher
+from webscout_mcp.search import (
+    BingBackend,
+    DuckDuckGoHTMLBackend,
+    SearchBackend,
+    SearchEngine,
+    SearchResult,
+)
 
 
 class TestSearchEnhancements:
@@ -249,6 +252,7 @@ class TestSearchResultDataclass:
         )
         # Should be serializable to JSON
         import json
+
         data = result.__dict__
         json_str = json.dumps(data)
         assert "relevance_score" in json_str

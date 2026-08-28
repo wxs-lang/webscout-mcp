@@ -10,14 +10,17 @@ Features:
 - Plugin dependency management
 - Built-in plugin registry
 """
+
 from __future__ import annotations
-import os
-import sys
+
 import importlib
 import importlib.util
-from dataclasses import dataclass, field
-from typing import Optional, Any, Callable, Type
+import os
+import sys
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from typing import Any, Callable, Optional, Type
+
 from .logging import get_logger
 
 log = get_logger(__name__)
@@ -177,6 +180,7 @@ class PostProcessorPlugin(Plugin):
 @dataclass
 class PluginInfo:
     """Information about a loaded plugin."""
+
     name: str
     version: str
     plugin_type: str
@@ -279,6 +283,7 @@ class PluginManager:
         try:
             if sys.version_info >= (3, 10):
                 from importlib.metadata import entry_points
+
                 eps = entry_points(group="webscout_mcp.plugins")
                 for ep in eps:
                     try:
@@ -286,7 +291,9 @@ class PluginManager:
                         self.register_builtin(plugin_class)
                         discovered.append(ep.name)
                     except Exception as exc:
-                        log.warning("Failed to load entry point plugin", extra={"plugin_name": ep.name, "error": str(exc)})
+                        log.warning(
+                            "Failed to load entry point plugin", extra={"plugin_name": ep.name, "error": str(exc)}
+                        )
         except Exception:
             pass  # Entry points not available
 
@@ -455,15 +462,17 @@ class PluginManager:
                 try:
                     plugin_class = self._builtin_plugins[name]
                     temp_instance = plugin_class()
-                    result.append(PluginInfo(
-                        name=temp_instance.name,
-                        version=temp_instance.version,
-                        plugin_type=temp_instance.plugin_type,
-                        description=temp_instance.description,
-                        author=temp_instance.author,
-                        dependencies=temp_instance.dependencies,
-                        loaded=False,
-                    ))
+                    result.append(
+                        PluginInfo(
+                            name=temp_instance.name,
+                            version=temp_instance.version,
+                            plugin_type=temp_instance.plugin_type,
+                            description=temp_instance.description,
+                            author=temp_instance.author,
+                            dependencies=temp_instance.dependencies,
+                            loaded=False,
+                        )
+                    )
                 except Exception:
                     pass
         return result

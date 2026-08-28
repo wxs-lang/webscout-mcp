@@ -12,20 +12,25 @@ Features:
 - Serialization to/from dict/JSON/TOML
 - Hot-reload support
 """
+
 from __future__ import annotations
+
 import os
-from typing import Optional, Literal
+from typing import Literal, Optional
+
 from .logging import get_logger
 
 log = get_logger(__name__)
 
 try:
     from pydantic import BaseModel, Field, field_validator, model_validator
+
     PYDANTIC_AVAILABLE = True
 except ImportError:
     PYDANTIC_AVAILABLE = False
     # Fallback: simple dataclass-based config
-    from dataclasses import dataclass, field as dc_field
+    from dataclasses import dataclass
+    from dataclasses import field as dc_field
 
     class BaseModel:  # type: ignore
         def __init__(self, **kwargs):
@@ -45,16 +50,19 @@ except ImportError:
     def field_validator(*args, **kwargs):  # type: ignore
         def decorator(func):
             return func
+
         return decorator
 
     def model_validator(*args, **kwargs):  # type: ignore
         def decorator(func):
             return func
+
         return decorator
 
 
 class ServerConfig(BaseModel):
     """MCP server configuration."""
+
     host: str = Field(default="127.0.0.1", description="Server host address")
     port: int = Field(default=8000, ge=1, le=65535, description="Server port")
     workers: int = Field(default=1, ge=1, le=16, description="Number of worker processes")
@@ -67,21 +75,19 @@ class ServerConfig(BaseModel):
 
 class CacheConfig(BaseModel):
     """Caching configuration."""
+
     enabled: bool = Field(default=True, description="Enable caching")
     ttl: int = Field(default=3600, ge=0, description="Cache TTL in seconds")
     max_size: int = Field(default=1000, ge=0, description="Max number of cached items")
-    backend: Literal["memory", "sqlite", "redis"] = Field(
-        default="sqlite", description="Cache backend"
-    )
+    backend: Literal["memory", "sqlite", "redis"] = Field(default="sqlite", description="Cache backend")
     sqlite_path: str = Field(default="~/.cache/webscout/cache.db", description="SQLite cache path")
     redis_url: Optional[str] = Field(default=None, description="Redis connection URL")
-    eviction_policy: Literal["LRU", "LFU", "FIFO"] = Field(
-        default="LRU", description="Cache eviction policy"
-    )
+    eviction_policy: Literal["LRU", "LFU", "FIFO"] = Field(default="LRU", description="Cache eviction policy")
 
 
 class SearchConfig(BaseModel):
     """Search configuration."""
+
     default_backend: Literal["bing", "duckduckgo", "google", "brave"] = Field(
         default="bing", description="Default search backend"
     )
@@ -99,6 +105,7 @@ class SearchConfig(BaseModel):
 
 class CrawlerConfig(BaseModel):
     """Web crawler configuration."""
+
     max_depth: int = Field(default=2, ge=0, le=10, description="Max crawl depth")
     max_pages: int = Field(default=50, ge=1, le=10000, description="Max pages to crawl")
     concurrency: int = Field(default=5, ge=1, le=50, description="Number of concurrent requests")
@@ -120,9 +127,8 @@ class CrawlerConfig(BaseModel):
 
 class AIConfig(BaseModel):
     """AI content understanding configuration."""
-    backend: Literal["ollama", "openai", "doubao", "custom"] = Field(
-        default="ollama", description="AI backend"
-    )
+
+    backend: Literal["ollama", "openai", "doubao", "custom"] = Field(default="ollama", description="AI backend")
     model: str = Field(default="qwen2.5:7b", description="Model name")
     api_key: Optional[str] = Field(default=None, description="API key (for OpenAI/Doubao)")
     base_url: Optional[str] = Field(default=None, description="Custom API base URL")
@@ -136,16 +142,13 @@ class AIConfig(BaseModel):
 
 class VectorStoreConfig(BaseModel):
     """Vector store and RAG configuration."""
+
     enabled: bool = Field(default=True, description="Enable vector store")
-    vector_db: Literal["chroma", "faiss", "milvus"] = Field(
-        default="chroma", description="Vector database backend"
-    )
+    vector_db: Literal["chroma", "faiss", "milvus"] = Field(default="chroma", description="Vector database backend")
     embedding_backend: Literal["local", "openai", "custom"] = Field(
         default="local", description="Embedding model backend"
     )
-    embedding_model: str = Field(
-        default="BAAI/bge-small-zh-v1.5", description="Embedding model name"
-    )
+    embedding_model: str = Field(default="BAAI/bge-small-zh-v1.5", description="Embedding model name")
     embedding_dimension: int = Field(default=384, ge=64, le=4096, description="Embedding dimension")
     persist_directory: str = Field(
         default="~/.local/share/webscout/vector_store", description="Vector store persistence directory"
@@ -160,10 +163,9 @@ class VectorStoreConfig(BaseModel):
 
 class BrowserConfig(BaseModel):
     """Headless browser configuration."""
+
     enabled: bool = Field(default=True, description="Enable browser automation")
-    browser_type: Literal["chromium", "firefox", "webkit"] = Field(
-        default="chromium", description="Browser type"
-    )
+    browser_type: Literal["chromium", "firefox", "webkit"] = Field(default="chromium", description="Browser type")
     headless: bool = Field(default=True, description="Run in headless mode")
     block_media: bool = Field(default=True, description="Block images/media/CSS/fonts")
     block_images: bool = Field(default=True, description="Block image loading")
@@ -185,6 +187,7 @@ class BrowserConfig(BaseModel):
 
 class MonitorConfig(BaseModel):
     """Web monitoring configuration."""
+
     check_interval: int = Field(default=300, ge=10, description="Check interval in seconds")
     min_change_size: int = Field(default=10, ge=0, description="Minimum change size to trigger alert")
     similarity_threshold: float = Field(default=0.95, ge=0, le=1, description="Content similarity threshold")
@@ -193,21 +196,18 @@ class MonitorConfig(BaseModel):
     alert_on_first_check: bool = Field(default=False, description="Alert on first check (baseline)")
     keyword_monitoring: bool = Field(default=True, description="Enable keyword monitoring")
     price_monitoring: bool = Field(default=True, description="Enable price monitoring")
-    database_path: str = Field(
-        default="~/.local/share/webscout/monitor.db", description="Monitor database path"
-    )
+    database_path: str = Field(default="~/.local/share/webscout/monitor.db", description="Monitor database path")
 
 
 class SSRFConfig(BaseModel):
     """SSRF protection configuration."""
+
     enabled: bool = Field(default=True, description="Enable SSRF protection")
     block_localhost: bool = Field(default=True, description="Block localhost/127.0.0.1")
     block_private_ips: bool = Field(default=True, description="Block private IP ranges (10.x, 172.16-31.x, 192.168.x)")
     block_link_local: bool = Field(default=True, description="Block link-local addresses (169.254.x)")
     block_metadata: bool = Field(default=True, description="Block cloud metadata endpoints (169.254.169.254)")
-    allowed_schemes: list[str] = Field(
-        default_factory=lambda: ["http", "https"], description="Allowed URL schemes"
-    )
+    allowed_schemes: list[str] = Field(default_factory=lambda: ["http", "https"], description="Allowed URL schemes")
     blocked_ports: list[int] = Field(
         default_factory=lambda: [22, 25, 3306, 5432, 6379, 27017],
         description="Blocked ports (sensitive services)",
@@ -218,6 +218,7 @@ class SSRFConfig(BaseModel):
 
 class RateLimitConfig(BaseModel):
     """Rate limiting configuration."""
+
     enabled: bool = Field(default=True, description="Enable rate limiting")
     requests_per_second: float = Field(default=1.0, gt=0, description="Max requests per second per domain")
     requests_per_minute: int = Field(default=60, ge=1, description="Max requests per minute per domain")
@@ -233,6 +234,7 @@ class WebScoutConfig(BaseModel):
     Aggregates all configuration sections with validation and
     environment variable support.
     """
+
     server: ServerConfig = Field(default_factory=ServerConfig)
     cache: CacheConfig = Field(default_factory=CacheConfig)
     search: SearchConfig = Field(default_factory=SearchConfig)
@@ -278,7 +280,7 @@ class WebScoutConfig(BaseModel):
                 continue
 
             # Remove prefix and split
-            parts = key[len(prefix):].lower().split("_", 1)
+            parts = key[len(prefix) :].lower().split("_", 1)
             if len(parts) != 2:
                 continue
 
@@ -316,6 +318,7 @@ class WebScoutConfig(BaseModel):
     def to_json(self, indent: int = 2) -> str:
         """Serialize configuration to JSON string."""
         import json
+
         return json.dumps(self.to_dict(), indent=indent, ensure_ascii=False)
 
     @classmethod
@@ -350,6 +353,7 @@ def load_config(config_path: Optional[str] = None) -> WebScoutConfig:
         try:
             if config_path.endswith(".json"):
                 import json
+
                 with open(config_path, "r") as f:
                     data = json.load(f)
                 config = WebScoutConfig.from_dict(data)
@@ -363,6 +367,7 @@ def load_config(config_path: Optional[str] = None) -> WebScoutConfig:
                 config = WebScoutConfig.from_dict(data)
             elif config_path.endswith((".yaml", ".yml")):
                 import yaml
+
                 with open(config_path, "r") as f:
                     data = yaml.safe_load(f)
                 config = WebScoutConfig.from_dict(data)

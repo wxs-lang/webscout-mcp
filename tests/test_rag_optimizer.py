@@ -1,15 +1,16 @@
 """Tests for RAG optimizer module."""
+
 import pytest
+
 from webscout_mcp.rag_optimizer import (
     Chunk,
-    RAGResponse,
-    SemanticChunker,
     ContextCompressor,
     QueryRewriter,
     RAGOptimizer,
+    RAGResponse,
+    SemanticChunker,
     optimize_rag,
 )
-
 
 # Sample document for testing
 SAMPLE_DOCUMENT = """

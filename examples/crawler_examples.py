@@ -9,9 +9,11 @@ This file demonstrates:
 
 Run with: python examples/crawler_examples.py
 """
+
 import asyncio
 import json
-from webscout_mcp import Config, Fetcher, Crawler, Exporter
+
+from webscout_mcp import Config, Crawler, Exporter, Fetcher
 
 
 async def example_basic_crawl():
@@ -178,6 +180,7 @@ async def main():
     except Exception as e:
         print(f"Error: {e}")
         import traceback
+
         traceback.print_exc()
         print("Note: Some examples require network access.")
 

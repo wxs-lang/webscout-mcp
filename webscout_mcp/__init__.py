@@ -35,7 +35,7 @@ from .fetcher import Fetcher
 from .incremental import IncrementalCrawler
 from .metadata_extractor import MetadataExtractor, PageMetadata, extract_metadata
 from .robots import RobotsChecker
-from .rss_parser import RSSParser, Feed, FeedEntry, parse_feed, fetch_and_parse_feed
+from .rss_parser import Feed, FeedEntry, RSSParser, fetch_and_parse_feed, parse_feed
 from .search import SearchEngine
 from .sitemap import SitemapParser
 from .user_agent import UserAgentRotator

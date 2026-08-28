@@ -15,10 +15,13 @@ Features:
 - Overall performance score
 - Optimization recommendations
 """
+
 from __future__ import annotations
+
 import re
 from dataclasses import dataclass, field
 from typing import Optional
+
 from .logging import get_logger
 
 log = get_logger(__name__)
@@ -27,6 +30,7 @@ log = get_logger(__name__)
 @dataclass
 class PerformanceMetrics:
     """Performance analysis metrics."""
+
     # Basic metrics
     url: str = ""
     html_size_bytes: int = 0
@@ -171,6 +175,7 @@ class PerformanceAnalyzer:
         """Analyze DOM structure."""
         try:
             from bs4 import BeautifulSoup
+
             soup = BeautifulSoup(html, "html.parser")
 
             # Count DOM nodes (approximate)
@@ -182,12 +187,13 @@ class PerformanceAnalyzer:
         except ImportError:
             log.warning("BeautifulSoup not available for DOM analysis")
             # Fallback: count tags with regex
-            metrics.dom_node_count = len(re.findall(r'<[a-zA-Z][^>]*>', html))
+            metrics.dom_node_count = len(re.findall(r"<[a-zA-Z][^>]*>", html))
 
     def _analyze_resources(self, html: str, metrics: PerformanceMetrics) -> None:
         """Analyze resource references."""
         try:
             from bs4 import BeautifulSoup
+
             soup = BeautifulSoup(html, "html.parser")
 
             # Count CSS
@@ -204,15 +210,11 @@ class PerformanceAnalyzer:
             metrics.image_count = len(soup.find_all("img"))
 
             # Count fonts
-            metrics.font_count = len(soup.find_all("link", rel=re.compile(r'font', re.I)))
+            metrics.font_count = len(soup.find_all("link", rel=re.compile(r"font", re.I)))
 
             # Total estimated requests
             metrics.request_count = (
-                metrics.css_count
-                + metrics.js_count
-                + metrics.image_count
-                + metrics.font_count
-                + metrics.iframe_count
+                metrics.css_count + metrics.js_count + metrics.image_count + metrics.font_count + metrics.iframe_count
             )
 
             # Check for render-blocking resources
@@ -353,7 +355,7 @@ class PerformanceAnalyzer:
         # Lazy loading
         if metrics.image_count > 5 and not metrics.has_lazy_loading:
             metrics.warnings.append("Images without lazy loading detected")
-            metrics.recommendations.append("Add loading=\"lazy\" attribute to below-the-fold images")
+            metrics.recommendations.append('Add loading="lazy" attribute to below-the-fold images')
 
         # Inline CSS/JS
         if metrics.has_inline_css:
@@ -371,7 +373,9 @@ class PerformanceAnalyzer:
         elif metrics.overall_score >= 60:
             metrics.recommendations.append("Good performance. Address the issues above for further improvement.")
         else:
-            metrics.recommendations.append("Significant performance improvements needed. Start with the critical issues.")
+            metrics.recommendations.append(
+                "Significant performance improvements needed. Start with the critical issues."
+            )
 
 
 def analyze_performance(html: str, url: str = "", response_headers: Optional[dict] = None) -> PerformanceMetrics:

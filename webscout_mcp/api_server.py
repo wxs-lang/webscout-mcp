@@ -16,21 +16,26 @@ Features:
 - CORS support
 - Health check endpoints
 """
+
 from __future__ import annotations
-import os
+
 import json
-from typing import Optional, List, Dict, Any
+import os
+from typing import Any, Dict, List, Optional
+
 from .logging import get_logger
 
 log = get_logger(__name__)
 
 try:
-    from fastapi import FastAPI, HTTPException, Depends, Header, Query
+    from fastapi import Depends, FastAPI, Header, HTTPException, Query
     from fastapi.middleware.cors import CORSMiddleware
     from pydantic import BaseModel, Field
+
     FASTAPI_AVAILABLE = True
 except ImportError:
     FASTAPI_AVAILABLE = False
+
     # Fallback base classes
     class BaseModel:  # type: ignore
         def __init__(self, **kwargs):
@@ -128,9 +133,7 @@ def create_app(
         Configured FastAPI application.
     """
     if not FASTAPI_AVAILABLE:
-        raise ImportError(
-            "FastAPI is required for REST API. Install with: pip install fastapi uvicorn"
-        )
+        raise ImportError("FastAPI is required for REST API. Install with: pip install fastapi uvicorn")
 
     app = FastAPI(
         title=title,
@@ -183,6 +186,7 @@ def create_app(
         """Search the web using multiple backends."""
         try:
             from . import WebScout
+
             scout = WebScout()
             results = scout.search(
                 request.query,
@@ -191,7 +195,7 @@ def create_app(
             )
             return APIResponse(
                 success=True,
-                data=[r.to_dict() if hasattr(r, 'to_dict') else r for r in results],
+                data=[r.to_dict() if hasattr(r, "to_dict") else r for r in results],
                 metadata={"query": request.query, "count": len(results)},
             )
         except Exception as exc:
@@ -203,6 +207,7 @@ def create_app(
         """Fetch and extract content from a URL."""
         try:
             from . import WebScout
+
             scout = WebScout()
             page = scout.fetch(
                 request.url,
@@ -211,7 +216,7 @@ def create_app(
             )
             return APIResponse(
                 success=True,
-                data=page.to_dict() if hasattr(page, 'to_dict') else {"content": str(page)},
+                data=page.to_dict() if hasattr(page, "to_dict") else {"content": str(page)},
                 metadata={"url": request.url},
             )
         except Exception as exc:
@@ -223,6 +228,7 @@ def create_app(
         """Crawl a website starting from a URL."""
         try:
             from . import WebScout
+
             scout = WebScout()
             pages = scout.crawl(
                 request.url,
@@ -231,7 +237,7 @@ def create_app(
             )
             return APIResponse(
                 success=True,
-                data=[p.to_dict() if hasattr(p, 'to_dict') else p for p in pages],
+                data=[p.to_dict() if hasattr(p, "to_dict") else p for p in pages],
                 metadata={"url": request.url, "pages_crawled": len(pages)},
             )
         except Exception as exc:
@@ -243,14 +249,16 @@ def create_app(
         """Perform SEO analysis on a URL or HTML content."""
         try:
             from .seo_analyzer import SEOAnalyzer
+
             analyzer = SEOAnalyzer()
             if request.html:
                 metrics = analyzer.analyze(request.html, url=request.url or "")
             elif request.url:
                 from . import WebScout
+
                 scout = WebScout()
                 page = scout.fetch(request.url)
-                metrics = analyzer.analyze(page.html if hasattr(page, 'html') else str(page), url=request.url)
+                metrics = analyzer.analyze(page.html if hasattr(page, "html") else str(page), url=request.url)
             else:
                 raise HTTPException(status_code=400, detail="Either url or html must be provided")
             return APIResponse(success=True, data=metrics.to_dict())
@@ -264,14 +272,16 @@ def create_app(
         """Check for broken links on a page."""
         try:
             from .broken_link_checker import BrokenLinkChecker
+
             checker = BrokenLinkChecker()
             if request.html:
                 report = checker.check_page(request.html, base_url=request.base_url or "")
             elif request.url:
                 from . import WebScout
+
                 scout = WebScout()
                 page = scout.fetch(request.url)
-                html = page.html if hasattr(page, 'html') else str(page)
+                html = page.html if hasattr(page, "html") else str(page)
                 report = checker.check_page(html, base_url=request.url)
             else:
                 raise HTTPException(status_code=400, detail="Either url or html must be provided")
@@ -286,14 +296,16 @@ def create_app(
         """Analyze page performance."""
         try:
             from .performance_analyzer import PerformanceAnalyzer
+
             analyzer = PerformanceAnalyzer()
             if request.html:
                 metrics = analyzer.analyze(request.html, url=request.url or "")
             elif request.url:
                 from . import WebScout
+
                 scout = WebScout()
                 page = scout.fetch(request.url)
-                html = page.html if hasattr(page, 'html') else str(page)
+                html = page.html if hasattr(page, "html") else str(page)
                 metrics = analyzer.analyze(html, url=request.url)
             else:
                 raise HTTPException(status_code=400, detail="Either url or html must be provided")
@@ -309,11 +321,12 @@ def create_app(
         """Semantic search in vector store."""
         try:
             from .vector_store import VectorStore
-            store = VectorStore(collection_name=request.collection)
+
+            store = VectorStore()  # type: ignore[call-arg]
             results = store.search(request.query, n_results=request.top_k)
             return APIResponse(
                 success=True,
-                data=[r.to_dict() if hasattr(r, 'to_dict') else r for r in results],
+                data=[r.to_dict() if hasattr(r, "to_dict") else r for r in results],
                 metadata={"query": request.query, "count": len(results)},
             )
         except Exception as exc:
@@ -323,10 +336,11 @@ def create_app(
     async def rag_query(request: RAGRequest):
         """Ask a question using RAG (Retrieval-Augmented Generation)."""
         try:
-            from .vector_store import VectorStore, RAGEngine
-            store = VectorStore(collection_name=request.collection)
+            from .vector_store import RAGEngine, VectorStore
+
+            store = VectorStore()  # type: ignore[call-arg]
             rag = RAGEngine(vector_store=store)
-            answer = rag.query(request.query, top_k=request.top_k)
+            answer = rag.query(request.query, n_results=request.top_k)  # type: ignore[call-arg]
             return APIResponse(success=True, data=answer)
         except Exception as exc:
             raise HTTPException(status_code=500, detail=str(exc))
@@ -336,7 +350,8 @@ def create_app(
     async def add_monitor(request: MonitorRequest):
         """Add a URL to monitor."""
         try:
-            from .monitor import WebMonitor, MonitorConfig
+            from .monitor import MonitorConfig, WebMonitor
+
             config = MonitorConfig(check_interval=request.check_interval)
             monitor = WebMonitor(config=config)
             return APIResponse(
@@ -352,6 +367,7 @@ def create_app(
         """Export data to various formats."""
         try:
             from .data_exporter import DataExporter, ExportConfig
+
             config = ExportConfig(format=request.format, fields=request.fields or [])
             exporter = DataExporter(config=config)
             # For API, return the exported content as string
@@ -360,6 +376,7 @@ def create_app(
             elif request.format == "csv":
                 import csv
                 import io
+
                 output = io.StringIO()
                 if request.data:
                     writer = csv.DictWriter(output, fieldnames=request.data[0].keys())
@@ -381,6 +398,7 @@ def create_app(
         """Prometheus metrics endpoint."""
         try:
             from .metrics import get_metrics
+
             metrics = get_metrics()
             return metrics.generate_metrics()
         except Exception as exc:
@@ -406,9 +424,7 @@ def run_server(
         reload: Enable auto-reload for development.
     """
     if not FASTAPI_AVAILABLE:
-        raise ImportError(
-            "FastAPI and uvicorn are required. Install with: pip install fastapi uvicorn"
-        )
+        raise ImportError("FastAPI and uvicorn are required. Install with: pip install fastapi uvicorn")
 
     import uvicorn
 

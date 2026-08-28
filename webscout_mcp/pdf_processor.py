@@ -13,10 +13,13 @@ Features:
 - PDF to text/markdown conversion
 - Encrypted PDF handling
 """
+
 from __future__ import annotations
+
 import os
 from dataclasses import dataclass, field
 from typing import Optional
+
 from .logging import get_logger
 
 log = get_logger(__name__)
@@ -25,6 +28,7 @@ log = get_logger(__name__)
 @dataclass
 class PDFPage:
     """A single page from a PDF document."""
+
     page_number: int
     text: str = ""
     images: list[dict] = field(default_factory=list)
@@ -46,6 +50,7 @@ class PDFPage:
 @dataclass
 class PDFMetadata:
     """Metadata extracted from a PDF document."""
+
     title: str = ""
     author: str = ""
     subject: str = ""
@@ -77,6 +82,7 @@ class PDFMetadata:
 @dataclass
 class PDFResult:
     """Result of PDF processing."""
+
     file_path: str = ""
     metadata: PDFMetadata = field(default_factory=PDFMetadata)
     pages: list[PDFPage] = field(default_factory=list)
@@ -135,16 +141,19 @@ class PDFProcessor:
         """Detect available PDF processing backend."""
         try:
             import fitz  # PyMuPDF
+
             self._backend = "pymupdf"
             log.debug("Using PyMuPDF backend")
         except ImportError:
             try:
                 import pdfplumber
+
                 self._backend = "pdfplumber"
                 log.debug("Using pdfplumber backend")
             except ImportError:
                 try:
                     import PyPDF2
+
                     self._backend = "pypdf2"
                     log.debug("Using PyPDF2 backend")
                 except ImportError:
@@ -245,13 +254,15 @@ class PDFProcessor:
                 for img_idx, img in enumerate(image_list):
                     xref = img[0]
                     base_image = doc.extract_image(xref)
-                    pdf_page.images.append({
-                        "index": img_idx,
-                        "width": base_image.get("width", 0),
-                        "height": base_image.get("height", 0),
-                        "ext": base_image.get("ext", ""),
-                        "size": len(base_image.get("image", b"")),
-                    })
+                    pdf_page.images.append(
+                        {
+                            "index": img_idx,
+                            "width": base_image.get("width", 0),
+                            "height": base_image.get("height", 0),
+                            "ext": base_image.get("ext", ""),
+                            "size": len(base_image.get("image", b"")),
+                        }
+                    )
 
             # Extract tables (PyMuPDF doesn't have built-in table extraction,
             # but we can try to detect text blocks arranged in tables)
@@ -314,12 +325,14 @@ class PDFProcessor:
                 if self.extract_images:
                     if hasattr(page, "images"):
                         for img_idx, img in enumerate(page.images):
-                            pdf_page.images.append({
-                                "index": img_idx,
-                                "width": img.get("width", 0),
-                                "height": img.get("height", 0),
-                                "name": img.get("name", ""),
-                            })
+                            pdf_page.images.append(
+                                {
+                                    "index": img_idx,
+                                    "width": img.get("width", 0),
+                                    "height": img.get("height", 0),
+                                    "name": img.get("name", ""),
+                                }
+                            )
 
                 result.pages.append(pdf_page)
 

@@ -8,7 +8,9 @@ Supported browser impersonations:
 - safari15_3, safari15_5, safari16_0, safari17_0
 - edge99, edge101, edge104
 """
+
 from __future__ import annotations
+
 from dataclasses import dataclass, field
 from typing import Optional
 from urllib.parse import urljoin
@@ -16,6 +18,7 @@ from urllib.parse import urljoin
 try:
     from curl_cffi import requests as curl_requests
     from curl_cffi.requests import Response
+
     HAS_CURL_CFFI = True
 except ImportError:
     HAS_CURL_CFFI = False
@@ -24,6 +27,7 @@ except ImportError:
 @dataclass
 class TLSFetchResult:
     """Result of a TLS-aware fetch operation."""
+
     url: str
     final_url: str
     status_code: int
@@ -61,12 +65,31 @@ class TLSFetcher:
     """
 
     SUPPORTED_BROWSERS = [
-        "chrome99", "chrome100", "chrome101", "chrome104", "chrome107",
-        "chrome110", "chrome116", "chrome119", "chrome120",
-        "firefox98", "firefox101", "firefox102", "firefox105", "firefox108",
-        "firefox110", "firefox117", "firefox119", "firefox120",
-        "safari15_3", "safari15_5", "safari16_0", "safari17_0",
-        "edge99", "edge101", "edge104",
+        "chrome99",
+        "chrome100",
+        "chrome101",
+        "chrome104",
+        "chrome107",
+        "chrome110",
+        "chrome116",
+        "chrome119",
+        "chrome120",
+        "firefox98",
+        "firefox101",
+        "firefox102",
+        "firefox105",
+        "firefox108",
+        "firefox110",
+        "firefox117",
+        "firefox119",
+        "firefox120",
+        "safari15_3",
+        "safari15_5",
+        "safari16_0",
+        "safari17_0",
+        "edge99",
+        "edge101",
+        "edge104",
     ]
 
     def __init__(
@@ -77,14 +100,9 @@ class TLSFetcher:
         verify: bool = True,
     ) -> None:
         if not HAS_CURL_CFFI:
-            raise ImportError(
-                "curl_cffi is not installed. Install it with: pip install curl_cffi"
-            )
+            raise ImportError("curl_cffi is not installed. Install it with: pip install curl_cffi")
         if impersonate not in self.SUPPORTED_BROWSERS:
-            raise ValueError(
-                f"Unsupported browser: {impersonate}. "
-                f"Supported: {', '.join(self.SUPPORTED_BROWSERS)}"
-            )
+            raise ValueError(f"Unsupported browser: {impersonate}. " f"Supported: {', '.join(self.SUPPORTED_BROWSERS)}")
         self.impersonate = impersonate
         self.timeout = timeout
         self.max_redirects = max_redirects

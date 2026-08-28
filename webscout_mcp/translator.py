@@ -13,11 +13,14 @@ Features:
 - Format preservation (HTML, Markdown)
 - Glossary support
 """
+
 from __future__ import annotations
-import re
+
 import hashlib
+import re
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict, Tuple
+from typing import Dict, List, Optional, Tuple
+
 from .logging import get_logger
 
 log = get_logger(__name__)
@@ -26,6 +29,7 @@ log = get_logger(__name__)
 @dataclass
 class TranslationResult:
     """Result of a translation."""
+
     source_text: str = ""
     translated_text: str = ""
     source_language: str = ""
@@ -90,6 +94,7 @@ class Translator:
         if self.backend == "google":
             try:
                 from googletrans import Translator as GoogleTranslator
+
                 self._engine = GoogleTranslator()
                 log.debug("Google Translate backend initialized")
             except ImportError:
@@ -100,6 +105,7 @@ class Translator:
             if self.api_key:
                 try:
                     import deepl
+
                     self._engine = deepl.Translator(self.api_key)
                     log.debug("DeepL backend initialized")
                 except ImportError:
@@ -118,6 +124,7 @@ class Translator:
         elif self.backend == "local":
             try:
                 from transformers import pipeline
+
                 self._engine = pipeline("translation", model="Helsinki-NLP/opus-mt-en-zh")
                 log.debug("Local translation backend initialized")
             except ImportError:
@@ -148,11 +155,11 @@ class Translator:
 
         # Simple language detection based on character sets
         # This is a basic heuristic, real backends would be more accurate
-        chinese_chars = len(re.findall(r'[\u4e00-\u9fff]', text))
-        japanese_chars = len(re.findall(r'[\u3040-\u309f\u30a0-\u30ff]', text))
-        korean_chars = len(re.findall(r'[\uac00-\ud7af]', text))
-        cyrillic_chars = len(re.findall(r'[\u0400-\u04ff]', text))
-        arabic_chars = len(re.findall(r'[\u0600-\u06ff]', text))
+        chinese_chars = len(re.findall(r"[\u4e00-\u9fff]", text))
+        japanese_chars = len(re.findall(r"[\u3040-\u309f\u30a0-\u30ff]", text))
+        korean_chars = len(re.findall(r"[\uac00-\ud7af]", text))
+        cyrillic_chars = len(re.findall(r"[\u0400-\u04ff]", text))
+        arabic_chars = len(re.findall(r"[\u0600-\u06ff]", text))
 
         total_chars = len(text)
         if total_chars == 0:
@@ -173,7 +180,7 @@ class Translator:
             return max_lang, min(0.95, max_ratio * 2)
 
         # Default to English for Latin script
-        if re.search(r'[a-zA-Z]', text):
+        if re.search(r"[a-zA-Z]", text):
             return "en", 0.7
 
         return "unknown", 0.0
@@ -193,7 +200,7 @@ class Translator:
 
         chunks = []
         # Split by sentences/paragraphs
-        paragraphs = re.split(r'(\n\n|\n)', text)
+        paragraphs = re.split(r"(\n\n|\n)", text)
         current_chunk = ""
 
         for para in paragraphs:
@@ -204,7 +211,7 @@ class Translator:
                     chunks.append(current_chunk)
                 # If single paragraph is too long, split by sentences
                 if len(para) > max_size:
-                    sentences = re.split(r'(?<=[.!?。！？])\s+', para)
+                    sentences = re.split(r"(?<=[.!?。！？])\s+", para)
                     current_chunk = ""
                     for sent in sentences:
                         if len(current_chunk) + len(sent) <= max_size:
@@ -215,7 +222,7 @@ class Translator:
                             # If single sentence is still too long, split by characters
                             if len(sent) > max_size:
                                 for i in range(0, len(sent), max_size):
-                                    chunks.append(sent[i:i+max_size])
+                                    chunks.append(sent[i : i + max_size])
                                 current_chunk = ""
                             else:
                                 current_chunk = sent + " "
@@ -244,6 +251,7 @@ class Translator:
             TranslationResult with translated text.
         """
         import time
+
         source = source_language or self.source_language
         target = target_language or self.target_language
 
@@ -335,6 +343,7 @@ class Translator:
         elif self.backend == "azure" and self._engine:
             try:
                 import requests
+
                 endpoint = self._engine["endpoint"]
                 headers = {
                     "Ocp-Apim-Subscription-Key": self._engine["api_key"],

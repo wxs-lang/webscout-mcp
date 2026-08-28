@@ -1,9 +1,11 @@
 """Tests for browser fetcher module."""
+
 import pytest
+
 from webscout_mcp.browser_fetcher import (
     BrowserConfig,
-    BrowserResult,
     BrowserFetcher,
+    BrowserResult,
     is_browser_available,
 )
 

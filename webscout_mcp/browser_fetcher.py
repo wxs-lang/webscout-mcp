@@ -10,10 +10,13 @@ Features:
 - Wait for elements/network idle
 - Anti-detection measures
 """
+
 from __future__ import annotations
+
 import asyncio
 from dataclasses import dataclass, field
-from typing import Optional, Any
+from typing import Any, Optional
+
 from .logging import get_logger
 
 log = get_logger(__name__)
@@ -22,6 +25,7 @@ log = get_logger(__name__)
 @dataclass
 class BrowserConfig:
     """Configuration for browser fetcher."""
+
     # Browser type: chromium, firefox, webkit
     browser_type: str = "chromium"
     # Whether to run in headless mode
@@ -30,7 +34,9 @@ class BrowserConfig:
     viewport_width: int = 1920
     viewport_height: int = 1080
     # User agent
-    user_agent: str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    user_agent: str = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    )
     # Timeout in milliseconds
     timeout: int = 30000
     # Navigation timeout in milliseconds
@@ -62,6 +68,7 @@ class BrowserConfig:
     def from_env(cls) -> "BrowserConfig":
         """Load configuration from environment variables."""
         import os
+
         return cls(
             browser_type=os.environ.get("WEBSCOUT_BROWSER_TYPE", "chromium"),
             headless=os.environ.get("WEBSCOUT_BROWSER_HEADLESS", "true").lower() == "true",
@@ -87,6 +94,7 @@ class BrowserConfig:
 @dataclass
 class BrowserResult:
     """Result from browser fetching."""
+
     url: str
     title: str = ""
     content: str = ""
@@ -133,6 +141,7 @@ class BrowserFetcher:
         """Check if Playwright is available."""
         try:
             import playwright
+
             return True
         except ImportError:
             return False
@@ -144,6 +153,7 @@ class BrowserFetcher:
 
         try:
             from playwright.sync_api import sync_playwright
+
             self._playwright = sync_playwright().start()
         except ImportError:
             raise ImportError(
@@ -273,8 +283,9 @@ class BrowserFetcher:
 
     def _load_cookies(self):
         """Load cookies from storage."""
-        import os
         import json
+        import os
+
         cookie_path = os.path.expanduser(self.config.cookie_storage_path)
         if os.path.exists(cookie_path):
             try:
@@ -288,8 +299,9 @@ class BrowserFetcher:
 
     def _save_cookies(self):
         """Save cookies to storage."""
-        import os
         import json
+        import os
+
         context = self._get_context()
         cookies = context.cookies()
         cookie_path = os.path.expanduser(self.config.cookie_storage_path)
@@ -369,12 +381,15 @@ class BrowserFetcher:
             # Close page
             page.close()
 
-            log.info("Browser fetch completed", extra={
-                "url": url,
-                "status": result.status_code,
-                "title": result.title,
-                "content_length": len(result.content),
-            })
+            log.info(
+                "Browser fetch completed",
+                extra={
+                    "url": url,
+                    "status": result.status_code,
+                    "title": result.title,
+                    "content_length": len(result.content),
+                },
+            )
 
         except Exception as exc:
             log.error("Browser fetch failed", extra={"url": url, "error": str(exc)})
@@ -548,6 +563,7 @@ def is_browser_available() -> bool:
     """Check if browser fetcher is available."""
     try:
         import playwright
+
         return True
     except ImportError:
         return False

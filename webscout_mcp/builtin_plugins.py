@@ -6,14 +6,17 @@ Provides example plugins demonstrating the plugin system:
 - Alert channel plugins
 - Post-processor plugins
 """
+
 from __future__ import annotations
+
 from typing import Any
+
 from .plugin_system import (
-    Plugin,
-    SearchBackendPlugin,
-    ExtractorPlugin,
     AlertChannelPlugin,
+    ExtractorPlugin,
+    Plugin,
     PostProcessorPlugin,
+    SearchBackendPlugin,
     register_plugin,
 )
 
@@ -88,6 +91,7 @@ class ReadabilityExtractor(ExtractorPlugin):
         """Extract content using readability."""
         try:
             from readability import Document
+
             doc = Document(html)
             title = doc.title()
             content_html = doc.summary()
@@ -95,6 +99,7 @@ class ReadabilityExtractor(ExtractorPlugin):
             # Convert HTML to text
             try:
                 from bs4 import BeautifulSoup
+
                 soup = BeautifulSoup(content_html, "html.parser")
                 content_text = soup.get_text(separator="\n", strip=True)
             except ImportError:
@@ -202,9 +207,9 @@ class ContentLengthFilter(PostProcessorPlugin):
 
         if isinstance(data, list):
             return [
-                item for item in data
-                if isinstance(item, dict)
-                and self.min_length <= len(item.get("content", "")) <= self.max_length
+                item
+                for item in data
+                if isinstance(item, dict) and self.min_length <= len(item.get("content", "")) <= self.max_length
             ]
 
         return data
@@ -262,13 +267,13 @@ class LanguageDetector(PostProcessorPlugin):
     def _detect_language(self, text: str) -> str:
         """Simple language detection based on character analysis."""
         # Count Chinese characters
-        chinese_chars = sum(1 for c in text if '\u4e00' <= c <= '\u9fff')
+        chinese_chars = sum(1 for c in text if "\u4e00" <= c <= "\u9fff")
         # Count Japanese characters
-        japanese_chars = sum(1 for c in text if '\u3040' <= c <= '\u30ff')
+        japanese_chars = sum(1 for c in text if "\u3040" <= c <= "\u30ff")
         # Count Korean characters
-        korean_chars = sum(1 for c in text if '\uac00' <= c <= '\ud7af')
+        korean_chars = sum(1 for c in text if "\uac00" <= c <= "\ud7af")
         # Count Cyrillic characters
-        cyrillic_chars = sum(1 for c in text if '\u0400' <= c <= '\u04ff')
+        cyrillic_chars = sum(1 for c in text if "\u0400" <= c <= "\u04ff")
 
         total_chars = len(text)
         if total_chars == 0:
@@ -327,6 +332,7 @@ class DuplicateRemover(PostProcessorPlugin):
             return data
 
         import hashlib
+
         unique_items = []
         for item in data:
             if not isinstance(item, dict):

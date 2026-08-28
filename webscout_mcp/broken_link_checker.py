@@ -14,11 +14,14 @@ Features:
 - Configurable timeouts and retries
 - Detailed reporting
 """
+
 from __future__ import annotations
+
 import re
 from dataclasses import dataclass, field
 from typing import Optional
-from urllib.parse import urlparse, urljoin
+from urllib.parse import urljoin, urlparse
+
 from .logging import get_logger
 
 log = get_logger(__name__)
@@ -27,6 +30,7 @@ log = get_logger(__name__)
 @dataclass
 class LinkCheckResult:
     """Result of checking a single link."""
+
     url: str
     status_code: int = 0
     status: str = "unknown"  # ok, broken, redirect, timeout, error, invalid
@@ -60,6 +64,7 @@ class LinkCheckResult:
 @dataclass
 class BrokenLinkReport:
     """Report of broken link check."""
+
     base_url: str = ""
     total_links: int = 0
     ok_links: int = 0
@@ -142,6 +147,7 @@ class BrokenLinkChecker:
         links = []
         try:
             from bs4 import BeautifulSoup
+
             soup = BeautifulSoup(html, "html.parser")
 
             for a_tag in soup.find_all("a", href=True):
@@ -155,14 +161,18 @@ class BrokenLinkChecker:
                 link_type = self._classify_link(href)
 
                 # Resolve relative URLs
-                if base_url and not href.startswith(("http://", "https://", "mailto:", "tel:", "javascript:", "#", "data:")):
+                if base_url and not href.startswith(
+                    ("http://", "https://", "mailto:", "tel:", "javascript:", "#", "data:")
+                ):
                     href = urljoin(base_url, href)
 
-                links.append({
-                    "url": href,
-                    "anchor_text": anchor_text,
-                    "link_type": link_type,
-                })
+                links.append(
+                    {
+                        "url": href,
+                        "anchor_text": anchor_text,
+                        "link_type": link_type,
+                    }
+                )
 
         except ImportError:
             log.warning("BeautifulSoup not available for link extraction")
@@ -196,6 +206,7 @@ class BrokenLinkChecker:
             LinkCheckResult with check results.
         """
         import time
+
         result = LinkCheckResult(url=url, anchor_text=anchor_text)
 
         # Validate URL format
@@ -227,6 +238,7 @@ class BrokenLinkChecker:
         start_time = time.time()
         try:
             import httpx
+
             headers = {"User-Agent": self.user_agent}
 
             with httpx.Client(
@@ -325,6 +337,7 @@ class BrokenLinkChecker:
             BrokenLinkReport with check results.
         """
         import time
+
         report = BrokenLinkReport(base_url=base_url)
         start_time = time.time()
 

@@ -7,7 +7,8 @@ Demonstrates how to use the browser fetcher for:
 - Simulating user interactions (click, fill forms)
 - Login state management
 """
-from webscout_mcp.browser_fetcher import BrowserFetcher, BrowserConfig, BrowserResult
+
+from webscout_mcp.browser_fetcher import BrowserConfig, BrowserFetcher, BrowserResult
 
 
 def example_fetch_js_page():

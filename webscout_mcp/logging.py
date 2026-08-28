@@ -12,13 +12,13 @@ Logs are written to stderr in a compact, human-readable format by default.
 Set ``WEBSCOUT_LOG_LEVEL=DEBUG`` for verbose output, or
 ``WEBSCOUT_LOG_JSON=1`` for JSON-formatted logs (useful for log aggregation).
 """
+
 from __future__ import annotations
 
 import logging
 import os
 import sys
 from typing import Any
-
 
 _LOGGER_NAME = "webscout"
 _initialised = False
@@ -47,11 +47,30 @@ class _JsonFormatter(logging.Formatter):
         }
         for key, value in record.__dict__.items():
             if key not in (
-                "name", "msg", "args", "levelname", "levelno",
-                "pathname", "filename", "module", "exc_info", "exc_text",
-                "stack_info", "lineno", "funcName", "created", "msecs",
-                "relativeCreated", "thread", "threadName", "processName",
-                "process", "message", "component", "asctime", "taskName",
+                "name",
+                "msg",
+                "args",
+                "levelname",
+                "levelno",
+                "pathname",
+                "filename",
+                "module",
+                "exc_info",
+                "exc_text",
+                "stack_info",
+                "lineno",
+                "funcName",
+                "created",
+                "msecs",
+                "relativeCreated",
+                "thread",
+                "threadName",
+                "processName",
+                "process",
+                "message",
+                "component",
+                "asctime",
+                "taskName",
             ):
                 data[key] = value
         if record.exc_info:
@@ -85,11 +104,30 @@ class _ConsoleFormatter(logging.Formatter):
         extras: list[str] = []
         for key, value in record.__dict__.items():
             if key not in (
-                "name", "msg", "args", "levelname", "levelno",
-                "pathname", "filename", "module", "exc_info", "exc_text",
-                "stack_info", "lineno", "funcName", "created", "msecs",
-                "relativeCreated", "thread", "threadName", "processName",
-                "process", "message", "component", "asctime", "taskName",
+                "name",
+                "msg",
+                "args",
+                "levelname",
+                "levelno",
+                "pathname",
+                "filename",
+                "module",
+                "exc_info",
+                "exc_text",
+                "stack_info",
+                "lineno",
+                "funcName",
+                "created",
+                "msecs",
+                "relativeCreated",
+                "thread",
+                "threadName",
+                "processName",
+                "process",
+                "message",
+                "component",
+                "asctime",
+                "taskName",
             ):
                 extras.append(f"{key}={value}")
         if extras:

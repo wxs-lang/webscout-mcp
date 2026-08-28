@@ -5,6 +5,7 @@ Configuration priority (highest to lowest):
 2. TOML config file (~/.config/webscout/config.toml)
 3. Built-in defaults
 """
+
 from __future__ import annotations
 
 import os
@@ -46,10 +47,7 @@ class Config:
     request_timeout: float = 15.0
     max_retries: int = 3
     retry_backoff: float = 0.5  # seconds, exponential
-    user_agent: str = (
-        "Mozilla/5.0 (compatible; webscout-mcp/0.3; "
-        "+https://github.com/wxs-lang/webscout-mcp)"
-    )
+    user_agent: str = "Mozilla/5.0 (compatible; webscout-mcp/0.3; " "+https://github.com/wxs-lang/webscout-mcp)"
     max_content_length: int = 5 * 1024 * 1024  # 5 MB
 
     # --- Proxy ---

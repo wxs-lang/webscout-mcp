@@ -1,22 +1,25 @@
 """Tests for config models, PDF processor, and data cleaner modules."""
+
 import os
 import tempfile
+
 import pytest
+
 from webscout_mcp.config_models import (
-    WebScoutConfig,
-    ServerConfig,
     SearchConfig,
+    ServerConfig,
+    WebScoutConfig,
     load_config,
 )
 from webscout_mcp.data_cleaner import (
-    TextCleaner,
-    DataCleaner,
     CleaningPipeline,
+    DataCleaner,
+    TextCleaner,
     clean_data,
 )
 
-
 # ============ Config Models Tests ============
+
 
 class TestConfigModels:
     """Test configuration models."""
@@ -104,6 +107,7 @@ class TestConfigModels:
 
 # ============ Text Cleaner Tests ============
 
+
 class TestTextCleaner:
     """Test TextCleaner class."""
 
@@ -159,6 +163,7 @@ class TestTextCleaner:
 
 
 # ============ Data Cleaner Tests ============
+
 
 class TestDataCleaner:
     """Test DataCleaner class."""
@@ -243,6 +248,7 @@ class TestDataCleaner:
 
 # ============ Cleaning Pipeline Tests ============
 
+
 class TestCleaningPipeline:
     """Test CleaningPipeline class."""
 
@@ -295,10 +301,7 @@ class TestCleaningPipeline:
 
     def test_chained_pipeline(self):
         pipeline = CleaningPipeline()
-        (pipeline
-         .add_text_cleaner(["name"])
-         .add_field_validator("age", lambda v: v >= 18)
-         .add_deduplicator(["email"]))
+        (pipeline.add_text_cleaner(["name"]).add_field_validator("age", lambda v: v >= 18).add_deduplicator(["email"]))
 
         records = [
             {"name": "  <b>John</b>  ", "age": 25, "email": "john@test.com"},
@@ -322,6 +325,7 @@ class TestCleaningPipeline:
 
 
 # ============ Convenience Function Tests ============
+
 
 class TestConvenienceFunctions:
     """Test convenience functions."""

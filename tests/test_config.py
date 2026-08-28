@@ -1,8 +1,11 @@
 """Tests for configuration management (config module)."""
+
 import os
 import tempfile
 from pathlib import Path
+
 import pytest
+
 from webscout_mcp.config import Config
 
 

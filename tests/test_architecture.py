@@ -1,24 +1,27 @@
 """Tests for architecture module (event bus, DI, middleware, commands)."""
-import pytest
+
 import asyncio
+
+import pytest
+
 from webscout_mcp.architecture import (
-    Event,
-    EventBus,
-    event_bus,
-    DIContainer,
-    di_container,
-    MiddlewarePipeline,
     Command,
     CommandBus,
+    DIContainer,
+    Event,
+    EventBus,
+    MiddlewarePipeline,
     ServiceLocator,
-    publish_event,
-    subscribe_event,
-    register_service,
+    di_container,
+    event_bus,
     get_service,
+    publish_event,
+    register_service,
+    subscribe_event,
 )
 
-
 # ============ Event Tests ============
+
 
 class TestEvent:
     """Test Event class."""
@@ -39,6 +42,7 @@ class TestEvent:
 
 
 # ============ Event Bus Tests ============
+
 
 class TestEventBus:
     """Test EventBus class."""
@@ -163,6 +167,7 @@ class TestEventBus:
 
 # ============ DI Container Tests ============
 
+
 class TestDIContainer:
     """Test DIContainer class."""
 
@@ -263,6 +268,7 @@ class TestDIContainer:
 
 # ============ Middleware Pipeline Tests ============
 
+
 class TestMiddlewarePipeline:
     """Test MiddlewarePipeline class."""
 
@@ -323,6 +329,7 @@ class TestMiddlewarePipeline:
 
 
 # ============ Command Pattern Tests ============
+
 
 class TestCommand:
     """Test Command and CommandBus classes."""
@@ -386,6 +393,7 @@ class TestCommand:
 
 # ============ Service Locator Tests ============
 
+
 class TestServiceLocator:
     """Test ServiceLocator class."""
 
@@ -412,6 +420,7 @@ class TestServiceLocator:
 
 
 # ============ Convenience Function Tests ============
+
 
 class TestConvenienceFunctions:
     """Test convenience functions."""

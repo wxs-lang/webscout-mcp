@@ -1,31 +1,34 @@
 """Tests for API server, OCR, translator, and alert channels modules."""
-import pytest
+
 import os
 import tempfile
+
+import pytest
+
+from webscout_mcp.alert_channels import (
+    AlertManager,
+    AlertMessage,
+    AlertResult,
+    DingTalkAlert,
+    FeishuAlert,
+    ServerChanAlert,
+    SlackAlert,
+    TelegramAlert,
+    WebhookAlert,
+    WeComAlert,
+    create_alert_manager,
+)
 from webscout_mcp.api_server import (
-    SearchRequest,
-    FetchRequest,
     APIResponse,
+    FetchRequest,
+    SearchRequest,
     create_app,
 )
 from webscout_mcp.ocr_engine import OCREngine, OCRResult, ocr_image
-from webscout_mcp.translator import Translator, TranslationResult, translate_text
-from webscout_mcp.alert_channels import (
-    AlertMessage,
-    AlertResult,
-    AlertManager,
-    WebhookAlert,
-    DingTalkAlert,
-    WeComAlert,
-    FeishuAlert,
-    SlackAlert,
-    TelegramAlert,
-    ServerChanAlert,
-    create_alert_manager,
-)
-
+from webscout_mcp.translator import TranslationResult, Translator, translate_text
 
 # ============ API Server Tests ============
+
 
 class TestAPIServer:
     """Test API server models and creation."""
@@ -67,6 +70,7 @@ class TestAPIServer:
 
 
 # ============ OCR Engine Tests ============
+
 
 class TestOCREngine:
     """Test OCR engine."""
@@ -113,6 +117,7 @@ class TestOCREngine:
 
 
 # ============ Translator Tests ============
+
 
 class TestTranslator:
     """Test translator module."""
@@ -195,6 +200,7 @@ class TestTranslator:
 
 
 # ============ Alert Channels Tests ============
+
 
 class TestAlertChannels:
     """Test alert channels module."""

@@ -9,10 +9,13 @@ Features:
 - Support for API-based embedding models (OpenAI, etc.)
 - Document chunking and indexing
 """
+
 from __future__ import annotations
+
 import hashlib
 from dataclasses import dataclass, field
-from typing import Optional, Any
+from typing import Any, Optional
+
 from .logging import get_logger
 
 log = get_logger(__name__)
@@ -21,6 +24,7 @@ log = get_logger(__name__)
 @dataclass
 class VectorStoreConfig:
     """Configuration for vector store."""
+
     # Vector database: chroma
     vector_db: str = "chroma"
     # Persistence directory
@@ -46,6 +50,7 @@ class VectorStoreConfig:
     def from_env(cls) -> "VectorStoreConfig":
         """Load configuration from environment variables."""
         import os
+
         return cls(
             vector_db=os.environ.get("WEBSCOUT_VECTOR_DB", "chroma"),
             persist_dir=os.environ.get("WEBSCOUT_VECTOR_PERSIST_DIR", "~/.cache/webscout/vector_db"),
@@ -63,6 +68,7 @@ class VectorStoreConfig:
 @dataclass
 class Document:
     """A document to be indexed in the vector store."""
+
     id: str
     content: str
     metadata: dict = field(default_factory=dict)
@@ -83,6 +89,7 @@ class Document:
 @dataclass
 class SearchResult:
     """A search result from the vector store."""
+
     document: Document
     score: float
     rank: int
@@ -116,6 +123,7 @@ class VectorStore:
         """Check if vector store is available."""
         try:
             import chromadb
+
             return True
         except ImportError:
             return False
@@ -126,9 +134,11 @@ class VectorStore:
             return self._client
 
         try:
+            import os
+
             import chromadb
             from chromadb.config import Settings
-            import os
+
             persist_dir = os.path.expanduser(self.config.persist_dir)
             os.makedirs(persist_dir, exist_ok=True)
             self._client = chromadb.PersistentClient(
@@ -158,6 +168,7 @@ class VectorStore:
         """Create local embedding function using sentence-transformers."""
         try:
             from chromadb.utils import embedding_functions
+
             return embedding_functions.SentenceTransformerEmbeddingFunction(
                 model_name=self.config.embedding_model,
             )
@@ -171,6 +182,7 @@ class VectorStore:
         """Create API-based embedding function."""
         try:
             from chromadb.utils import embedding_functions
+
             return embedding_functions.OpenAIEmbeddingFunction(
                 api_key=self.config.api_key,
                 model_name=self.config.embedding_model,
@@ -232,11 +244,14 @@ class VectorStore:
                 metadatas=[metadata],
             )
 
-        log.info("Document added to vector store", extra={
-            "document_id": document.id,
-            "chunks": len(chunks),
-            "source": document.source,
-        })
+        log.info(
+            "Document added to vector store",
+            extra={
+                "document_id": document.id,
+                "chunks": len(chunks),
+                "source": document.source,
+            },
+        )
         return len(chunks)
 
     def add_texts(
@@ -281,11 +296,13 @@ class VectorStore:
 
         search_results = []
         if results and results["documents"] and results["documents"][0]:
-            for i, (doc_text, doc_metadata, distance) in enumerate(zip(
-                results["documents"][0],
-                results["metadatas"][0],
-                results["distances"][0],
-            )):
+            for i, (doc_text, doc_metadata, distance) in enumerate(
+                zip(
+                    results["documents"][0],
+                    results["metadatas"][0],
+                    results["distances"][0],
+                )
+            ):
                 # Convert distance to similarity score (cosine distance -> similarity)
                 similarity = 1.0 - distance
                 if similarity >= self.config.similarity_threshold:
@@ -295,11 +312,13 @@ class VectorStore:
                         metadata=doc_metadata,
                         source=doc_metadata.get("source", ""),
                     )
-                    search_results.append(SearchResult(
-                        document=doc,
-                        score=similarity,
-                        rank=i + 1,
-                    ))
+                    search_results.append(
+                        SearchResult(
+                            document=doc,
+                            score=similarity,
+                            rank=i + 1,
+                        )
+                    )
 
         return search_results
 
@@ -318,10 +337,13 @@ class VectorStore:
         )
         if results and results["ids"]:
             collection.delete(ids=results["ids"])
-            log.info("Document deleted from vector store", extra={
-                "document_id": document_id,
-                "chunks": len(results["ids"]),
-            })
+            log.info(
+                "Document deleted from vector store",
+                extra={
+                    "document_id": document_id,
+                    "chunks": len(results["ids"]),
+                },
+            )
             return len(results["ids"])
         return 0
 
@@ -385,6 +407,7 @@ class RAGEngine:
         """Generate answer using AI processor."""
         if not self.ai_processor:
             from .ai_processor import AIProcessor
+
             self.ai_processor = AIProcessor()
         return self.ai_processor.answer_question(context, query)
 
@@ -441,6 +464,7 @@ def is_vector_store_available() -> bool:
     """Check if vector store is available."""
     try:
         import chromadb
+
         return True
     except ImportError:
         return False

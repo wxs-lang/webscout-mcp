@@ -3,19 +3,21 @@
 Tests performance characteristics of core modules.
 These tests establish performance baselines and detect regressions.
 """
-import pytest
-import time
-import statistics
-from webscout_mcp.search_optimizer import SearchOptimizer
-from webscout_mcp.content_extractor import ContentExtractor
-from webscout_mcp.rag_optimizer import RAGOptimizer
-from webscout_mcp.ai_optimizer import AIOptimizer
-from webscout_mcp.errors import safe_execute
-from webscout_mcp.security import SensitiveDataFilter, InputValidator
-from webscout_mcp.async_utils import PerformanceMonitor
-from webscout_mcp.architecture import EventBus
-from webscout_mcp.health import SystemMonitor
 
+import statistics
+import time
+
+import pytest
+
+from webscout_mcp.ai_optimizer import AIOptimizer
+from webscout_mcp.architecture import EventBus
+from webscout_mcp.async_utils import PerformanceMonitor
+from webscout_mcp.content_extractor import ContentExtractor
+from webscout_mcp.errors import safe_execute
+from webscout_mcp.health import SystemMonitor
+from webscout_mcp.rag_optimizer import RAGOptimizer
+from webscout_mcp.search_optimizer import SearchOptimizer
+from webscout_mcp.security import InputValidator, SensitiveDataFilter
 
 # ============ Performance Test Configuration ============
 
@@ -25,6 +27,7 @@ PERF_THRESHOLD_MS = 1000  # 1 second threshold for most operations
 
 
 # ============ Helper Functions ============
+
 
 def benchmark(func, iterations=PERF_TEST_ITERATIONS, warmup=PERF_WARMUP_ITERATIONS):
     """Benchmark a function and return statistics.
@@ -70,15 +73,14 @@ def assert_performance(stats, threshold_ms=PERF_THRESHOLD_MS):
         stats: Benchmark statistics dictionary.
         threshold_ms: Maximum acceptable mean duration in ms.
     """
-    assert stats["mean_ms"] < threshold_ms, (
-        f"Performance regression: mean {stats['mean_ms']:.2f}ms > {threshold_ms}ms threshold"
-    )
-    assert stats["p99_ms"] < threshold_ms * 3, (
-        f"P99 too high: {stats['p99_ms']:.2f}ms"
-    )
+    assert (
+        stats["mean_ms"] < threshold_ms
+    ), f"Performance regression: mean {stats['mean_ms']:.2f}ms > {threshold_ms}ms threshold"
+    assert stats["p99_ms"] < threshold_ms * 3, f"P99 too high: {stats['p99_ms']:.2f}ms"
 
 
 # ============ Search Performance Tests ============
+
 
 class TestSearchPerformance:
     """Performance tests for search optimizer."""
@@ -121,12 +123,13 @@ class TestSearchPerformance:
         second_duration = (time.perf_counter() - start) * 1000
 
         # Cache hit should be significantly faster
-        assert second_duration < first_duration * 0.5, (
-            f"Cache not effective: first={first_duration:.2f}ms, second={second_duration:.2f}ms"
-        )
+        assert (
+            second_duration < first_duration * 0.5
+        ), f"Cache not effective: first={first_duration:.2f}ms, second={second_duration:.2f}ms"
 
 
 # ============ Content Extraction Performance Tests ============
+
 
 class TestContentExtractionPerformance:
     """Performance tests for content extractor."""
@@ -156,6 +159,7 @@ class TestContentExtractionPerformance:
 
 # ============ RAG Performance Tests ============
 
+
 class TestRAGPerformance:
     """Performance tests for RAG optimizer."""
 
@@ -184,6 +188,7 @@ class TestRAGPerformance:
 
 
 # ============ AI Processing Performance Tests ============
+
 
 class TestAIPerformance:
     """Performance tests for AI optimizer."""
@@ -219,6 +224,7 @@ class TestAIPerformance:
 
 # ============ Security Performance Tests ============
 
+
 class TestSecurityPerformance:
     """Performance tests for security module."""
 
@@ -249,6 +255,7 @@ class TestSecurityPerformance:
 
 
 # ============ Event Bus Performance Tests ============
+
 
 class TestEventBusPerformance:
     """Performance tests for event bus."""
@@ -282,6 +289,7 @@ class TestEventBusPerformance:
 
 # ============ System Monitor Performance Tests ============
 
+
 class TestSystemMonitorPerformance:
     """Performance tests for system monitor."""
 
@@ -299,12 +307,14 @@ class TestSystemMonitorPerformance:
 
 # ============ Error Handling Performance Tests ============
 
+
 class TestErrorHandlingPerformance:
     """Performance tests for error handling."""
 
     @pytest.mark.performance
     def test_safe_execute_performance(self):
         """Benchmark safe execution."""
+
         def success_func():
             return "success"
 
@@ -317,6 +327,7 @@ class TestErrorHandlingPerformance:
 
 
 # ============ Overall Pipeline Performance Tests ============
+
 
 class TestOverallPipelinePerformance:
     """End-to-end pipeline performance tests."""

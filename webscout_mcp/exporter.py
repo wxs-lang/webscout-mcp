@@ -2,6 +2,7 @@
 
 Supports JSON, CSV, and Markdown output formats.
 """
+
 from __future__ import annotations
 
 import csv
@@ -28,7 +29,9 @@ class Exporter:
         writer = csv.DictWriter(output, fieldnames=["position", "title", "url", "snippet", "backend"])
         writer.writeheader()
         for r in results:
-            writer.writerow({"position": r.position, "title": r.title, "url": r.url, "snippet": r.snippet, "backend": r.backend})
+            writer.writerow(
+                {"position": r.position, "title": r.title, "url": r.url, "snippet": r.snippet, "backend": r.backend}
+            )
         return output.getvalue()
 
     @staticmethod
@@ -67,10 +70,21 @@ class Exporter:
     @staticmethod
     def crawl_to_csv(result: CrawlResult) -> str:
         output = io.StringIO()
-        writer = csv.DictWriter(output, fieldnames=["url", "final_url", "status_code", "title", "content_type", "error"])
+        writer = csv.DictWriter(
+            output, fieldnames=["url", "final_url", "status_code", "title", "content_type", "error"]
+        )
         writer.writeheader()
         for page in result.pages:
-            writer.writerow({"url": page.url, "final_url": page.final_url, "status_code": page.status_code, "title": page.title, "content_type": page.content_type, "error": page.error or ""})
+            writer.writerow(
+                {
+                    "url": page.url,
+                    "final_url": page.final_url,
+                    "status_code": page.status_code,
+                    "title": page.title,
+                    "content_type": page.content_type,
+                    "error": page.error or "",
+                }
+            )
         return output.getvalue()
 
     @staticmethod

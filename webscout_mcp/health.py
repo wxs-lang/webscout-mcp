@@ -11,14 +11,17 @@ Features:
 - Metrics collection and reporting
 - Graceful shutdown support
 """
+
 from __future__ import annotations
-import time
-import platform
+
 import os
+import platform
 import sys
+import time
 from dataclasses import dataclass, field
-from typing import Optional, Dict, Any, List, Callable
 from datetime import datetime, timedelta
+from typing import Any, Callable, Dict, List, Optional
+
 from .logging import get_logger
 
 log = get_logger(__name__)
@@ -27,6 +30,7 @@ log = get_logger(__name__)
 @dataclass
 class HealthStatus:
     """Health check result."""
+
     status: str = "healthy"  # healthy, degraded, unhealthy
     checks: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     timestamp: str = ""
@@ -46,6 +50,7 @@ class HealthStatus:
 @dataclass
 class SystemMetrics:
     """System resource metrics."""
+
     cpu_percent: float = 0.0
     memory_total_mb: float = 0.0
     memory_used_mb: float = 0.0
@@ -226,6 +231,7 @@ class SystemMonitor:
         # Memory metrics (using resource module, no psutil dependency)
         try:
             import resource
+
             usage = resource.getrusage(resource.RUSAGE_SELF)
             metrics.memory_used_mb = usage.ru_maxrss / 1024  # KB to MB on Linux
             metrics.memory_percent = 0.0  # Can't get total without psutil
@@ -235,9 +241,11 @@ class SystemMonitor:
         # Disk metrics
         try:
             stat = os.statvfs("/")
-            metrics.disk_total_gb = (stat.f_blocks * stat.f_frsize) / (1024 ** 3)
-            metrics.disk_used_gb = ((stat.f_blocks - stat.f_bavail) * stat.f_frsize) / (1024 ** 3)
-            metrics.disk_percent = (metrics.disk_used_gb / metrics.disk_total_gb) * 100 if metrics.disk_total_gb > 0 else 0
+            metrics.disk_total_gb = (stat.f_blocks * stat.f_frsize) / (1024**3)
+            metrics.disk_used_gb = ((stat.f_blocks - stat.f_bavail) * stat.f_frsize) / (1024**3)
+            metrics.disk_percent = (
+                (metrics.disk_used_gb / metrics.disk_total_gb) * 100 if metrics.disk_total_gb > 0 else 0
+            )
         except Exception:
             pass
 
@@ -319,6 +327,7 @@ class DependencyChecker:
             Tuple of (is_healthy, message).
         """
         import socket
+
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(timeout)
@@ -339,6 +348,7 @@ class DependencyChecker:
             Tuple of (is_healthy, message).
         """
         import socket
+
         try:
             socket.setdefaulttimeout(timeout)
             ip = socket.gethostbyname(hostname)
@@ -358,6 +368,7 @@ class DependencyChecker:
         """
         try:
             import urllib.request
+
             req = urllib.request.Request(url, method="HEAD")
             with urllib.request.urlopen(req, timeout=timeout) as response:
                 return True, f"HTTP endpoint OK ({url} -> {response.status})"

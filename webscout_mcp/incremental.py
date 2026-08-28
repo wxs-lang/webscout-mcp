@@ -3,6 +3,7 @@
 Only re-fetches pages that have changed since the last crawl, using HTTP
 conditional headers (If-None-Match, If-Modified-Since).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -18,7 +19,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from .config import Config
-from .fetcher import FetchResult, Fetcher
+from .fetcher import Fetcher, FetchResult
 from .logging import get_logger
 from .utils import normalize_url
 
@@ -132,10 +133,13 @@ class IncrementalCrawler:
             last_modified = response.headers.get("last-modified", "")
             content = response.text
             new_state = PageState(
-                url=url, etag=etag, last_modified=last_modified,
+                url=url,
+                etag=etag,
+                last_modified=last_modified,
                 content_hash=str(hash(content)),
                 last_fetched=datetime.now(timezone.utc).isoformat(),
-                status_code=response.status_code, changed=True,
+                status_code=response.status_code,
+                changed=True,
             )
             title = ""
             try:
@@ -145,9 +149,14 @@ class IncrementalCrawler:
             except Exception:
                 pass
             result = FetchResult(
-                url=url, final_url=str(response.url), status_code=response.status_code,
-                title=title, content=content, content_type=response.headers.get("content-type", ""),
-                raw_html=content, metadata={"encoding": response.encoding, "headers": dict(response.headers)},
+                url=url,
+                final_url=str(response.url),
+                status_code=response.status_code,
+                title=title,
+                content=content,
+                content_type=response.headers.get("content-type", ""),
+                raw_html=content,
+                metadata={"encoding": response.encoding, "headers": dict(response.headers)},
             )
             return result, new_state
         except Exception as exc:
@@ -156,7 +165,9 @@ class IncrementalCrawler:
             new_state.changed = False
             return result, new_state
 
-    async def crawl(self, seed_url: str, max_pages: Optional[int] = None, extract: bool = True) -> IncrementalCrawlResult:
+    async def crawl(
+        self, seed_url: str, max_pages: Optional[int] = None, extract: bool = True
+    ) -> IncrementalCrawlResult:
         seed_url = normalize_url(seed_url)
         page_limit = max_pages or self.config.crawler_max_pages
         state_file = self._state_file(seed_url)
@@ -201,7 +212,13 @@ class IncrementalCrawler:
                 except Exception:
                     pass
         self._save_state(seed_url, saved_states)
-        log.info("incremental crawl complete", seed=seed_url, pages=result.pages_crawled, changed=result.pages_changed, unchanged=result.pages_unchanged)
+        log.info(
+            "incremental crawl complete",
+            seed=seed_url,
+            pages=result.pages_crawled,
+            changed=result.pages_changed,
+            unchanged=result.pages_unchanged,
+        )
         return result
 
     def clear_state(self, seed_url: str) -> None:

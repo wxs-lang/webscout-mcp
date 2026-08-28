@@ -7,14 +7,15 @@ Demonstrates how to use the web monitor for:
 - Multi-channel alerting (Webhook, Email, DingTalk, WeCom)
 - Change history tracking
 """
+
 from webscout_mcp.monitor import (
-    WebMonitor,
+    ChangeRecord,
+    DingTalkAlert,
+    EmailAlert,
     MonitorConfig,
     WebhookAlert,
-    EmailAlert,
-    DingTalkAlert,
+    WebMonitor,
     WeComAlert,
-    ChangeRecord,
 )
 
 
@@ -27,7 +28,7 @@ def example_basic_monitoring():
     # Initialize monitor
     config = MonitorConfig(
         check_interval=300,  # Check every 5 minutes
-        monitor_text=True,   # Monitor text content changes
+        monitor_text=True,  # Monitor text content changes
         min_change_size=10,  # Minimum 10 character change to trigger alert
         history_path="/tmp/webscout_monitor_history.json",
     )

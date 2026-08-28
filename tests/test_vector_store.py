@@ -1,11 +1,13 @@
 """Tests for vector store and RAG module."""
+
 import pytest
+
 from webscout_mcp.vector_store import (
-    VectorStoreConfig,
     Document,
+    RAGEngine,
     SearchResult,
     VectorStore,
-    RAGEngine,
+    VectorStoreConfig,
     is_vector_store_available,
 )
 

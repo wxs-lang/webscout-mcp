@@ -1,6 +1,8 @@
 """Tests for SimHash duplicate detection module."""
+
 import pytest
-from webscout_mcp.simhash import SimHash, DuplicateDetector, SimHashResult, compute_simhash, hamming_distance
+
+from webscout_mcp.simhash import DuplicateDetector, SimHash, SimHashResult, compute_simhash, hamming_distance
 
 
 class TestSimHash:

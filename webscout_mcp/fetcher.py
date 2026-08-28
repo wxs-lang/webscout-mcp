@@ -4,6 +4,7 @@ This is the workhorse of webscout-mcp. It fetches a URL, optionally extracts
 the main article content (via trafilatura + readability-lxml fallback), and
 returns structured data. All network calls go through the rate limiter and cache.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -21,6 +22,7 @@ from .utils import TokenBucket, normalize_url, truncate_text
 @dataclass
 class FetchResult:
     """Result of a fetch operation."""
+
     url: str
     final_url: str
     status_code: int
@@ -127,15 +129,11 @@ class Fetcher:
         """
         stats = dict(self._stats)
         if stats["total_requests"] > 0:
-            stats["average_response_time"] = round(
-                stats["total_response_time"] / stats["total_requests"], 4
-            )
+            stats["average_response_time"] = round(stats["total_response_time"] / stats["total_requests"], 4)
         else:
             stats["average_response_time"] = 0.0
         stats["success_rate"] = (
-            round(stats["successful_requests"] / stats["total_requests"], 4)
-            if stats["total_requests"] > 0
-            else 0.0
+            round(stats["successful_requests"] / stats["total_requests"], 4) if stats["total_requests"] > 0 else 0.0
         )
         return stats
 
@@ -167,6 +165,7 @@ class Fetcher:
             cached = self.cache.get(cache_key)
             if cached:
                 import json
+
                 data = json.loads(cached["value"])
                 result = FetchResult(**data)
                 result.cached = True
@@ -175,6 +174,7 @@ class Fetcher:
 
         await self.rate_limiter.acquire(url)
         import time
+
         start_time = time.monotonic()
         result = await self._fetch_with_retry(url)
         result.response_time = time.monotonic() - start_time
@@ -195,9 +195,7 @@ class Fetcher:
             if self._is_extractable(result.content_type):
                 result.raw_html = result.content
             if extract and self._is_extractable(result.content_type):
-                extracted = await asyncio.to_thread(
-                    self._extract_content, result.content, fmt
-                )
+                extracted = await asyncio.to_thread(self._extract_content, result.content, fmt)
                 if extracted:
                     result.content = extracted
                     result.extracted = True
@@ -206,6 +204,7 @@ class Fetcher:
 
         if self.cache and result.error is None and result.status_code < 400:
             import json
+
             self.cache.set(
                 cache_key,
                 json.dumps(result.to_dict()),
@@ -227,7 +226,7 @@ class Fetcher:
 
                 if response.status_code >= 500 and attempt < self.config.max_retries - 1:
                     last_error = Exception(f"HTTP {response.status_code}")
-                    await asyncio.sleep(self.config.retry_backoff * (2 ** attempt))
+                    await asyncio.sleep(self.config.retry_backoff * (2**attempt))
                     continue
 
                 content_length = int(response.headers.get("content-length", 0))
@@ -257,7 +256,7 @@ class Fetcher:
             except (httpx.HTTPError, asyncio.TimeoutError) as exc:
                 last_error = exc
                 if attempt < self.config.max_retries - 1:
-                    await asyncio.sleep(self.config.retry_backoff * (2 ** attempt))
+                    await asyncio.sleep(self.config.retry_backoff * (2**attempt))
             except Exception as exc:
                 return FetchResult(
                     url=url,
@@ -284,6 +283,7 @@ class Fetcher:
     def _extract_title(html: str) -> str:
         try:
             from bs4 import BeautifulSoup
+
             soup = BeautifulSoup(html, "lxml")
             if soup.title and soup.title.string:
                 return soup.title.string.strip()
@@ -323,6 +323,7 @@ class Fetcher:
         # Primary: trafilatura
         try:
             import trafilatura
+
             extracted = trafilatura.extract(
                 html,
                 output_format=fmt,
@@ -340,6 +341,7 @@ class Fetcher:
         # Fallback: readability-lxml
         try:
             from readability import Document
+
             doc = Document(html)
             summary_html = doc.summary(html_partial=True)
             if not summary_html:
@@ -347,12 +349,14 @@ class Fetcher:
             if fmt == "html":
                 return summary_html
             from bs4 import BeautifulSoup
+
             soup = BeautifulSoup(summary_html, "lxml")
             if fmt == "txt":
                 return soup.get_text(separator="\n", strip=True)
             # For markdown, use trafilatura to convert readability's HTML
             try:
                 import trafilatura
+
                 md = trafilatura.extract(
                     summary_html,
                     output_format="markdown",
@@ -372,6 +376,7 @@ class Fetcher:
         # Final fallback: html2text (if available)
         try:
             import html2text
+
             h = html2text.HTML2Text()
             h.ignore_links = False
             h.ignore_images = not include_images

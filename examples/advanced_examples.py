@@ -12,8 +12,8 @@ This file demonstrates advanced features:
 Run with: python examples/advanced_examples.py
 """
 
-import sys
 import os
+import sys
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -176,7 +176,7 @@ def example_security():
     print("Example: Security Features")
     print("=" * 60)
 
-    from webscout_mcp.security import SecurityManager, SSRFProtector, SensitiveDataFilter
+    from webscout_mcp.security import SecurityManager, SensitiveDataFilter, SSRFProtector
 
     # SSRF Protection
     print("\n1. SSRF Protection:")
@@ -284,6 +284,7 @@ def main():
         except Exception as e:
             print(f"\n[ERROR] Example '{name}' failed: {e}")
             import traceback
+
             traceback.print_exc()
         print()
 

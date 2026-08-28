@@ -12,15 +12,26 @@ Features:
 - Command pattern
 - Observer pattern
 """
+
 from __future__ import annotations
+
 import asyncio
 import inspect
+from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import (
-    Optional, Dict, Any, List, Tuple, Callable, Type, TypeVar,
-    Awaitable, Union,
+    Any,
+    Awaitable,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Type,
+    TypeVar,
+    Union,
 )
-from collections import defaultdict
+
 from .logging import get_logger
 
 log = get_logger(__name__)
@@ -30,9 +41,11 @@ T = TypeVar("T")
 
 # ============ Event Bus ============
 
+
 @dataclass
 class Event:
     """Base event class."""
+
     name: str = ""
     data: Dict[str, Any] = field(default_factory=dict)
     timestamp: float = 0.0
@@ -42,6 +55,7 @@ class Event:
     def __post_init__(self):
         import time
         import uuid
+
         if not self.timestamp:
             self.timestamp = time.time()
         if not self.event_id:
@@ -122,7 +136,9 @@ class EventBus:
 
         return event
 
-    async def publish_async(self, event: Union[Event, str], data: Optional[Dict[str, Any]] = None, source: str = "") -> Event:
+    async def publish_async(
+        self, event: Union[Event, str], data: Optional[Dict[str, Any]] = None, source: str = ""
+    ) -> Event:
         """Publish an event asynchronously.
 
         Calls both sync and async handlers.
@@ -162,12 +178,14 @@ class EventBus:
             def handle_user_created(event):
                 pass
         """
+
         def decorator(func):
             if inspect.iscoroutinefunction(func):
                 self.subscribe_async(event_name, func)
             else:
                 self.subscribe(event_name, func)
             return func
+
         return decorator
 
     def get_event_history(self, event_name: Optional[str] = None, limit: int = 100) -> List[Event]:
@@ -205,6 +223,7 @@ event_bus = EventBus()
 
 
 # ============ Dependency Injection Container ============
+
 
 class DIContainer:
     """Simple dependency injection container.
@@ -303,11 +322,14 @@ class DIContainer:
             def my_function(service_a, service_b):
                 pass
         """
+
         def decorator(func):
             def wrapper(*args, **kwargs):
                 resolved = [self.resolve(interface) for interface in interfaces]
                 return func(*resolved, *args, **kwargs)
+
             return wrapper
+
         return decorator
 
     def get_stats(self) -> Dict[str, Any]:
@@ -324,6 +346,7 @@ di_container = DIContainer()
 
 
 # ============ Middleware Pipeline ============
+
 
 class MiddlewarePipeline:
     """Middleware pipeline for processing requests.
@@ -352,6 +375,7 @@ class MiddlewarePipeline:
         Returns:
             Final response.
         """
+
         def create_next(index: int) -> Callable:
             if index >= len(self._middlewares):
                 return lambda req: handler(req)
@@ -371,6 +395,7 @@ class MiddlewarePipeline:
 
 
 # ============ Command Pattern ============
+
 
 class Command:
     """Base command class for command pattern."""
@@ -424,6 +449,7 @@ class CommandBus:
 
 # ============ Service Locator ============
 
+
 class ServiceLocator:
     """Simple service locator pattern.
 
@@ -456,6 +482,7 @@ class ServiceLocator:
 
 
 # ============ Convenience Functions ============
+
 
 def publish_event(event_name: str, data: Optional[Dict[str, Any]] = None, source: str = "") -> Event:
     """Publish an event using the global event bus."""

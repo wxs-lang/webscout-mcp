@@ -1,15 +1,17 @@
 """Tests for web monitor module."""
+
 import pytest
+
 from webscout_mcp.monitor import (
-    MonitorConfig,
-    ChangeRecord,
-    AlertMessage,
     AlertChannel,
-    WebhookAlert,
-    EmailAlert,
+    AlertMessage,
+    ChangeRecord,
     DingTalkAlert,
-    WeComAlert,
+    EmailAlert,
+    MonitorConfig,
+    WebhookAlert,
     WebMonitor,
+    WeComAlert,
     is_monitor_available,
 )
 

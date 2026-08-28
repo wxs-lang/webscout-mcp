@@ -8,6 +8,7 @@ When a site's robots.txt cannot be fetched (timeout, 5xx, etc.), the checker
 defaults to *allow* and logs a warning - better to crawl than to silently
 block everything when a site is temporarily down.
 """
+
 from __future__ import annotations
 
 import asyncio

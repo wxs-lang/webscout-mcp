@@ -1,6 +1,7 @@
 """Tests for v0.2.0 features: exceptions, logging, robots.txt,
 multi-backend search, config fields, and CLI parser.
 """
+
 from __future__ import annotations
 
 import os
@@ -28,7 +29,6 @@ from webscout_mcp.search import (
     DuckDuckGoHTMLBackend,
     SearchResult,
 )
-
 
 # --- Exceptions ---
 
@@ -241,7 +241,7 @@ class TestRobotsChecker:
 
 class TestLogging:
     def test_setup_logging(self):
-        from webscout_mcp.logging import setup_logging, get_logger
+        from webscout_mcp.logging import get_logger, setup_logging
 
         setup_logging(level="DEBUG")
         log = get_logger("test")
@@ -256,8 +256,9 @@ class TestLogging:
         assert log is not None
 
     def test_json_formatter(self):
-        from webscout_mcp.logging import _JsonFormatter
         import logging
+
+        from webscout_mcp.logging import _JsonFormatter
 
         formatter = _JsonFormatter()
         record = logging.LogRecord(
@@ -297,9 +298,7 @@ class TestCLIParser:
         from webscout_mcp.__main__ import build_parser
 
         parser = build_parser()
-        args = parser.parse_args(
-            ["fetch", "https://example.com", "--format", "text", "--raw"]
-        )
+        args = parser.parse_args(["fetch", "https://example.com", "--format", "text", "--raw"])
         assert args.command == "fetch"
         assert args.url == "https://example.com"
         assert args.format == "text"
@@ -309,9 +308,7 @@ class TestCLIParser:
         from webscout_mcp.__main__ import build_parser
 
         parser = build_parser()
-        args = parser.parse_args(
-            ["crawl", "https://example.com", "--depth", "3", "--pages", "20"]
-        )
+        args = parser.parse_args(["crawl", "https://example.com", "--depth", "3", "--pages", "20"])
         assert args.command == "crawl"
         assert args.url == "https://example.com"
         assert args.depth == 3
@@ -327,8 +324,8 @@ class TestCLIParser:
         assert args.port == 9000
 
     def test_version_flag(self):
-        from webscout_mcp.__main__ import build_parser
         from webscout_mcp import __version__
+        from webscout_mcp.__main__ import build_parser
 
         parser = build_parser()
         with pytest.raises(SystemExit):

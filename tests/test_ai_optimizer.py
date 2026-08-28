@@ -1,13 +1,15 @@
 """Tests for AI optimizer module."""
+
 import pytest
+
 from webscout_mcp.ai_optimizer import (
+    AIOptimizer,
     AIResponse,
-    PromptTemplate,
-    PromptEngineer,
-    OutputValidator,
     HallucinationDetector,
     ModelOptimizer,
-    AIOptimizer,
+    OutputValidator,
+    PromptEngineer,
+    PromptTemplate,
     optimize_ai_processing,
 )
 
@@ -285,8 +287,10 @@ class TestAIOptimizer:
 
     def test_process_with_ai_fn(self):
         optimizer = AIOptimizer()
+
         def mock_ai(prompt):
             return "This is a summary of the text."
+
         response = optimizer.process(
             "Python is a programming language. It is popular for data science.",
             task="summarize",
@@ -307,8 +311,10 @@ class TestAIOptimizer:
 
     def test_process_json_validation(self):
         optimizer = AIOptimizer()
+
         def mock_ai(prompt):
             return '{"entities": ["Python", "data science"]}'
+
         response = optimizer.process(
             "Python is used for data science.",
             task="extract_entities",

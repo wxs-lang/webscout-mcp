@@ -9,26 +9,32 @@ Enhanced features:
 - Relevance-based result ranking
 - Robust HTML parsing with multiple selector fallbacks
 """
+
 from __future__ import annotations
+
 import asyncio
 import json
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Optional
-from urllib.parse import quote_plus, urlparse, parse_qs, unquote
+from urllib.parse import parse_qs, quote_plus, unquote, urlparse
+
 import httpx
 from bs4 import BeautifulSoup
+
 from .cache import Cache
 from .config import Config
 from .exceptions import AllBackendsFailedError, SearchError
 from .logging import get_logger
+
 log = get_logger(__name__)
 
 
 @dataclass
 class SearchResult:
     """A single search result."""
+
     title: str
     url: str
     snippet: str
@@ -39,6 +45,7 @@ class SearchResult:
 
 class SearchBackend(ABC):
     """Base class for search backends."""
+
     name: str = "base"
 
     def __init__(self, config: Config) -> None:
@@ -86,7 +93,7 @@ class SearchBackend(ABC):
         """Clean up text: normalize whitespace, remove extra spaces."""
         if not text:
             return ""
-        text = re.sub(r'\s+', ' ', text).strip()
+        text = re.sub(r"\s+", " ", text).strip()
         return text
 
     @staticmethod
@@ -107,6 +114,7 @@ class SearchBackend(ABC):
 
 class BingBackend(SearchBackend):
     """Bing search via direct HTML scraping with robust parsing."""
+
     name = "bing"
     BING_URL = "https://www.bing.com/search"
 
@@ -131,9 +139,7 @@ class BingBackend(SearchBackend):
             response.raise_for_status()
         except Exception as exc:
             raise SearchError(query, self.name, f"{type(exc).__name__}: {exc}") from exc
-        results = await asyncio.to_thread(
-            self._parse_results, response.text, max_results
-        )
+        results = await asyncio.to_thread(self._parse_results, response.text, max_results)
         if not results:
             raise SearchError(query, self.name, "no results parsed from Bing HTML")
         return results
@@ -179,9 +185,15 @@ class BingBackend(SearchBackend):
                     continue
                 snippet = ""
                 for snippet_sel in [
-                    ".b_caption p", "p", ".b_lineclamp1", ".b_lineclamp2",
-                    ".b_lineclamp3", ".b_lineclamp4", ".b_snippet",
-                    ".b_caption .b_lineclamp2", "div.b_caption > p"
+                    ".b_caption p",
+                    "p",
+                    ".b_lineclamp1",
+                    ".b_lineclamp2",
+                    ".b_lineclamp3",
+                    ".b_lineclamp4",
+                    ".b_snippet",
+                    ".b_caption .b_lineclamp2",
+                    "div.b_caption > p",
                 ]:
                     snippet_el = item.select_one(snippet_sel)
                     if snippet_el:
@@ -205,6 +217,7 @@ class BingBackend(SearchBackend):
 
 class DuckDuckGoHTMLBackend(SearchBackend):
     """DuckDuckGo HTML version with robust parsing."""
+
     name = "duckduckgo"
     DDG_URL = "https://html.duckduckgo.com/html/"
 
@@ -226,9 +239,7 @@ class DuckDuckGoHTMLBackend(SearchBackend):
             response.raise_for_status()
         except Exception as exc:
             raise SearchError(query, self.name, f"{type(exc).__name__}: {exc}") from exc
-        results = await asyncio.to_thread(
-            self._parse_results, response.text, max_results
-        )
+        results = await asyncio.to_thread(self._parse_results, response.text, max_results)
         if not results:
             raise SearchError(query, self.name, "no results parsed from DuckDuckGo HTML")
         return results
@@ -278,9 +289,11 @@ class DuckDuckGoHTMLBackend(SearchBackend):
                     continue
                 snippet = ""
                 for snippet_sel in [
-                    "a.result__snippet", ".result__snippet",
-                    ".result__snippet b", "div.result__snippet",
-                    "span.result__snippet"
+                    "a.result__snippet",
+                    ".result__snippet",
+                    ".result__snippet b",
+                    "div.result__snippet",
+                    "span.result__snippet",
                 ]:
                     snippet_el = item.select_one(snippet_sel)
                     if snippet_el:
@@ -308,6 +321,7 @@ class GoogleHTMLBackend(SearchBackend):
     Note: Google may block automated requests. Use with appropriate rate limiting
     and consider using other backends as fallback.
     """
+
     name = "google"
     GOOGLE_URL = "https://www.google.com/search"
 
@@ -332,9 +346,7 @@ class GoogleHTMLBackend(SearchBackend):
             response.raise_for_status()
         except Exception as exc:
             raise SearchError(query, self.name, f"{type(exc).__name__}: {exc}") from exc
-        results = await asyncio.to_thread(
-            self._parse_results, response.text, max_results
-        )
+        results = await asyncio.to_thread(self._parse_results, response.text, max_results)
         if not results:
             raise SearchError(query, self.name, "no results parsed from Google HTML")
         return results
@@ -414,6 +426,7 @@ class BraveHTMLBackend(SearchBackend):
     Note: Brave may block automated requests. Use with appropriate rate limiting
     and consider using other backends as fallback.
     """
+
     name = "brave"
     BRAVE_URL = "https://search.brave.com/search"
 
@@ -437,9 +450,7 @@ class BraveHTMLBackend(SearchBackend):
             response.raise_for_status()
         except Exception as exc:
             raise SearchError(query, self.name, f"{type(exc).__name__}: {exc}") from exc
-        results = await asyncio.to_thread(
-            self._parse_results, response.text, max_results
-        )
+        results = await asyncio.to_thread(self._parse_results, response.text, max_results)
         if not results:
             raise SearchError(query, self.name, "no results parsed from Brave HTML")
         return results
@@ -534,7 +545,7 @@ class SearchEngine:
     ) -> None:
         self.config = config
         self.cache = cache
-        self.merge_backends = merge_backends or getattr(config, 'search_merge_backends', False)
+        self.merge_backends = merge_backends or getattr(config, "search_merge_backends", False)
         backend_names = backends or config.search_backends
         self._backends: list[SearchBackend] = []
         for name in backend_names:
@@ -569,16 +580,16 @@ class SearchEngine:
     def _calculate_relevance(result: SearchResult, query: str) -> float:
         """Calculate relevance score based on query term matches."""
         score = 0.0
-        query_terms = set(re.findall(r'\w+', query.lower()))
+        query_terms = set(re.findall(r"\w+", query.lower()))
         if not query_terms:
             return score
-        title_terms = set(re.findall(r'\w+', result.title.lower()))
+        title_terms = set(re.findall(r"\w+", result.title.lower()))
         title_matches = len(query_terms & title_terms)
         score += title_matches * 3.0
-        snippet_terms = set(re.findall(r'\w+', result.snippet.lower()))
+        snippet_terms = set(re.findall(r"\w+", result.snippet.lower()))
         snippet_matches = len(query_terms & snippet_terms)
         score += snippet_matches * 1.5
-        url_terms = set(re.findall(r'\w+', result.url.lower()))
+        url_terms = set(re.findall(r"\w+", result.url.lower()))
         url_matches = len(query_terms & url_terms)
         score += url_matches * 1.0
         if query_terms.issubset(title_terms | snippet_terms):
@@ -614,7 +625,10 @@ class SearchEngine:
                 log.warning("search backend failed", extra={"backend": backend.name, "query": query, "error": str(exc)})
             except Exception as exc:
                 failures[backend.name] = f"{type(exc).__name__}: {exc}"
-                log.warning("search backend unexpected error", extra={"backend": backend.name, "query": query, "error": type(exc).__name__})
+                log.warning(
+                    "search backend unexpected error",
+                    extra={"backend": backend.name, "query": query, "error": type(exc).__name__},
+                )
         return [], failures
 
     async def _search_all_backends(
@@ -625,7 +639,9 @@ class SearchEngine:
         failures: dict[str, str] = {}
         for backend in self._backends:
             try:
-                log.info("searching (merge mode)", extra={"backend": backend.name, "query": query, "max_results": limit})
+                log.info(
+                    "searching (merge mode)", extra={"backend": backend.name, "query": query, "max_results": limit}
+                )
                 results = await backend.search(query, limit, safe, region)
                 if results:
                     all_results.extend(results)
@@ -637,7 +653,10 @@ class SearchEngine:
                 log.warning("search backend failed", extra={"backend": backend.name, "query": query, "error": str(exc)})
             except Exception as exc:
                 failures[backend.name] = f"{type(exc).__name__}: {exc}"
-                log.warning("search backend unexpected error", extra={"backend": backend.name, "query": query, "error": type(exc).__name__})
+                log.warning(
+                    "search backend unexpected error",
+                    extra={"backend": backend.name, "query": query, "error": type(exc).__name__},
+                )
         return all_results, failures
 
     async def search(
@@ -677,6 +696,11 @@ class SearchEngine:
             )
         log.info(
             "search completed",
-            extra={"query": query, "count": len(results), "merge_mode": merge_mode, "backends_tried": len(failures) + (1 if results else 0)},
+            extra={
+                "query": query,
+                "count": len(results),
+                "merge_mode": merge_mode,
+                "backends_tried": len(failures) + (1 if results else 0),
+            },
         )
         return results

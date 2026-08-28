@@ -89,16 +89,17 @@ check_untyped_defs = true
 ignore_missing_imports = true
 exclude = ["venv/", "build/", "dist/"]
 
-[tool.ruff]
-line-length = 100
-target-version = "py310"
-extend-exclude = ["venv/", "build/", "dist/"]
-
-[tool.ruff.lint]
-select = ["E", "F", "I", "W", "UP", "B", "SIM"]
-ignore = ["E501"]
-
 [tool.black]
-line-length = 100
+line-length = 120
 target-version = ["py310"]
 extend-exclude = "venv/|build/|dist/"
+
+[tool.isort]
+profile = "black"
+line_length = 120
+known_first_party = ["webscout_mcp"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+extend-exclude = ["venv/", "build/", "dist/"]

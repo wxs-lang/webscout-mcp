@@ -13,12 +13,15 @@ Features:
 - Stop word filtering
 - N-gram support
 """
+
 from __future__ import annotations
+
 import hashlib
 import re
-from dataclasses import dataclass, field
-from typing import Optional, Iterable
 from collections import defaultdict
+from dataclasses import dataclass, field
+from typing import Iterable, Optional
+
 from .logging import get_logger
 
 log = get_logger(__name__)
@@ -27,6 +30,7 @@ log = get_logger(__name__)
 @dataclass
 class SimHashResult:
     """Result of SimHash comparison."""
+
     fingerprint: int
     hamming_distance: int
     is_duplicate: bool
@@ -56,19 +60,119 @@ class SimHash:
 
     # Common English stop words
     DEFAULT_STOP_WORDS = {
-        "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for",
-        "of", "with", "by", "from", "is", "are", "was", "were", "be", "been",
-        "being", "have", "has", "had", "do", "does", "did", "will", "would",
-        "could", "should", "may", "might", "must", "shall", "can", "need",
-        "this", "that", "these", "those", "i", "you", "he", "she", "it",
-        "we", "they", "what", "which", "who", "whom", "whose", "where",
-        "when", "why", "how", "all", "each", "every", "both", "few", "more",
-        "most", "other", "some", "such", "no", "nor", "not", "only", "own",
-        "same", "so", "than", "too", "very", "just", "also", "now", "here",
-        "there", "then", "once", "if", "because", "as", "until", "while",
-        "about", "between", "through", "during", "before", "after", "above",
-        "below", "up", "down", "out", "off", "over", "under", "again",
-        "further", "any", "into", "its", "their", "your", "my", "our",
+        "the",
+        "a",
+        "an",
+        "and",
+        "or",
+        "but",
+        "in",
+        "on",
+        "at",
+        "to",
+        "for",
+        "of",
+        "with",
+        "by",
+        "from",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "have",
+        "has",
+        "had",
+        "do",
+        "does",
+        "did",
+        "will",
+        "would",
+        "could",
+        "should",
+        "may",
+        "might",
+        "must",
+        "shall",
+        "can",
+        "need",
+        "this",
+        "that",
+        "these",
+        "those",
+        "i",
+        "you",
+        "he",
+        "she",
+        "it",
+        "we",
+        "they",
+        "what",
+        "which",
+        "who",
+        "whom",
+        "whose",
+        "where",
+        "when",
+        "why",
+        "how",
+        "all",
+        "each",
+        "every",
+        "both",
+        "few",
+        "more",
+        "most",
+        "other",
+        "some",
+        "such",
+        "no",
+        "nor",
+        "not",
+        "only",
+        "own",
+        "same",
+        "so",
+        "than",
+        "too",
+        "very",
+        "just",
+        "also",
+        "now",
+        "here",
+        "there",
+        "then",
+        "once",
+        "if",
+        "because",
+        "as",
+        "until",
+        "while",
+        "about",
+        "between",
+        "through",
+        "during",
+        "before",
+        "after",
+        "above",
+        "below",
+        "up",
+        "down",
+        "out",
+        "off",
+        "over",
+        "under",
+        "again",
+        "further",
+        "any",
+        "into",
+        "its",
+        "their",
+        "your",
+        "my",
+        "our",
     }
 
     def __init__(
@@ -104,7 +208,7 @@ class SimHash:
         # Clean and lowercase
         text = text.lower()
         # Extract words (alphanumeric sequences)
-        words = re.findall(r'[a-z0-9\u4e00-\u9fff]+', text)
+        words = re.findall(r"[a-z0-9\u4e00-\u9fff]+", text)
 
         # Filter stop words and short tokens
         if self.use_stop_words:
@@ -116,7 +220,7 @@ class SimHash:
         if self.n_grams > 1:
             ngrams = []
             for i in range(len(words) - self.n_grams + 1):
-                ngram = " ".join(words[i:i + self.n_grams])
+                ngram = " ".join(words[i : i + self.n_grams])
                 ngrams.append(ngram)
             return ngrams if ngrams else words
 
@@ -167,7 +271,7 @@ class SimHash:
         fingerprint = 0
         for i in range(self.hash_bits):
             if vector[i] > 0:
-                fingerprint |= (1 << i)
+                fingerprint |= 1 << i
 
         return fingerprint
 
@@ -409,9 +513,7 @@ class DuplicateDetector:
 
         # Remove from index
         for key in self._get_partition_keys(fingerprint):
-            self._index[key] = [
-                (d_id, fp) for d_id, fp in self._index[key] if d_id != doc_id
-            ]
+            self._index[key] = [(d_id, fp) for d_id, fp in self._index[key] if d_id != doc_id]
 
         return True
 

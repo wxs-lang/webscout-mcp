@@ -1,5 +1,7 @@
 """Tests for Google HTML search backend."""
+
 import pytest
+
 from webscout_mcp.search import GoogleHTMLBackend, SearchResult
 
 

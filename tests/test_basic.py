@@ -3,6 +3,7 @@
 These tests focus on pure-logic components that don't require network access.
 Network-dependent tests are marked and can be run with --run-network.
 """
+
 from __future__ import annotations
 
 import json
@@ -17,8 +18,8 @@ from webscout_mcp.config import Config
 from webscout_mcp.extractor import DataExtractor, ExtractionRule
 from webscout_mcp.utils import TokenBucket, is_valid_url, normalize_url, truncate_text
 
-
 # --- Config ---
+
 
 class TestConfig:
     def test_defaults(self):
@@ -43,6 +44,7 @@ class TestConfig:
 
 # --- Cache ---
 
+
 class TestCache:
     @pytest.fixture
     def cache(self):
@@ -64,6 +66,7 @@ class TestCache:
         cache.set("https://example.com", "data", ttl=0)
         # ttl=0 means expires immediately
         import time
+
         time.sleep(0.1)
         assert cache.get("https://example.com") is None
 
@@ -87,6 +90,7 @@ class TestCache:
 
 
 # --- Utils ---
+
 
 class TestUtils:
     def test_normalize_url(self):
@@ -116,6 +120,7 @@ class TestUtils:
 
     def test_token_bucket(self):
         import asyncio
+
         bucket = TokenBucket(rate=10.0, burst=2)
         # Should be able to acquire burst tokens quickly
         asyncio.run(bucket.acquire("https://example.com"))
@@ -125,6 +130,7 @@ class TestUtils:
 
 
 # --- Extractor ---
+
 
 class TestExtractor:
     SAMPLE_HTML = """
@@ -172,6 +178,7 @@ class TestExtractor:
 
 # --- MCP Server (import test) ---
 
+
 class TestServer:
     def test_server_module_imports(self):
         """Verify the server module can be imported (mcp optional)."""
@@ -188,6 +195,7 @@ class TestServer:
             with tempfile.TemporaryDirectory() as tmpdir:
                 cfg = Config(cache_dir=Path(tmpdir))
                 from webscout_mcp.server import create_server
+
                 server = create_server(cfg)
                 assert server is not None
         except Exception as exc:
@@ -196,15 +204,18 @@ class TestServer:
 
 # --- URL Security (SSRF Protection) ---
 
+
 class TestURLSecurity:
     def test_safe_public_url(self):
         from webscout_mcp.utils import is_safe_url
+
         is_safe, reason = is_safe_url("https://example.com/page")
         assert is_safe is True
         assert "safe" in reason.lower()
 
     def test_block_localhost(self):
         from webscout_mcp.utils import is_safe_url
+
         for url in [
             "http://localhost/admin",
             "http://127.0.0.1:8080/",
@@ -216,6 +227,7 @@ class TestURLSecurity:
 
     def test_block_sensitive_ports(self):
         from webscout_mcp.utils import is_safe_url
+
         for url in [
             "http://example.com:22/",
             "http://example.com:3306/",
@@ -228,6 +240,7 @@ class TestURLSecurity:
 
     def test_block_invalid_scheme(self):
         from webscout_mcp.utils import is_safe_url
+
         for url in [
             "ftp://example.com/",
             "file:///etc/passwd",
@@ -239,6 +252,7 @@ class TestURLSecurity:
 
     def test_allow_private_when_enabled(self):
         from webscout_mcp.utils import is_safe_url
+
         is_safe, reason = is_safe_url("http://localhost:3000/", allow_private=True)
         # When allow_private is True, localhost should be allowed
         # (but sensitive ports may still be blocked)
@@ -246,6 +260,7 @@ class TestURLSecurity:
 
     def test_extract_domain(self):
         from webscout_mcp.utils import extract_domain
+
         assert extract_domain("https://example.com/path") == "example.com"
         assert extract_domain("http://sub.example.com:8080/page") == "sub.example.com"
         assert extract_domain("not a url") == ""
@@ -253,10 +268,13 @@ class TestURLSecurity:
 
 # --- Memory Cache (LRU) ---
 
+
 class TestLRUCache:
     def test_set_and_get(self):
         import time
+
         from webscout_mcp.cache import LRUCache
+
         cache = LRUCache(max_size=3)
         future = time.time() + 3600
         cache.set("key1", "value1", "text/plain", time.time(), future)
@@ -267,12 +285,15 @@ class TestLRUCache:
 
     def test_get_missing(self):
         from webscout_mcp.cache import LRUCache
+
         cache = LRUCache(max_size=3)
         assert cache.get("missing") is None
 
     def test_lru_eviction(self):
         import time
+
         from webscout_mcp.cache import LRUCache
+
         cache = LRUCache(max_size=2)
         future = time.time() + 3600
         cache.set("key1", "value1", "text/plain", time.time(), future)
@@ -285,7 +306,9 @@ class TestLRUCache:
 
     def test_lru_order_update(self):
         import time
+
         from webscout_mcp.cache import LRUCache
+
         cache = LRUCache(max_size=2)
         future = time.time() + 3600
         cache.set("key1", "value1", "text/plain", time.time(), future)
@@ -300,14 +323,18 @@ class TestLRUCache:
 
     def test_expired_entry(self):
         import time
+
         from webscout_mcp.cache import LRUCache
+
         cache = LRUCache(max_size=3)
         cache.set("key1", "value1", "text/plain", time.time(), time.time() - 1)  # expired
         assert cache.get("key1") is None
 
     def test_delete(self):
         import time
+
         from webscout_mcp.cache import LRUCache
+
         cache = LRUCache(max_size=3)
         future = time.time() + 3600
         cache.set("key1", "value1", "text/plain", time.time(), future)
@@ -316,7 +343,9 @@ class TestLRUCache:
 
     def test_clear(self):
         import time
+
         from webscout_mcp.cache import LRUCache
+
         cache = LRUCache(max_size=3)
         future = time.time() + 3600
         cache.set("key1", "value1", "text/plain", time.time(), future)
@@ -328,7 +357,9 @@ class TestLRUCache:
 
     def test_hit_rate_statistics(self):
         import time
+
         from webscout_mcp.cache import LRUCache
+
         cache = LRUCache(max_size=3)
         future = time.time() + 3600
         cache.set("key1", "value1", "text/plain", time.time(), future)
@@ -338,7 +369,7 @@ class TestLRUCache:
         cache.get("missing")
         assert cache.hits == 2
         assert cache.misses == 1
-        assert abs(cache.hit_rate - 2/3) < 0.01
+        assert abs(cache.hit_rate - 2 / 3) < 0.01
 
 
 class TestLayeredCache:
@@ -346,6 +377,7 @@ class TestLayeredCache:
         """Test that memory cache provides faster access after first fetch."""
         import tempfile
         from pathlib import Path
+
         from webscout_mcp.cache import Cache
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -370,6 +402,7 @@ class TestLayeredCache:
         """Test that memory cache statistics are included in stats()."""
         import tempfile
         from pathlib import Path
+
         from webscout_mcp.cache import Cache
 
         with tempfile.TemporaryDirectory() as tmpdir:

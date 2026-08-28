@@ -12,11 +12,14 @@ Features:
 - Grammar and spelling hints (basic)
 - Overall quality scoring
 """
+
 from __future__ import annotations
-import re
+
 import math
+import re
 from dataclasses import dataclass, field
 from typing import Optional
+
 from .logging import get_logger
 
 log = get_logger(__name__)
@@ -25,6 +28,7 @@ log = get_logger(__name__)
 @dataclass
 class ContentQualityMetrics:
     """Content quality metrics."""
+
     # Basic metrics
     word_count: int = 0
     char_count: int = 0
@@ -102,21 +106,146 @@ class ContentQualityAnalyzer:
 
     # Common stop words for keyword analysis
     STOP_WORDS = {
-        "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for",
-        "of", "with", "by", "from", "as", "is", "are", "was", "were", "be",
-        "been", "being", "have", "has", "had", "do", "does", "did", "will",
-        "would", "could", "should", "may", "might", "must", "can", "this",
-        "that", "these", "those", "it", "its", "they", "them", "their", "we",
-        "us", "our", "you", "your", "he", "him", "his", "she", "her", "i",
-        "me", "my", "not", "no", "nor", "so", "if", "then", "than", "too",
-        "very", "just", "about", "above", "after", "again", "all", "also",
-        "am", "any", "because", "before", "being", "below", "between", "both",
-        "during", "each", "few", "further", "here", "how", "into", "more",
-        "most", "other", "out", "over", "own", "same", "some", "such", "there",
-        "through", "under", "until", "up", "what", "when", "where", "which",
-        "while", "who", "whom", "why", "的", "了", "在", "是", "我", "有",
-        "和", "就", "不", "人", "都", "一", "一个", "上", "也", "很", "到",
-        "说", "要", "去", "你", "会", "着", "没有", "看", "好", "自己", "这",
+        "the",
+        "a",
+        "an",
+        "and",
+        "or",
+        "but",
+        "in",
+        "on",
+        "at",
+        "to",
+        "for",
+        "of",
+        "with",
+        "by",
+        "from",
+        "as",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "have",
+        "has",
+        "had",
+        "do",
+        "does",
+        "did",
+        "will",
+        "would",
+        "could",
+        "should",
+        "may",
+        "might",
+        "must",
+        "can",
+        "this",
+        "that",
+        "these",
+        "those",
+        "it",
+        "its",
+        "they",
+        "them",
+        "their",
+        "we",
+        "us",
+        "our",
+        "you",
+        "your",
+        "he",
+        "him",
+        "his",
+        "she",
+        "her",
+        "i",
+        "me",
+        "my",
+        "not",
+        "no",
+        "nor",
+        "so",
+        "if",
+        "then",
+        "than",
+        "too",
+        "very",
+        "just",
+        "about",
+        "above",
+        "after",
+        "again",
+        "all",
+        "also",
+        "am",
+        "any",
+        "because",
+        "before",
+        "being",
+        "below",
+        "between",
+        "both",
+        "during",
+        "each",
+        "few",
+        "further",
+        "here",
+        "how",
+        "into",
+        "more",
+        "most",
+        "other",
+        "out",
+        "over",
+        "own",
+        "same",
+        "some",
+        "such",
+        "there",
+        "through",
+        "under",
+        "until",
+        "up",
+        "what",
+        "when",
+        "where",
+        "which",
+        "while",
+        "who",
+        "whom",
+        "why",
+        "的",
+        "了",
+        "在",
+        "是",
+        "我",
+        "有",
+        "和",
+        "就",
+        "不",
+        "人",
+        "都",
+        "一",
+        "一个",
+        "上",
+        "也",
+        "很",
+        "到",
+        "说",
+        "要",
+        "去",
+        "你",
+        "会",
+        "着",
+        "没有",
+        "看",
+        "好",
+        "自己",
+        "这",
     }
 
     def __init__(self) -> None:
@@ -170,16 +299,16 @@ class ContentQualityAnalyzer:
         metrics.char_count = len(text)
 
         # Word count (handle both English and Chinese)
-        words = re.findall(r'\b\w+\b', text)
-        chinese_chars = re.findall(r'[\u4e00-\u9fff]', text)
+        words = re.findall(r"\b\w+\b", text)
+        chinese_chars = re.findall(r"[\u4e00-\u9fff]", text)
         metrics.word_count = len(words) + len(chinese_chars)
 
         # Sentence count
-        sentences = re.split(r'[.!?。！？]+', text)
+        sentences = re.split(r"[.!?。！？]+", text)
         metrics.sentence_count = len([s for s in sentences if s.strip()])
 
         # Paragraph count
-        paragraphs = [p for p in text.split('\n\n') if p.strip()]
+        paragraphs = [p for p in text.split("\n\n") if p.strip()]
         metrics.paragraph_count = len(paragraphs)
 
         # Average word length
@@ -219,7 +348,7 @@ class ContentQualityAnalyzer:
 
     def _count_syllables(self, text: str) -> int:
         """Count syllables in text (approximate)."""
-        words = re.findall(r'\b\w+\b', text.lower())
+        words = re.findall(r"\b\w+\b", text.lower())
         syllable_count = 0
         for word in words:
             # Simple syllable counting heuristic
@@ -231,7 +360,7 @@ class ContentQualityAnalyzer:
                 if is_vowel and not prev_char_was_vowel:
                     count += 1
                 prev_char_was_vowel = is_vowel
-            if word.endswith('e') and count > 1:
+            if word.endswith("e") and count > 1:
                 count -= 1
             syllable_count += max(1, count)
         return syllable_count
@@ -240,41 +369,42 @@ class ContentQualityAnalyzer:
         """Analyze content structure from HTML."""
         try:
             from bs4 import BeautifulSoup
+
             soup = BeautifulSoup(html, "html.parser")
 
             # Count headings
-            metrics.heading_count = len(soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']))
+            metrics.heading_count = len(soup.find_all(["h1", "h2", "h3", "h4", "h5", "h6"]))
 
             # Count lists
-            metrics.list_count = len(soup.find_all(['ul', 'ol']))
+            metrics.list_count = len(soup.find_all(["ul", "ol"]))
 
             # Count links
-            metrics.link_count = len(soup.find_all('a', href=True))
+            metrics.link_count = len(soup.find_all("a", href=True))
 
             # Count images
-            metrics.image_count = len(soup.find_all('img'))
+            metrics.image_count = len(soup.find_all("img"))
 
             # Check for title
-            metrics.has_title = bool(soup.find('title') and soup.find('title').string)
+            metrics.has_title = bool(soup.find("title") and soup.find("title").string)
 
             # Check for meta description
-            meta_desc = soup.find('meta', attrs={'name': 'description'})
-            metrics.has_meta_description = bool(meta_desc and meta_desc.get('content'))
+            meta_desc = soup.find("meta", attrs={"name": "description"})
+            metrics.has_meta_description = bool(meta_desc and meta_desc.get("content"))
 
         except ImportError:
             log.warning("BeautifulSoup not available for structure analysis")
 
     def _analyze_metadata(self, metadata: dict, metrics: ContentQualityMetrics) -> None:
         """Analyze page metadata."""
-        if metadata.get('title'):
+        if metadata.get("title"):
             metrics.has_title = True
-        if metadata.get('description') or metadata.get('meta_description'):
+        if metadata.get("description") or metadata.get("meta_description"):
             metrics.has_meta_description = True
 
     def _analyze_keywords(self, text: str, metrics: ContentQualityMetrics) -> None:
         """Analyze keyword density."""
         # Tokenize and filter stop words
-        words = re.findall(r'\b\w+\b', text.lower())
+        words = re.findall(r"\b\w+\b", text.lower())
         filtered_words = [w for w in words if w not in self.STOP_WORDS and len(w) > 2]
 
         if not filtered_words:
@@ -288,10 +418,7 @@ class ContentQualityAnalyzer:
         # Calculate density for top keywords
         total_words = len(filtered_words)
         sorted_keywords = sorted(word_counts.items(), key=lambda x: x[1], reverse=True)
-        metrics.keyword_density = {
-            word: round(count / total_words * 100, 2)
-            for word, count in sorted_keywords[:20]
-        }
+        metrics.keyword_density = {word: round(count / total_words * 100, 2) for word, count in sorted_keywords[:20]}
         metrics.unique_keywords = len(word_counts)
 
     def _calculate_scores(self, metrics: ContentQualityMetrics) -> None:

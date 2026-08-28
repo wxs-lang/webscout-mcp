@@ -12,26 +12,32 @@ Enhanced features:
 - Progress tracking and statistics
 - Graceful error handling with classification
 """
+
 from __future__ import annotations
+
 import asyncio
 import random
 from collections import deque
 from dataclasses import dataclass, field
 from typing import Optional
 from urllib.parse import urljoin, urlparse
+
 from bs4 import BeautifulSoup
+
 from .config import Config
 from .exceptions import DisallowedByRobotsError
 from .fetcher import Fetcher, FetchResult
 from .logging import get_logger
 from .robots import RobotsChecker
 from .utils import normalize_url
+
 log = get_logger(__name__)
 
 
 @dataclass
 class CrawlResult:
     """Result of a crawl operation."""
+
     seed_url: str
     pages_crawled: int = 0
     pages: list[FetchResult] = field(default_factory=list)
@@ -65,9 +71,7 @@ class Crawler:
     ) -> None:
         self.config = config
         self.fetcher = fetcher
-        self.robots = robots_checker or RobotsChecker(
-            config, respect_robots=config.respect_robots
-        )
+        self.robots = robots_checker or RobotsChecker(config, respect_robots=config.respect_robots)
         self._total_response_time = 0.0
         self._response_count = 0
 
@@ -99,14 +103,10 @@ class Crawler:
         """
         depth = max_depth if max_depth is not None else self.config.crawler_max_depth
         page_limit = max_pages if max_pages is not None else self.config.crawler_max_pages
-        same_domain = (
-            same_domain_only
-            if same_domain_only is not None
-            else self.config.crawler_same_domain_only
-        )
+        same_domain = same_domain_only if same_domain_only is not None else self.config.crawler_same_domain_only
         concur = concurrency or self.config.crawler_concurrency
-        base_delay = delay if delay is not None else getattr(self.config, 'crawler_delay', 0.0)
-        retries = max_retries if max_retries is not None else getattr(self.config, 'crawler_max_retries', 2)
+        base_delay = delay if delay is not None else getattr(self.config, "crawler_delay", 0.0)
+        retries = max_retries if max_retries is not None else getattr(self.config, "crawler_max_retries", 2)
 
         seed_url = normalize_url(seed_url)
         seed_domain = urlparse(seed_url).netloc.lower()
@@ -130,10 +130,7 @@ class Crawler:
                 "crawling depth level",
                 extra={"depth": batch[0][1], "batch_size": len(batch), "total_crawled": result.pages_crawled},
             )
-            tasks = [
-                self._crawl_page(url, dep, extract, semaphore, result, base_delay, retries)
-                for url, dep in batch
-            ]
+            tasks = [self._crawl_page(url, dep, extract, semaphore, result, base_delay, retries) for url, dep in batch]
             page_results = await asyncio.gather(*tasks, return_exceptions=True)
             for (url, dep), pr in zip(batch, page_results):
                 if isinstance(pr, Exception):
@@ -186,9 +183,9 @@ class Crawler:
                     continue
             # Skip common non-content URLs
             parsed = urlparse(link)
-            if parsed.path.endswith(('.pdf', '.zip', '.tar', '.gz', '.exe', '.dmg', '.mp4', '.mp3', '.avi', '.mov')):
+            if parsed.path.endswith((".pdf", ".zip", ".tar", ".gz", ".exe", ".dmg", ".mp4", ".mp3", ".avi", ".mov")):
                 continue
-            if any(skip in parsed.path.lower() for skip in ['/login', '/signup', '/register', '/admin', '/logout']):
+            if any(skip in parsed.path.lower() for skip in ["/login", "/signup", "/register", "/admin", "/logout"]):
                 continue
             seen.add(link)
             filtered.append(link)
@@ -220,7 +217,7 @@ class Crawler:
             try:
                 # Apply random delay
                 if base_delay > 0 and attempt > 0:
-                    delay = base_delay * random.uniform(0.5, 1.5) * (2 ** attempt)
+                    delay = base_delay * random.uniform(0.5, 1.5) * (2**attempt)
                     await asyncio.sleep(delay)
                 elif base_delay > 0:
                     delay = base_delay * random.uniform(0.5, 1.5)
@@ -228,6 +225,7 @@ class Crawler:
 
                 async with semaphore:
                     import time
+
                     start_time = time.time()
                     page = await self.fetcher.fetch(url, extract=extract, max_chars=4000)
                     elapsed = time.time() - start_time
@@ -241,13 +239,15 @@ class Crawler:
                         result.retries += 1
                         last_error = page.error
                         continue
-                    result.errors.append({
-                        "url": url,
-                        "depth": depth,
-                        "error": page.error,
-                        "type": error_type,
-                        "attempts": attempt + 1,
-                    })
+                    result.errors.append(
+                        {
+                            "url": url,
+                            "depth": depth,
+                            "error": page.error,
+                            "type": error_type,
+                            "attempts": attempt + 1,
+                        }
+                    )
                     return None
 
                 links: list[str] = []
@@ -264,23 +264,27 @@ class Crawler:
                 if attempt < max_retries:
                     result.retries += 1
                     continue
-                result.errors.append({
-                    "url": url,
-                    "depth": depth,
-                    "error": str(exc),
-                    "type": "exception",
-                    "attempts": attempt + 1,
-                })
+                result.errors.append(
+                    {
+                        "url": url,
+                        "depth": depth,
+                        "error": str(exc),
+                        "type": "exception",
+                        "attempts": attempt + 1,
+                    }
+                )
                 return None
 
         if last_error:
-            result.errors.append({
-                "url": url,
-                "depth": depth,
-                "error": last_error,
-                "type": "exhausted_retries",
-                "attempts": max_retries + 1,
-            })
+            result.errors.append(
+                {
+                    "url": url,
+                    "depth": depth,
+                    "error": last_error,
+                    "type": "exhausted_retries",
+                    "attempts": max_retries + 1,
+                }
+            )
         return None
 
     @staticmethod
@@ -288,9 +292,20 @@ class Crawler:
         """Classify an error as transient or permanent."""
         error_lower = error.lower()
         transient_keywords = [
-            "timeout", "timed out", "connection", "reset", "refused",
-            "500", "502", "503", "504", "temporarily", "rate limit",
-            "too many requests", "server error", "network",
+            "timeout",
+            "timed out",
+            "connection",
+            "reset",
+            "refused",
+            "500",
+            "502",
+            "503",
+            "504",
+            "temporarily",
+            "rate limit",
+            "too many requests",
+            "server error",
+            "network",
         ]
         for keyword in transient_keywords:
             if keyword in error_lower:

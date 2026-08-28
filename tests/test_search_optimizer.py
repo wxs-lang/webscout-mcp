@@ -1,13 +1,16 @@
 """Tests for search optimizer module."""
-import pytest
+
 import time
+
+import pytest
+
 from webscout_mcp.search_optimizer import (
-    SearchResultItem,
-    SearchResponse,
     QueryUnderstanding,
     SearchCache,
-    SearchRanker,
     SearchOptimizer,
+    SearchRanker,
+    SearchResponse,
+    SearchResultItem,
     optimized_search,
 )
 
@@ -249,6 +252,7 @@ class TestSearchOptimizer:
         optimizer = SearchOptimizer(backends=["mock"], enable_cache=True)
 
         call_count = 0
+
         def mock_search(backend, query, max_results):
             nonlocal call_count
             call_count += 1

@@ -10,13 +10,16 @@ Features:
 - Configuration file generation
 - Health check and verification
 """
+
 from __future__ import annotations
+
 import os
-import sys
 import platform
 import subprocess
+import sys
 from dataclasses import dataclass, field
 from typing import Optional
+
 from .logging import get_logger
 
 log = get_logger(__name__)
@@ -25,6 +28,7 @@ log = get_logger(__name__)
 @dataclass
 class SystemInfo:
     """System information detected during setup."""
+
     os: str = ""
     os_version: str = ""
     python_version: str = ""
@@ -56,6 +60,7 @@ class SystemInfo:
 @dataclass
 class SetupConfig:
     """Configuration for setup process."""
+
     # Whether to install Playwright browsers
     install_playwright: bool = True
     # Whether to install Ollama (local LLM)
@@ -85,7 +90,8 @@ class SetupConfig:
             install_ollama=os.environ.get("WEBSCOUT_SETUP_OLLAMA", "false").lower() == "true",
             ollama_model=os.environ.get("WEBSCOUT_SETUP_OLLAMA_MODEL", "qwen2.5:7b"),
             install_chromadb=os.environ.get("WEBSCOUT_SETUP_CHROMADB", "false").lower() == "true",
-            install_sentence_transformers=os.environ.get("WEBSCOUT_SETUP_SENTENCE_TRANSFORMERS", "false").lower() == "true",
+            install_sentence_transformers=os.environ.get("WEBSCOUT_SETUP_SENTENCE_TRANSFORMERS", "false").lower()
+            == "true",
             embedding_model=os.environ.get("WEBSCOUT_SETUP_EMBEDDING_MODEL", "BAAI/bge-small-zh-v1.5"),
             generate_config=os.environ.get("WEBSCOUT_SETUP_GENERATE_CONFIG", "true").lower() == "true",
             config_path=os.environ.get("WEBSCOUT_SETUP_CONFIG_PATH", "~/.config/webscout/config.toml"),
@@ -97,6 +103,7 @@ class SetupConfig:
 @dataclass
 class SetupResult:
     """Result of setup process."""
+
     success: bool = False
     system_info: Optional[SystemInfo] = None
     installed_components: list[str] = field(default_factory=list)
@@ -140,7 +147,8 @@ class SetupManager:
         # Detect memory
         try:
             import psutil
-            info.total_memory_gb = round(psutil.virtual_memory().total / (1024 ** 3), 2)
+
+            info.total_memory_gb = round(psutil.virtual_memory().total / (1024**3), 2)
         except ImportError:
             # Fallback for systems without psutil
             if info.os == "Linux":
@@ -374,6 +382,7 @@ class SetupManager:
             print(f"  Downloading embedding model: {self.config.embedding_model}...")
             try:
                 from sentence_transformers import SentenceTransformer
+
                 model = SentenceTransformer(self.config.embedding_model)
                 self.result.installed_components.append(f"embedding-model-{self.config.embedding_model}")
                 print(f"  Embedding model {self.config.embedding_model} downloaded successfully.")
@@ -423,7 +432,7 @@ class SetupManager:
             f"# GPU: {'Yes - ' + self.system_info.gpu_info if self.system_info.has_gpu else 'No'}",
             "",
             "[server]",
-            "host = \"127.0.0.1\"",
+            'host = "127.0.0.1"',
             "port = 8000",
             "",
             "[cache]",
@@ -431,7 +440,7 @@ class SetupManager:
             "ttl = 3600",
             "",
             "[search]",
-            "default_backend = \"bing\"",
+            'default_backend = "bing"',
             "max_results = 10",
             "",
             "[fetcher]",
@@ -442,43 +451,51 @@ class SetupManager:
 
         # Add AI config if Ollama is available
         if self.system_info.has_ollama or self.config.install_ollama:
-            lines.extend([
-                "[ai]",
-                "backend = \"ollama\"",
-                f"model = \"{self.config.ollama_model}\"",
-                "temperature = 0.7",
-                "",
-            ])
+            lines.extend(
+                [
+                    "[ai]",
+                    'backend = "ollama"',
+                    f'model = "{self.config.ollama_model}"',
+                    "temperature = 0.7",
+                    "",
+                ]
+            )
 
         # Add vector store config if installed
         if self.system_info.has_chromadb or self.config.install_chromadb:
-            lines.extend([
-                "[vector_store]",
-                "enabled = true",
-                "vector_db = \"chroma\"",
-                f"embedding_backend = \"{'local' if self.system_info.has_sentence_transformers else 'openai'}\"",
-                f"embedding_model = \"{self.config.embedding_model}\"",
-                "",
-            ])
+            lines.extend(
+                [
+                    "[vector_store]",
+                    "enabled = true",
+                    'vector_db = "chroma"',
+                    f"embedding_backend = \"{'local' if self.system_info.has_sentence_transformers else 'openai'}\"",
+                    f'embedding_model = "{self.config.embedding_model}"',
+                    "",
+                ]
+            )
 
         # Add browser config if Playwright is installed
         if self.system_info.has_playwright or self.config.install_playwright:
-            lines.extend([
-                "[browser]",
-                "enabled = true",
-                "browser_type = \"chromium\"",
-                "headless = true",
-                "",
-            ])
+            lines.extend(
+                [
+                    "[browser]",
+                    "enabled = true",
+                    'browser_type = "chromium"',
+                    "headless = true",
+                    "",
+                ]
+            )
 
         # Add monitor config
-        lines.extend([
-            "[monitor]",
-            "check_interval = 300",
-            "monitor_text = true",
-            "min_change_size = 10",
-            "",
-        ])
+        lines.extend(
+            [
+                "[monitor]",
+                "check_interval = 300",
+                "monitor_text = true",
+                "min_change_size = 10",
+                "",
+            ]
+        )
 
         return "\n".join(lines)
 
@@ -498,6 +515,7 @@ class SetupManager:
         checks_total += 1
         try:
             import webscout_mcp
+
             checks_passed += 1
             print("  ✓ Core package import")
         except Exception as exc:
@@ -507,6 +525,7 @@ class SetupManager:
         checks_total += 1
         try:
             import httpx
+
             checks_passed += 1
             print("  ✓ httpx (HTTP client)")
         except Exception as exc:
@@ -516,6 +535,7 @@ class SetupManager:
         checks_total += 1
         try:
             from bs4 import BeautifulSoup
+
             checks_passed += 1
             print("  ✓ BeautifulSoup (HTML parsing)")
         except Exception as exc:
@@ -525,6 +545,7 @@ class SetupManager:
         checks_total += 1
         try:
             import trafilatura
+
             checks_passed += 1
             print("  ✓ trafilatura (content extraction)")
         except Exception as exc:
@@ -535,6 +556,7 @@ class SetupManager:
             checks_total += 1
             try:
                 import playwright
+
                 checks_passed += 1
                 print("  ✓ Playwright (browser automation)")
             except Exception as exc:
@@ -545,6 +567,7 @@ class SetupManager:
             checks_total += 1
             try:
                 import chromadb
+
                 checks_passed += 1
                 print("  ✓ ChromaDB (vector database)")
             except Exception as exc:

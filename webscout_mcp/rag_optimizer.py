@@ -12,10 +12,13 @@ Features:
 - Answer citation and source tracing
 - Retrieval quality scoring
 """
+
 from __future__ import annotations
+
 import re
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+
 from .logging import get_logger
 
 log = get_logger(__name__)
@@ -24,6 +27,7 @@ log = get_logger(__name__)
 @dataclass
 class Chunk:
     """Text chunk for RAG."""
+
     text: str = ""
     chunk_id: str = ""
     parent_id: str = ""
@@ -51,6 +55,7 @@ class Chunk:
 @dataclass
 class RAGResponse:
     """RAG response with retrieved context and answer."""
+
     query: str = ""
     rewritten_query: str = ""
     chunks: List[Chunk] = field(default_factory=list)
@@ -127,20 +132,22 @@ class SemanticChunker:
         """
         paragraphs = []
         # Split by double newlines (paragraph boundaries)
-        parts = re.split(r'(\n\n+)', text)
+        parts = re.split(r"(\n\n+)", text)
 
         current_pos = 0
         current_text = ""
 
         for part in parts:
-            if re.match(r'^\n\n+$', part):
+            if re.match(r"^\n\n+$", part):
                 # This is a paragraph separator
                 if current_text.strip():
-                    paragraphs.append((
-                        current_text.strip(),
-                        current_pos,
-                        current_pos + len(current_text),
-                    ))
+                    paragraphs.append(
+                        (
+                            current_text.strip(),
+                            current_pos,
+                            current_pos + len(current_text),
+                        )
+                    )
                 current_pos += len(current_text) + len(part)
                 current_text = ""
             else:
@@ -148,11 +155,13 @@ class SemanticChunker:
 
         # Don't forget the last paragraph
         if current_text.strip():
-            paragraphs.append((
-                current_text.strip(),
-                current_pos,
-                current_pos + len(current_text),
-            ))
+            paragraphs.append(
+                (
+                    current_text.strip(),
+                    current_pos,
+                    current_pos + len(current_text),
+                )
+            )
 
         return paragraphs
 
@@ -181,10 +190,7 @@ class SemanticChunker:
             para_word_count = len(para_text.split())
 
             # If adding this paragraph exceeds max size and we have content, save current chunk
-            if (
-                current_chunk_text
-                and len(current_chunk_text.split()) + para_word_count > self.max_chunk_size
-            ):
+            if current_chunk_text and len(current_chunk_text.split()) + para_word_count > self.max_chunk_size:
                 chunk = self._create_chunk(
                     current_chunk_text,
                     current_chunk_start,
@@ -198,7 +204,7 @@ class SemanticChunker:
                 # Start new chunk with overlap
                 if self.overlap > 0 and chunks:
                     prev_text = chunks[-1].text
-                    overlap_words = prev_text.split()[-self.overlap:]
+                    overlap_words = prev_text.split()[-self.overlap :]
                     current_chunk_text = " ".join(overlap_words) + " " + para_text
                 else:
                     current_chunk_text = para_text
@@ -324,7 +330,7 @@ class ContextCompressor:
     def _extract_key_sentences(self, text: str, query: str, max_sentences: int = 3) -> List[str]:
         """Extract key sentences from text based on query relevance."""
         # Split into sentences
-        sentences = re.split(r'(?<=[.!?。！？])\s+', text)
+        sentences = re.split(r"(?<=[.!?。！？])\s+", text)
         sentences = [s.strip() for s in sentences if s.strip()]
 
         if not sentences:
@@ -475,6 +481,7 @@ class RAGOptimizer:
             RAGResponse with retrieved context.
         """
         import time
+
         start_time = time.time()
 
         response = RAGResponse(query=query)

@@ -11,22 +11,26 @@ Features:
 - Security headers configuration
 - Content security policy
 """
+
 from __future__ import annotations
-import re
+
+import hashlib
 import ipaddress
+import re
 import socket
 import time
-import hashlib
 from dataclasses import dataclass, field
-from typing import Optional, Dict, Any, List, Set, Tuple, Callable
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 from urllib.parse import urlparse
-from .errors import SSRFError, InputValidationError, RateLimitError, SensitiveDataError
+
+from .errors import InputValidationError, RateLimitError, SensitiveDataError, SSRFError
 from .logging import get_logger
 
 log = get_logger(__name__)
 
 
 # ============ SSRF Protection ============
+
 
 class SSRFProtector:
     """Protect against Server-Side Request Forgery attacks.
@@ -50,8 +54,18 @@ class SSRFProtector:
 
     # Dangerous protocols
     DANGEROUS_PROTOCOLS = {
-        "file", "gopher", "dict", "ftp", "ldap", "ldaps",
-        "tftp", "netdoc", "php", "expect", "ssh", "telnet",
+        "file",
+        "gopher",
+        "dict",
+        "ftp",
+        "ldap",
+        "ldaps",
+        "tftp",
+        "netdoc",
+        "php",
+        "expect",
+        "ssh",
+        "telnet",
     }
 
     # Allowed protocols
@@ -155,6 +169,7 @@ class SSRFProtector:
 
 # ============ Input Validation ============
 
+
 class InputValidator:
     """Validate and sanitize user inputs.
 
@@ -163,23 +178,23 @@ class InputValidator:
 
     # URL regex pattern
     URL_PATTERN = re.compile(
-        r'^https?://'  # protocol
-        r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,6}\.?|'  # domain
-        r'localhost|'  # localhost
-        r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'  # IP
-        r'(?::\d+)?'  # port
-        r'(?:/?|[/?]\S+)$',
+        r"^https?://"  # protocol
+        r"(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,6}\.?|"  # domain
+        r"localhost|"  # localhost
+        r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"  # IP
+        r"(?::\d+)?"  # port
+        r"(?:/?|[/?]\S+)$",
         re.IGNORECASE,
     )
 
     # Dangerous file path patterns
     PATH_TRAVERSAL_PATTERNS = [
-        r'\.\./',
-        r'\.\.\\',
-        r'%2e%2e%2f',
-        r'%2e%2e/',
-        r'\.\.%2f',
-        r'\.\.%5c',
+        r"\.\./",
+        r"\.\.\\",
+        r"%2e%2e%2f",
+        r"%2e%2e/",
+        r"\.\.%2f",
+        r"\.\.%5c",
     ]
 
     def __init__(
@@ -245,6 +260,7 @@ class InputValidator:
         # Check if path is within base directory
         if base_dir:
             import os
+
             real_base = os.path.realpath(base_dir)
             real_path = os.path.realpath(os.path.join(base_dir, path))
             if not real_path.startswith(real_base):
@@ -284,7 +300,7 @@ class InputValidator:
             return ""
 
         # Remove null bytes and control characters (except newlines and tabs)
-        text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', text)
+        text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", text)
 
         # Truncate to max length
         if len(text) > max_length:
@@ -300,6 +316,7 @@ class InputValidator:
 
 
 # ============ Rate Limiting ============
+
 
 class TokenBucket:
     """Token bucket rate limiter.
@@ -433,6 +450,7 @@ class RateLimiter:
 
 # ============ Sensitive Data Filtering ============
 
+
 class SensitiveDataFilter:
     """Filter sensitive data from text and logs.
 
@@ -443,16 +461,18 @@ class SensitiveDataFilter:
     SENSITIVE_PATTERNS = {
         "api_key": re.compile(r'(?i)(?:api[_-]?key|apikey)\s*[:=]\s*["\']?([a-zA-Z0-9_\-]{20,})["\']?'),
         "password": re.compile(r'(?i)(?:password|passwd|pwd)\s*[:=]\s*["\']?([^\s"\']{6,})["\']?'),
-        "token": re.compile(r'(?i)(?:token|auth[_-]?token|access[_-]?token|secret)\s*[:=]\s*["\']?([a-zA-Z0-9_\-]{20,})["\']?'),
-        "bearer": re.compile(r'(?i)bearer\s+([a-zA-Z0-9_\-\.]{20,})'),
-        "github_token": re.compile(r'gh[pousr]_[A-Za-z0-9]{36}'),
-        "aws_key": re.compile(r'AKIA[0-9A-Z]{16}'),
+        "token": re.compile(
+            r'(?i)(?:token|auth[_-]?token|access[_-]?token|secret)\s*[:=]\s*["\']?([a-zA-Z0-9_\-]{20,})["\']?'
+        ),
+        "bearer": re.compile(r"(?i)bearer\s+([a-zA-Z0-9_\-\.]{20,})"),
+        "github_token": re.compile(r"gh[pousr]_[A-Za-z0-9]{36}"),
+        "aws_key": re.compile(r"AKIA[0-9A-Z]{16}"),
         "aws_secret": re.compile(r'(?i)aws[_-]?secret\s*[:=]\s*["\']?([A-Za-z0-9/+=]{40})["\']?'),
-        "private_key": re.compile(r'-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----'),
-        "credit_card": re.compile(r'\b(?:\d[ -]*?){13,16}\b'),
-        "ssn": re.compile(r'\b\d{3}-\d{2}-\d{4}\b'),
-        "email": re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'),
-        "phone": re.compile(r'\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b'),
+        "private_key": re.compile(r"-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----"),
+        "credit_card": re.compile(r"\b(?:\d[ -]*?){13,16}\b"),
+        "ssn": re.compile(r"\b\d{3}-\d{2}-\d{4}\b"),
+        "email": re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b"),
+        "phone": re.compile(r"\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b"),
     }
 
     def __init__(
@@ -513,12 +533,14 @@ class SensitiveDataFilter:
             if pattern_name not in self.enabled_patterns:
                 continue
             for match in pattern.finditer(text):
-                detections.append({
-                    "type": pattern_name,
-                    "position": match.start(),
-                    "length": len(match.group(0)),
-                    "preview": match.group(0)[:10] + "..." if len(match.group(0)) > 10 else match.group(0),
-                })
+                detections.append(
+                    {
+                        "type": pattern_name,
+                        "position": match.start(),
+                        "length": len(match.group(0)),
+                        "preview": match.group(0)[:10] + "..." if len(match.group(0)) > 10 else match.group(0),
+                    }
+                )
 
         return detections
 
@@ -540,6 +562,7 @@ class SensitiveDataFilter:
 
 
 # ============ Security Headers ============
+
 
 class SecurityHeaders:
     """Configure security headers for HTTP responses."""
@@ -571,6 +594,7 @@ class SecurityHeaders:
 
 
 # ============ Main Security Manager ============
+
 
 class SecurityManager:
     """Main security manager combining all security features.

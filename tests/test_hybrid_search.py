@@ -1,10 +1,12 @@
 """Tests for hybrid search RAG optimization module."""
+
 import pytest
+
 from webscout_mcp.hybrid_search import (
-    SearchResult,
-    HybridSearchConfig,
     BM25Index,
+    HybridSearchConfig,
     HybridSearchEngine,
+    SearchResult,
     create_hybrid_search,
 )
 
@@ -306,7 +308,9 @@ class TestConvenienceFunction:
 
     def test_create_with_semantic_fn(self):
         docs = {"doc1": "test"}
+
         def mock_fn(query, k):
             return []
+
         engine = create_hybrid_search(docs, semantic_search_fn=mock_fn)
         assert engine.semantic_search_fn is not None

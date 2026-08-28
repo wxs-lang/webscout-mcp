@@ -3,6 +3,7 @@
 All exceptions inherit from :class:`WebScoutError` so callers can catch
 the entire hierarchy with a single ``except`` clause.
 """
+
 from __future__ import annotations
 
 

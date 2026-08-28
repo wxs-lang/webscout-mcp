@@ -13,12 +13,15 @@ Features:
 - Configurable retrieval parameters
 - Result deduplication
 """
+
 from __future__ import annotations
+
 import math
 import re
-from dataclasses import dataclass, field
-from typing import Optional, Callable
 from collections import Counter, defaultdict
+from dataclasses import dataclass, field
+from typing import Callable, Optional
+
 from .logging import get_logger
 
 log = get_logger(__name__)
@@ -27,6 +30,7 @@ log = get_logger(__name__)
 @dataclass
 class SearchResult:
     """A single search result."""
+
     doc_id: str
     content: str
     bm25_score: float = 0.0
@@ -52,6 +56,7 @@ class SearchResult:
 @dataclass
 class HybridSearchConfig:
     """Configuration for hybrid search."""
+
     # BM25 parameters
     bm25_k1: float = 1.5
     bm25_b: float = 0.75
@@ -104,7 +109,7 @@ class BM25Index:
         if not text:
             return []
         text = text.lower()
-        return re.findall(r'[a-z0-9\u4e00-\u9fff]+', text)
+        return re.findall(r"[a-z0-9\u4e00-\u9fff]+", text)
 
     def add_document(self, doc_id: str, content: str) -> None:
         """Add a document to the index.
@@ -259,12 +264,14 @@ class HybridSearchEngine:
         results = self.bm25.search(query, top_k=top_k)
         search_results = []
         for doc_id, score in results:
-            search_results.append(SearchResult(
-                doc_id=doc_id,
-                content=self.documents.get(doc_id, ""),
-                bm25_score=score,
-                metadata=self.doc_metadata.get(doc_id, {}),
-            ))
+            search_results.append(
+                SearchResult(
+                    doc_id=doc_id,
+                    content=self.documents.get(doc_id, ""),
+                    bm25_score=score,
+                    metadata=self.doc_metadata.get(doc_id, {}),
+                )
+            )
         return search_results
 
     def _semantic_search(self, query: str, top_k: int) -> list[SearchResult]:
@@ -283,12 +290,14 @@ class HybridSearchEngine:
                     content = self.documents.get(doc_id, "")
                 else:
                     continue
-                search_results.append(SearchResult(
-                    doc_id=doc_id,
-                    content=content,
-                    semantic_score=score,
-                    metadata=self.doc_metadata.get(doc_id, {}),
-                ))
+                search_results.append(
+                    SearchResult(
+                        doc_id=doc_id,
+                        content=content,
+                        semantic_score=score,
+                        metadata=self.doc_metadata.get(doc_id, {}),
+                    )
+                )
             return search_results
         except Exception as exc:
             log.error("Semantic search failed", extra={"error": str(exc)})
@@ -359,8 +368,7 @@ class HybridSearchEngine:
         # Compute weighted fused score
         for result in result_map.values():
             result.fused_score = (
-                self.config.bm25_weight * result.bm25_score
-                + self.config.semantic_weight * result.semantic_score
+                self.config.bm25_weight * result.bm25_score + self.config.semantic_weight * result.semantic_score
             )
 
         # Sort by fused score
@@ -376,7 +384,7 @@ class HybridSearchEngine:
             return results
 
         query_tokens = set(self.bm25.tokenizer(query))
-        top_results = results[:self.config.rerank_top_k]
+        top_results = results[: self.config.rerank_top_k]
 
         for result in top_results:
             doc_tokens = self.bm25.tokenizer(result.content)
@@ -394,11 +402,7 @@ class HybridSearchEngine:
             exact_phrase_score = 1.0 if query.lower() in result.content.lower() else 0.0
 
             # Combined re-rank score
-            result.rerank_score = (
-                0.4 * overlap_score
-                + 0.3 * proximity_score
-                + 0.3 * exact_phrase_score
-            )
+            result.rerank_score = 0.4 * overlap_score + 0.3 * proximity_score + 0.3 * exact_phrase_score
 
             # Final score = 70% fused + 30% rerank
             result.final_score = 0.7 * result.fused_score + 0.3 * result.rerank_score
@@ -407,7 +411,7 @@ class HybridSearchEngine:
         top_results.sort(key=lambda x: x.final_score, reverse=True)
 
         # Keep remaining results as-is
-        return top_results + results[self.config.rerank_top_k:]
+        return top_results + results[self.config.rerank_top_k :]
 
     def _deduplicate(self, results: list[SearchResult]) -> list[SearchResult]:
         """Remove duplicate results."""
@@ -463,12 +467,15 @@ class HybridSearchEngine:
         final_results = [r for r in final_results if r.final_score >= self.config.min_score]
         final_results = final_results[:k]
 
-        log.debug("Hybrid search completed", extra={
-            "query": query,
-            "bm25_results": len(bm25_results),
-            "semantic_results": len(semantic_results),
-            "final_results": len(final_results),
-        })
+        log.debug(
+            "Hybrid search completed",
+            extra={
+                "query": query,
+                "bm25_results": len(bm25_results),
+                "semantic_results": len(semantic_results),
+                "final_results": len(final_results),
+            },
+        )
 
         return final_results
 

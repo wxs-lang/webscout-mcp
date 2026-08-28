@@ -12,13 +12,16 @@ Features:
 - Result diversity optimization
 - Confidence scoring
 """
+
 from __future__ import annotations
-import time
-import hashlib
+
 import asyncio
+import hashlib
+import time
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict, Any, Callable
+from typing import Any, Callable, Dict, List, Optional
 from urllib.parse import urlparse
+
 from .logging import get_logger
 
 log = get_logger(__name__)
@@ -27,6 +30,7 @@ log = get_logger(__name__)
 @dataclass
 class SearchResultItem:
     """Enhanced search result item."""
+
     title: str = ""
     url: str = ""
     snippet: str = ""
@@ -57,6 +61,7 @@ class SearchResultItem:
 @dataclass
 class SearchResponse:
     """Enhanced search response."""
+
     query: str = ""
     original_query: str = ""
     results: List[SearchResultItem] = field(default_factory=list)
@@ -93,17 +98,17 @@ class QueryUnderstanding:
     # Common query intents
     INTENT_PATTERNS = {
         "navigational": [
-            r'^(?:go to|open|visit|access|login to|sign in to)\s+',
-            r'\.(?:com|org|net|io|ai|app|dev)\s*$',
+            r"^(?:go to|open|visit|access|login to|sign in to)\s+",
+            r"\.(?:com|org|net|io|ai|app|dev)\s*$",
         ],
         "informational": [
-            r'^(?:what is|what are|how to|how do|why is|why does|when is|where is|who is|explain|define|meaning of)\s+',
-            r'\?(?:\s|$)',
-            r'^(?:guide|tutorial|documentation|docs|help|faq)\s+',
+            r"^(?:what is|what are|how to|how do|why is|why does|when is|where is|who is|explain|define|meaning of)\s+",
+            r"\?(?:\s|$)",
+            r"^(?:guide|tutorial|documentation|docs|help|faq)\s+",
         ],
         "transactional": [
-            r'^(?:buy|purchase|order|shop|price|cost|deal|discount|coupon)\s+',
-            r'\b(?:best|top|review|comparison|vs|versus)\b',
+            r"^(?:buy|purchase|order|shop|price|cost|deal|discount|coupon)\s+",
+            r"\b(?:best|top|review|comparison|vs|versus)\b",
         ],
     }
 
@@ -136,6 +141,7 @@ class QueryUnderstanding:
             Intent type: navigational, informational, transactional, or unknown.
         """
         import re
+
         query_lower = query.lower().strip()
 
         for intent, patterns in self.INTENT_PATTERNS.items():
@@ -206,12 +212,64 @@ class QueryUnderstanding:
         """
         # Common stop words
         stop_words = {
-            "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for",
-            "of", "with", "by", "from", "is", "are", "was", "were", "be", "been",
-            "what", "which", "who", "whom", "whose", "where", "when", "why", "how",
-            "do", "does", "did", "will", "would", "could", "should", "may", "might",
-            "can", "this", "that", "these", "those", "i", "you", "he", "she", "it",
-            "we", "they", "my", "your", "his", "her", "its", "our", "their",
+            "the",
+            "a",
+            "an",
+            "and",
+            "or",
+            "but",
+            "in",
+            "on",
+            "at",
+            "to",
+            "for",
+            "of",
+            "with",
+            "by",
+            "from",
+            "is",
+            "are",
+            "was",
+            "were",
+            "be",
+            "been",
+            "what",
+            "which",
+            "who",
+            "whom",
+            "whose",
+            "where",
+            "when",
+            "why",
+            "how",
+            "do",
+            "does",
+            "did",
+            "will",
+            "would",
+            "could",
+            "should",
+            "may",
+            "might",
+            "can",
+            "this",
+            "that",
+            "these",
+            "those",
+            "i",
+            "you",
+            "he",
+            "she",
+            "it",
+            "we",
+            "they",
+            "my",
+            "your",
+            "his",
+            "her",
+            "its",
+            "our",
+            "their",
         }
 
         words = query.lower().split()
@@ -274,10 +332,24 @@ class SearchRanker:
 
     # Domain authority heuristics
     HIGH_AUTHORITY_DOMAINS = {
-        "wikipedia.org", "github.com", "stackoverflow.com", "developer.mozilla.org",
-        "docs.python.org", "nodejs.org", "react.dev", "angular.io", "vuejs.org",
-        "aws.amazon.com", "cloud.google.com", "azure.microsoft.com", "kubernetes.io",
-        "docker.com", "medium.com", "dev.to", "nytimes.com", "bbc.com",
+        "wikipedia.org",
+        "github.com",
+        "stackoverflow.com",
+        "developer.mozilla.org",
+        "docs.python.org",
+        "nodejs.org",
+        "react.dev",
+        "angular.io",
+        "vuejs.org",
+        "aws.amazon.com",
+        "cloud.google.com",
+        "azure.microsoft.com",
+        "kubernetes.io",
+        "docker.com",
+        "medium.com",
+        "dev.to",
+        "nytimes.com",
+        "bbc.com",
     }
 
     def calculate_relevance(self, result: SearchResultItem, query: str) -> float:
@@ -372,10 +444,11 @@ class SearchRanker:
 
         # Check for date indicators in snippet or title
         import re
+
         date_patterns = [
-            r'202[4-6]',  # Recent years
-            r'\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s+\d{1,2},?\s+202[4-6]',
-            r'\d{1,2}/\d{1,2}/202[4-6]',
+            r"202[4-6]",  # Recent years
+            r"\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s+\d{1,2},?\s+202[4-6]",
+            r"\d{1,2}/\d{1,2}/202[4-6]",
         ]
 
         text = f"{result.title} {result.snippet}"
@@ -403,9 +476,7 @@ class SearchRanker:
 
             # Weighted final score
             result.final_score = (
-                result.relevance_score * 0.5
-                + result.authority_score * 0.3
-                + result.freshness_score * 0.2
+                result.relevance_score * 0.5 + result.authority_score * 0.3 + result.freshness_score * 0.2
             )
 
             # Confidence based on number of backends that returned this
@@ -530,6 +601,7 @@ class SearchOptimizer:
             # Fallback: try to use built-in search
             try:
                 from .search import WebSearch
+
                 searcher = WebSearch()
                 for backend in backends:
                     try:

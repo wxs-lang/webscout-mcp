@@ -8,16 +8,20 @@ Extracts common metadata from HTML:
 - Structural: canonical URL, favicon, robots meta
 - Links: all canonical, alternate, prev/next links
 """
+
 from __future__ import annotations
+
 from dataclasses import dataclass, field
 from typing import Optional
 from urllib.parse import urljoin
+
 from bs4 import BeautifulSoup
 
 
 @dataclass
 class PageMetadata:
     """Extracted page metadata."""
+
     title: str = ""
     description: str = ""
     keywords: list[str] = field(default_factory=list)
@@ -230,6 +234,7 @@ class MetadataExtractor:
             if script.string:
                 try:
                     import json
+
                     data = json.loads(script.string.strip())
                     if isinstance(data, list):
                         metadata.json_ld.extend(data)

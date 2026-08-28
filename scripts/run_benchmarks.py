@@ -12,14 +12,14 @@ Usage:
     python scripts/run_benchmarks.py --compare previous.json
 """
 
-import sys
-import os
-import time
-import json
-import statistics
 import argparse
+import json
+import os
+import statistics
+import sys
+import time
 from datetime import datetime
-from typing import Dict, List, Any, Optional
+from typing import Any, Dict, List, Optional
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -163,6 +163,7 @@ class BenchmarkRunner:
 
         try:
             import platform
+
             info["system"] = platform.system()
             info["release"] = platform.release()
             info["machine"] = platform.machine()
@@ -172,8 +173,9 @@ class BenchmarkRunner:
 
         try:
             import psutil
+
             info["cpu_count"] = psutil.cpu_count()
-            info["memory_total_gb"] = round(psutil.virtual_memory().total / (1024 ** 3), 2)
+            info["memory_total_gb"] = round(psutil.virtual_memory().total / (1024**3), 2)
         except Exception:
             pass
 
@@ -257,7 +259,7 @@ def run_security_benchmarks(runner: BenchmarkRunner):
     print("\n📊 Running Security Benchmarks...")
 
     try:
-        from webscout_mcp.security import SensitiveDataFilter, InputValidator, SSRFProtector
+        from webscout_mcp.security import InputValidator, SensitiveDataFilter, SSRFProtector
 
         # Sensitive data filtering
         filter_obj = SensitiveDataFilter()
@@ -299,7 +301,7 @@ def run_architecture_benchmarks(runner: BenchmarkRunner):
     print("\n📊 Running Architecture Benchmarks...")
 
     try:
-        from webscout_mcp.architecture import EventBus, DIContainer
+        from webscout_mcp.architecture import DIContainer, EventBus
 
         # Event bus
         bus = EventBus()
@@ -580,7 +582,9 @@ def main():
     print("-" * 76)
 
     for bench in summary["benchmarks"]:
-        print(f"{bench['name']:<40} {bench['mean_ms']:<12.3f} {bench['p95_ms']:<12.3f} {bench['throughput_per_sec']:<12.2f}")
+        print(
+            f"{bench['name']:<40} {bench['mean_ms']:<12.3f} {bench['p95_ms']:<12.3f} {bench['throughput_per_sec']:<12.2f}"
+        )
 
     print("\n✅ Benchmarks completed!")
 

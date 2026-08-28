@@ -10,13 +10,16 @@ Features:
 - Change history tracking and comparison
 - Configurable check intervals and thresholds
 """
+
 from __future__ import annotations
+
 import hashlib
 import json
 import time
 from dataclasses import dataclass, field
-from typing import Optional, Any, Callable
 from datetime import datetime
+from typing import Any, Callable, Optional
+
 from .logging import get_logger
 
 log = get_logger(__name__)
@@ -25,6 +28,7 @@ log = get_logger(__name__)
 @dataclass
 class MonitorConfig:
     """Configuration for web page monitor."""
+
     # Check interval in seconds
     check_interval: int = 300  # 5 minutes
     # Whether to monitor text content changes
@@ -58,6 +62,7 @@ class MonitorConfig:
     def from_env(cls) -> "MonitorConfig":
         """Load configuration from environment variables."""
         import os
+
         return cls(
             check_interval=int(os.environ.get("WEBSCOUT_MONITOR_INTERVAL", "300")),
             monitor_text=os.environ.get("WEBSCOUT_MONITOR_TEXT", "true").lower() == "true",
@@ -73,6 +78,7 @@ class MonitorConfig:
 @dataclass
 class ChangeRecord:
     """Record of a detected change."""
+
     url: str
     timestamp: str
     change_type: str  # text, html, keyword_appear, keyword_disappear, price
@@ -96,6 +102,7 @@ class ChangeRecord:
 @dataclass
 class AlertMessage:
     """Alert message to be sent."""
+
     title: str
     content: str
     url: str = ""
@@ -139,6 +146,7 @@ class WebhookAlert(AlertChannel):
     def send(self, message: AlertMessage) -> bool:
         try:
             import httpx
+
             payload = message.to_dict()
             response = httpx.post(
                 self.webhook_url,
@@ -178,8 +186,8 @@ class EmailAlert(AlertChannel):
     def send(self, message: AlertMessage) -> bool:
         try:
             import smtplib
-            from email.mime.text import MIMEText
             from email.mime.multipart import MIMEMultipart
+            from email.mime.text import MIMEText
 
             msg = MIMEMultipart()
             msg["From"] = self.from_addr
@@ -211,9 +219,9 @@ class DingTalkAlert(AlertChannel):
 
     def _sign(self) -> tuple[str, str]:
         """Generate signature for DingTalk robot."""
-        import hmac
-        import hashlib
         import base64
+        import hashlib
+        import hmac
         import urllib.parse
 
         timestamp = str(round(time.time() * 1000))
@@ -313,6 +321,7 @@ class WebMonitor:
     def _load_history(self) -> None:
         """Load change history from file."""
         import os
+
         history_path = os.path.expanduser(self.config.history_path)
         if os.path.exists(history_path):
             try:
@@ -327,12 +336,13 @@ class WebMonitor:
     def _save_history(self) -> None:
         """Save change history to file."""
         import os
+
         history_path = os.path.expanduser(self.config.history_path)
         os.makedirs(os.path.dirname(history_path), exist_ok=True)
         try:
             data = {}
             for url, records in self._history.items():
-                data[url] = [r.to_dict() for r in records[-self.config.max_history:]]
+                data[url] = [r.to_dict() for r in records[-self.config.max_history :]]
             with open(history_path, "w") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
         except Exception as exc:
@@ -356,13 +366,16 @@ class WebMonitor:
         # Fallback to simple HTTP fetch
         try:
             import httpx
+
             from .fetcher import get_default_headers
+
             response = httpx.get(url, headers=get_default_headers(), timeout=30.0)
             response.raise_for_status()
             html = response.text
             # Simple text extraction
             try:
                 from bs4 import BeautifulSoup
+
                 soup = BeautifulSoup(html, "html.parser")
                 text = soup.get_text(separator="\n", strip=True)
             except ImportError:
@@ -379,6 +392,7 @@ class WebMonitor:
     def _generate_diff(self, old: str, new: str) -> str:
         """Generate a simple diff between old and new content."""
         import difflib
+
         old_lines = old.splitlines()
         new_lines = new.splitlines()
         diff = difflib.unified_diff(
@@ -390,7 +404,7 @@ class WebMonitor:
         )
         diff_text = "\n".join(diff)
         if len(diff_text) > self.config.max_diff_length:
-            diff_text = diff_text[:self.config.max_diff_length] + "\n... (truncated)"
+            diff_text = diff_text[: self.config.max_diff_length] + "\n... (truncated)"
         return diff_text
 
     def check_url(self, url: str) -> list[ChangeRecord]:

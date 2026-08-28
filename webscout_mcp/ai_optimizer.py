@@ -13,13 +13,16 @@ Features:
 - Response caching
 - Token usage tracking
 """
+
 from __future__ import annotations
-import re
-import json
+
 import hashlib
+import json
+import re
 import time
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict, Any, Tuple, Callable
+from typing import Any, Callable, Dict, List, Optional, Tuple
+
 from .logging import get_logger
 
 log = get_logger(__name__)
@@ -28,6 +31,7 @@ log = get_logger(__name__)
 @dataclass
 class AIResponse:
     """Enhanced AI response with metadata."""
+
     content: str = ""
     parsed_content: Optional[Any] = None
     model: str = ""
@@ -63,6 +67,7 @@ class AIResponse:
 @dataclass
 class PromptTemplate:
     """Reusable prompt template with variables."""
+
     name: str = ""
     template: str = ""
     variables: List[str] = field(default_factory=list)
@@ -248,7 +253,7 @@ class OutputValidator:
         errors = []
         try:
             # Try to extract JSON from markdown code blocks
-            json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', output)
+            json_match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", output)
             if json_match:
                 output = json_match.group(1)
 
@@ -295,11 +300,11 @@ class HallucinationDetector:
 
     # Common hallucination indicators
     HALLUCINATION_PATTERNS = [
-        r'I (?:think|believe|guess|suppose)',
-        r'It (?:seems|appears|looks) (?:like|that)',
-        r'probably|possibly|maybe|perhaps',
-        r'I\'m not (?:sure|certain)',
-        r'could be|might be',
+        r"I (?:think|believe|guess|suppose)",
+        r"It (?:seems|appears|looks) (?:like|that)",
+        r"probably|possibly|maybe|perhaps",
+        r"I\'m not (?:sure|certain)",
+        r"could be|might be",
     ]
 
     def detect(self, output: str, context: str = "") -> Tuple[float, List[str]]:
@@ -325,7 +330,7 @@ class HallucinationDetector:
         # Check for claims not supported by context
         if context:
             # Simple check: extract key claims and verify against context
-            sentences = re.split(r'[.!?]+', output)
+            sentences = re.split(r"[.!?]+", output)
             unsupported = 0
             total = 0
             for sentence in sentences:
@@ -346,7 +351,7 @@ class HallucinationDetector:
                     indicators.append(f"Many claims may be unsupported by context: {unsupported}/{total}")
 
         # Check for specific numbers/dates that might be fabricated
-        numbers = re.findall(r'\b\d{4,}\b', output)
+        numbers = re.findall(r"\b\d{4,}\b", output)
         if numbers and context:
             for number in numbers:
                 if number not in context:
@@ -401,7 +406,7 @@ class ModelOptimizer:
             return 0
         # Mixed estimation
         char_count = len(text)
-        chinese_chars = len(re.findall(r'[\u4e00-\u9fff]', text))
+        chinese_chars = len(re.findall(r"[\u4e00-\u9fff]", text))
         english_chars = char_count - chinese_chars
 
         estimated = int(english_chars / 4 + chinese_chars / 1.5)
@@ -529,9 +534,7 @@ class AIOptimizer:
 
         # Hallucination detection
         if self.enable_hallucination_detection and context:
-            hallucination_score, indicators = self.hallucination_detector.detect(
-                response.content, context
-            )
+            hallucination_score, indicators = self.hallucination_detector.detect(response.content, context)
             response.hallucination_score = hallucination_score
             response.confidence = max(0, 1.0 - hallucination_score)
 
@@ -548,7 +551,7 @@ class AIOptimizer:
         """Fallback processing without AI."""
         if task == "summarize":
             # Simple extractive summarization (first 3 sentences)
-            sentences = re.split(r'(?<=[.!?])\s+', text)
+            sentences = re.split(r"(?<=[.!?])\s+", text)
             return " ".join(sentences[:3])
         elif task == "classify":
             return "unknown"

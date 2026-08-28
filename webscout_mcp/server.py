@@ -9,6 +9,7 @@ Exposes the following tools to AI agents:
 - ``cache_stats`` - Show cache statistics.
 - ``cache_clear`` - Clear the cache.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -83,7 +84,8 @@ def create_server(config: Optional[Config] = None) -> MCPServer:
             log.error("web_search failed", extra={"query": query, "error": str(exc)})
             return json.dumps(
                 {"error": f"Search failed: {exc}", "query": query},
-                ensure_ascii=False, indent=2,
+                ensure_ascii=False,
+                indent=2,
             )
         output = [
             {
@@ -97,7 +99,8 @@ def create_server(config: Optional[Config] = None) -> MCPServer:
         ]
         return json.dumps(
             {"query": query, "count": len(output), "results": output},
-            ensure_ascii=False, indent=2,
+            ensure_ascii=False,
+            indent=2,
         )
 
     @mcp.tool()
@@ -110,8 +113,11 @@ def create_server(config: Optional[Config] = None) -> MCPServer:
     ) -> str:
         """Fetch a URL and return its content, optionally extracting the main article."""
         result = await fetcher.fetch(
-            url=url, extract=extract, output_format=output_format,
-            max_chars=max_chars, bypass_cache=bypass_cache,
+            url=url,
+            extract=extract,
+            output_format=output_format,
+            max_chars=max_chars,
+            bypass_cache=bypass_cache,
         )
         return json.dumps(result.to_dict(), ensure_ascii=False, indent=2)
 
@@ -133,8 +139,12 @@ def create_server(config: Optional[Config] = None) -> MCPServer:
         max_pages = max(1, min(max_pages, 50))
         concurrency = max(1, min(concurrency, 20))
         result = await crawler.crawl(
-            seed_url=seed_url, max_depth=max_depth, max_pages=max_pages,
-            same_domain_only=same_domain_only, extract=extract, concurrency=concurrency,
+            seed_url=seed_url,
+            max_depth=max_depth,
+            max_pages=max_pages,
+            same_domain_only=same_domain_only,
+            extract=extract,
+            concurrency=concurrency,
         )
         return json.dumps(result.to_dict(), ensure_ascii=False, indent=2)
 

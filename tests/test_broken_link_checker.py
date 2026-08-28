@@ -1,9 +1,11 @@
 """Tests for broken link checker module."""
+
 import pytest
+
 from webscout_mcp.broken_link_checker import (
-    LinkCheckResult,
-    BrokenLinkReport,
     BrokenLinkChecker,
+    BrokenLinkReport,
+    LinkCheckResult,
     check_broken_links,
 )
 

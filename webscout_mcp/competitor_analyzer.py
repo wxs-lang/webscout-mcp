@@ -14,9 +14,12 @@ Features:
 - Actionable recommendations
 - Exportable comparison reports
 """
+
 from __future__ import annotations
+
 from dataclasses import dataclass, field
 from typing import Optional
+
 from .logging import get_logger
 
 log = get_logger(__name__)
@@ -25,6 +28,7 @@ log = get_logger(__name__)
 @dataclass
 class SiteMetrics:
     """Metrics for a single site."""
+
     url: str = ""
     name: str = ""
     # SEO metrics
@@ -94,6 +98,7 @@ class SiteMetrics:
 @dataclass
 class ComparisonResult:
     """Result of competitor comparison."""
+
     sites: list[SiteMetrics] = field(default_factory=list)
     comparison_matrix: dict[str, list] = field(default_factory=dict)
     winner: Optional[str] = None
@@ -308,10 +313,21 @@ class CompetitorAnalyzer:
 
         # Build comparison matrix
         metrics_to_compare = [
-            "overall_score", "seo_score", "performance_score", "content_score",
-            "title_length", "heading_count", "image_count", "images_with_alt",
-            "internal_links", "external_links", "html_size_kb", "dom_node_count",
-            "request_count", "word_count", "broken_link_count",
+            "overall_score",
+            "seo_score",
+            "performance_score",
+            "content_score",
+            "title_length",
+            "heading_count",
+            "image_count",
+            "images_with_alt",
+            "internal_links",
+            "external_links",
+            "html_size_kb",
+            "dom_node_count",
+            "request_count",
+            "word_count",
+            "broken_link_count",
         ]
 
         for metric in metrics_to_compare:
@@ -366,9 +382,7 @@ class CompetitorAnalyzer:
         for site in sites:
             if site.image_count > 0 and site.images_with_alt < site.image_count:
                 missing = site.image_count - site.images_with_alt
-                recommendations.append(
-                    f"{site.name}: Add alt text to {missing} image(s)"
-                )
+                recommendations.append(f"{site.name}: Add alt text to {missing} image(s)")
 
             if not site.has_schema:
                 recommendations.append(f"{site.name}: Add Schema.org structured data")
@@ -380,9 +394,7 @@ class CompetitorAnalyzer:
                 recommendations.append(f"{site.name}: Add cache-control headers")
 
             if site.broken_link_count > 0:
-                recommendations.append(
-                    f"{site.name}: Fix {site.broken_link_count} broken link(s)"
-                )
+                recommendations.append(f"{site.name}: Fix {site.broken_link_count} broken link(s)")
 
         return recommendations
 

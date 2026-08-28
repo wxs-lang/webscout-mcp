@@ -1,4 +1,5 @@
 """SQLite-backed HTTP cache with TTL, size limits, and in-memory LRU layer."""
+
 from __future__ import annotations
 
 import hashlib
@@ -101,8 +102,7 @@ class Cache:
     def _init_db(self) -> None:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
-                """
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS cache (
                     key TEXT PRIMARY KEY,
                     value TEXT NOT NULL,
@@ -111,8 +111,7 @@ class Cache:
                     created_at REAL NOT NULL,
                     expires_at REAL NOT NULL
                 )
-                """
-            )
+                """)
             conn.execute("CREATE INDEX IF NOT EXISTS idx_expires ON cache(expires_at)")
             conn.commit()
 
@@ -212,9 +211,7 @@ class Cache:
     def stats(self) -> dict:
         """Return cache statistics including memory cache hit rate."""
         with sqlite3.connect(self.db_path) as conn:
-            row = conn.execute(
-                "SELECT COUNT(*), COALESCE(SUM(size), 0) FROM cache"
-            ).fetchone()
+            row = conn.execute("SELECT COUNT(*), COALESCE(SUM(size), 0) FROM cache").fetchone()
         count, total_size = row
         return {
             "entries": count,
@@ -238,9 +235,7 @@ class Cache:
             if total <= self.max_size_bytes:
                 return
             # Delete oldest entries until under limit
-            rows = conn.execute(
-                "SELECT key, size FROM cache ORDER BY created_at ASC"
-            ).fetchall()
+            rows = conn.execute("SELECT key, size FROM cache ORDER BY created_at ASC").fetchall()
             running = total
             for key, size in rows:
                 if running <= self.max_size_bytes:

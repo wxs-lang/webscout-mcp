@@ -13,11 +13,14 @@ Features:
 - Channel fallback
 - Rate limiting
 """
+
 from __future__ import annotations
+
 import json
 import time
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict, Any
+from typing import Any, Dict, List, Optional
+
 from .logging import get_logger
 
 log = get_logger(__name__)
@@ -26,6 +29,7 @@ log = get_logger(__name__)
 @dataclass
 class AlertMessage:
     """Alert message to send."""
+
     title: str = ""
     content: str = ""
     level: str = "info"  # info, warning, error, critical
@@ -47,6 +51,7 @@ class AlertMessage:
 @dataclass
 class AlertResult:
     """Result of sending an alert."""
+
     success: bool = False
     channel: str = ""
     message: str = ""
@@ -105,6 +110,7 @@ class WebhookAlert(BaseAlertChannel):
 
         try:
             import requests
+
             payload = message.to_dict()
             response = requests.post(self.webhook_url, json=payload, timeout=10)
             result.status_code = response.status_code
@@ -152,8 +158,8 @@ class EmailAlert(BaseAlertChannel):
 
         try:
             import smtplib
-            from email.mime.text import MIMEText
             from email.mime.multipart import MIMEMultipart
+            from email.mime.text import MIMEText
 
             msg = MIMEMultipart()
             msg["From"] = self.from_addr
@@ -191,9 +197,9 @@ class DingTalkAlert(BaseAlertChannel):
         if not self.secret:
             return self.webhook_url, {}
 
-        import hmac
-        import hashlib
         import base64
+        import hashlib
+        import hmac
         import urllib.parse
 
         timestamp = str(round(time.time() * 1000))
@@ -215,6 +221,7 @@ class DingTalkAlert(BaseAlertChannel):
 
         try:
             import requests
+
             url, _ = self._sign()
             content = self.format_message(message)
             payload = {
@@ -251,6 +258,7 @@ class WeComAlert(BaseAlertChannel):
 
         try:
             import requests
+
             content = self.format_message(message)
             payload = {
                 "msgtype": "markdown",
@@ -285,6 +293,7 @@ class FeishuAlert(BaseAlertChannel):
 
         try:
             import requests
+
             content = self.format_message(message)
             payload = {
                 "msg_type": "interactive",
@@ -326,6 +335,7 @@ class SlackAlert(BaseAlertChannel):
 
         try:
             import requests
+
             content = self.format_message(message)
             payload = {
                 "text": content,
@@ -361,6 +371,7 @@ class TelegramAlert(BaseAlertChannel):
 
         try:
             import requests
+
             content = self.format_message(message)
             url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
             payload = {
@@ -396,6 +407,7 @@ class ServerChanAlert(BaseAlertChannel):
 
         try:
             import requests
+
             url = f"https://sctapi.ftqq.com/{self.send_key}.send"
             content = self.format_message(message)
             payload = {
@@ -470,11 +482,13 @@ class AlertManager:
                     result = channel.send(message)
                     results.append(result)
                 except Exception as exc:
-                    results.append(AlertResult(
-                        channel=channel_name,
-                        success=False,
-                        error=str(exc),
-                    ))
+                    results.append(
+                        AlertResult(
+                            channel=channel_name,
+                            success=False,
+                            error=str(exc),
+                        )
+                    )
 
         return results
 
@@ -508,15 +522,17 @@ def create_alert_manager(config: Dict[str, Any]) -> AlertManager:
 
     if "email" in config:
         email_cfg = config["email"]
-        manager.add_channel(EmailAlert(
-            smtp_server=email_cfg["smtp_server"],
-            smtp_port=email_cfg.get("smtp_port", 587),
-            username=email_cfg["username"],
-            password=email_cfg["password"],
-            from_addr=email_cfg["from_addr"],
-            to_addrs=email_cfg["to_addrs"],
-            use_tls=email_cfg.get("use_tls", True),
-        ))
+        manager.add_channel(
+            EmailAlert(
+                smtp_server=email_cfg["smtp_server"],
+                smtp_port=email_cfg.get("smtp_port", 587),
+                username=email_cfg["username"],
+                password=email_cfg["password"],
+                from_addr=email_cfg["from_addr"],
+                to_addrs=email_cfg["to_addrs"],
+                use_tls=email_cfg.get("use_tls", True),
+            )
+        )
 
     if "dingtalk" in config:
         dt_cfg = config["dingtalk"]

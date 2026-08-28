@@ -16,12 +16,15 @@ Features:
 - Multiple browser profiles (Chrome, Firefox, Safari, Edge)
 - Fingerprint consistency validation
 """
+
 from __future__ import annotations
-import random
+
 import hashlib
 import json
+import random
 from dataclasses import dataclass, field
 from typing import Optional
+
 from .logging import get_logger
 
 log = get_logger(__name__)
@@ -30,6 +33,7 @@ log = get_logger(__name__)
 @dataclass
 class BrowserFingerprint:
     """A complete browser fingerprint."""
+
     # Browser identity
     browser_type: str = "chrome"  # chrome, firefox, safari, edge
     browser_version: str = "120.0.0.0"
@@ -124,16 +128,10 @@ class FingerprintGenerator:
 
     # Browser user agent templates
     UA_TEMPLATES = {
-        "chrome": (
-            "Mozilla/5.0 ({platform}) AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/{version} Safari/537.36"
-        ),
-        "firefox": (
-            "Mozilla/5.0 ({platform}; rv:{version}) Gecko/20100101 Firefox/{version}"
-        ),
+        "chrome": ("Mozilla/5.0 ({platform}) AppleWebKit/537.36 (KHTML, like Gecko) " "Chrome/{version} Safari/537.36"),
+        "firefox": ("Mozilla/5.0 ({platform}; rv:{version}) Gecko/20100101 Firefox/{version}"),
         "safari": (
-            "Mozilla/5.0 ({platform}) AppleWebKit/605.1.15 (KHTML, like Gecko) "
-            "Version/{version} Safari/605.1.15"
+            "Mozilla/5.0 ({platform}) AppleWebKit/605.1.15 (KHTML, like Gecko) " "Version/{version} Safari/605.1.15"
         ),
         "edge": (
             "Mozilla/5.0 ({platform}) AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -150,8 +148,12 @@ class FingerprintGenerator:
 
     # Chrome versions
     CHROME_VERSIONS = [
-        "120.0.0.0", "119.0.6045.199", "119.0.6045.160",
-        "118.0.5993.118", "118.0.5993.89", "117.0.5938.132",
+        "120.0.0.0",
+        "119.0.6045.199",
+        "119.0.6045.160",
+        "118.0.5993.118",
+        "118.0.5993.89",
+        "117.0.5938.132",
     ]
 
     # Firefox versions
@@ -187,13 +189,24 @@ class FingerprintGenerator:
 
     # Screen resolutions
     SCREEN_RESOLUTIONS = [
-        (1920, 1080), (2560, 1440), (1366, 768), (1536, 864),
-        (1440, 900), (1680, 1050), (1280, 720), (3840, 2160),
+        (1920, 1080),
+        (2560, 1440),
+        (1366, 768),
+        (1536, 864),
+        (1440, 900),
+        (1680, 1050),
+        (1280, 720),
+        (3840, 2160),
     ]
 
     # Hardware configs
     HARDWARE_CONFIGS = [
-        (4, 4), (8, 8), (8, 16), (12, 16), (16, 32), (6, 8),
+        (4, 4),
+        (8, 8),
+        (8, 16),
+        (12, 16),
+        (16, 32),
+        (6, 8),
     ]
 
     # WebGL vendors/renderers
@@ -207,11 +220,28 @@ class FingerprintGenerator:
 
     # Common fonts
     COMMON_FONTS = [
-        "Arial", "Arial Black", "Arial Narrow", "Calibri", "Cambria",
-        "Comic Sans MS", "Consolas", "Courier", "Courier New", "Georgia",
-        "Helvetica", "Impact", "Lucida Console", "Lucida Sans Unicode",
-        "Microsoft Sans Serif", "Palatino Linotype", "Segoe UI", "Tahoma",
-        "Times", "Times New Roman", "Trebuchet MS", "Verdana",
+        "Arial",
+        "Arial Black",
+        "Arial Narrow",
+        "Calibri",
+        "Cambria",
+        "Comic Sans MS",
+        "Consolas",
+        "Courier",
+        "Courier New",
+        "Georgia",
+        "Helvetica",
+        "Impact",
+        "Lucida Console",
+        "Lucida Sans Unicode",
+        "Microsoft Sans Serif",
+        "Palatino Linotype",
+        "Segoe UI",
+        "Tahoma",
+        "Times",
+        "Times New Roman",
+        "Trebuchet MS",
+        "Verdana",
     ]
 
     # Chrome plugins
@@ -315,7 +345,9 @@ class FingerprintGenerator:
         if fp.browser_type in ("chrome", "edge"):
             fp.plugins = self.CHROME_PLUGINS.copy()
         elif fp.browser_type == "firefox":
-            fp.plugins = [{"name": "PDF Viewer", "description": "Portable Document Format", "mimeTypes": ["application/pdf"]}]
+            fp.plugins = [
+                {"name": "PDF Viewer", "description": "Portable Document Format", "mimeTypes": ["application/pdf"]}
+            ]
         else:
             fp.plugins = []
 

@@ -9,8 +9,10 @@ This file demonstrates the core functionality:
 
 Run with: python examples/basic_usage.py
 """
+
 import asyncio
-from webscout_mcp import Config, Fetcher, SearchEngine, Extractor
+
+from webscout_mcp import Config, Extractor, Fetcher, SearchEngine
 
 
 async def example_fetch():

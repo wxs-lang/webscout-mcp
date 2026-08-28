@@ -13,12 +13,15 @@ Features:
 - Graph export (JSON, GraphML, GEXF)
 - Visualization data generation
 """
+
 from __future__ import annotations
-import re
+
 import json
+import re
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from typing import Optional
-from collections import defaultdict, Counter
+
 from .logging import get_logger
 
 log = get_logger(__name__)
@@ -27,6 +30,7 @@ log = get_logger(__name__)
 @dataclass
 class Entity:
     """An entity in the knowledge graph."""
+
     id: str
     name: str
     type: str  # person, organization, location, date, product, technology, other
@@ -46,6 +50,7 @@ class Entity:
 @dataclass
 class Relationship:
     """A relationship between two entities."""
+
     source: str
     target: str
     type: str = "related_to"
@@ -67,6 +72,7 @@ class Relationship:
 @dataclass
 class KnowledgeGraph:
     """A knowledge graph with entities and relationships."""
+
     entities: dict[str, Entity] = field(default_factory=dict)
     relationships: list[Relationship] = field(default_factory=list)
     source_text: str = ""
@@ -112,8 +118,8 @@ class KnowledgeGraph:
             '<attributes class="node">',
             '<attribute id="type" title="type" type="string"/>',
             '<attribute id="count" title="count" type="integer"/>',
-            '</attributes>',
-            '<nodes>',
+            "</attributes>",
+            "<nodes>",
         ]
         for entity in self.entities.values():
             lines.append(
@@ -121,13 +127,13 @@ class KnowledgeGraph:
                 f'<attvalues><attvalue for="type" value="{entity.type}"/>'
                 f'<attvalue for="count" value="{entity.count}"/></attvalues></node>'
             )
-        lines.append('</nodes><edges>')
+        lines.append("</nodes><edges>")
         for i, rel in enumerate(self.relationships):
             lines.append(
                 f'<edge id="{i}" source="{rel.source}" target="{rel.target}" '
                 f'weight="{rel.weight}" label="{rel.type}"/>'
             )
-        lines.append('</edges></graph></gexf>')
+        lines.append("</edges></graph></gexf>")
         return "\n".join(lines)
 
 
@@ -144,18 +150,18 @@ class KnowledgeGraphBuilder:
     # Entity type patterns
     ENTITY_PATTERNS = {
         "date": [
-            r'\b\d{4}[-/]\d{1,2}[-/]\d{1,2}\b',  # YYYY-MM-DD
-            r'\b\d{1,2}[-/]\d{1,2}[-/]\d{4}\b',  # MM-DD-YYYY
-            r'\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2},? \d{4}\b',
+            r"\b\d{4}[-/]\d{1,2}[-/]\d{1,2}\b",  # YYYY-MM-DD
+            r"\b\d{1,2}[-/]\d{1,2}[-/]\d{4}\b",  # MM-DD-YYYY
+            r"\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2},? \d{4}\b",
         ],
         "url": [
             r'https?://[^\s<>"\']+',
         ],
         "email": [
-            r'[\w.+-]+@[\w-]+\.[\w.-]+',
+            r"[\w.+-]+@[\w-]+\.[\w.-]+",
         ],
         "number": [
-            r'\b\d+(?:\.\d+)?%?\b',
+            r"\b\d+(?:\.\d+)?%?\b",
         ],
     }
 
@@ -164,10 +170,36 @@ class KnowledgeGraphBuilder:
 
     # Common technology keywords
     TECH_KEYWORDS = {
-        "python", "javascript", "java", "golang", "rust", "react", "vue", "angular",
-        "docker", "kubernetes", "aws", "azure", "gcp", "cloud", "ai", "ml", "nlp",
-        "database", "sql", "nosql", "redis", "mongodb", "postgresql", "mysql",
-        "api", "rest", "graphql", "microservices", "serverless", "blockchain",
+        "python",
+        "javascript",
+        "java",
+        "golang",
+        "rust",
+        "react",
+        "vue",
+        "angular",
+        "docker",
+        "kubernetes",
+        "aws",
+        "azure",
+        "gcp",
+        "cloud",
+        "ai",
+        "ml",
+        "nlp",
+        "database",
+        "sql",
+        "nosql",
+        "redis",
+        "mongodb",
+        "postgresql",
+        "mysql",
+        "api",
+        "rest",
+        "graphql",
+        "microservices",
+        "serverless",
+        "blockchain",
     }
 
     def __init__(
@@ -213,7 +245,7 @@ class KnowledgeGraphBuilder:
                             seen[entity_id].count += 1
 
         # Extract capitalized word sequences (potential people/organizations)
-        capitalized_pattern = r'\b(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b'
+        capitalized_pattern = r"\b(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b"
         for match in re.finditer(capitalized_pattern, text):
             name = match.group().strip()
             words = name.split()
@@ -232,7 +264,7 @@ class KnowledgeGraphBuilder:
                 seen[entity_id].count += 1
 
         # Extract technology keywords
-        words = re.findall(r'\b[a-z]{2,}\b', text.lower())
+        words = re.findall(r"\b[a-z]{2,}\b", text.lower())
         for word in words:
             if word in self.TECH_KEYWORDS:
                 entity_id = f"tech_{word}"
@@ -253,7 +285,18 @@ class KnowledgeGraphBuilder:
             return "organization"
 
         # Check for location indicators
-        location_indicators = {"Street", "Avenue", "Road", "City", "State", "Country", "Park", "Lake", "River", "Mountain"}
+        location_indicators = {
+            "Street",
+            "Avenue",
+            "Road",
+            "City",
+            "State",
+            "Country",
+            "Park",
+            "Lake",
+            "River",
+            "Mountain",
+        }
         if any(w in location_indicators for w in words):
             return "location"
 
@@ -266,8 +309,8 @@ class KnowledgeGraphBuilder:
 
     def _normalize_id(self, name: str) -> str:
         """Normalize entity name to ID."""
-        normalized = re.sub(r'[^a-zA-Z0-9]', '_', name.lower())
-        normalized = re.sub(r'_+', '_', normalized).strip('_')
+        normalized = re.sub(r"[^a-zA-Z0-9]", "_", name.lower())
+        normalized = re.sub(r"_+", "_", normalized).strip("_")
         return normalized[:50]
 
     def extract_relationships(
@@ -362,10 +405,13 @@ class KnowledgeGraphBuilder:
         relationships = self.extract_relationships(text, entities)
         graph.relationships = relationships
 
-        log.debug("Knowledge graph built", extra={
-            "entities": graph.num_entities,
-            "relationships": graph.num_relationships,
-        })
+        log.debug(
+            "Knowledge graph built",
+            extra={
+                "entities": graph.num_entities,
+                "relationships": graph.num_relationships,
+            },
+        )
 
         return graph
 

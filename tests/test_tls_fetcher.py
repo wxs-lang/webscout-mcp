@@ -1,10 +1,12 @@
 """Tests for TLS fingerprint-aware fetcher (tls_fetcher module)."""
+
 import pytest
+
 from webscout_mcp.tls_fetcher import (
     TLSFetcher,
     TLSFetchResult,
-    is_tls_fetcher_available,
     get_supported_browsers,
+    is_tls_fetcher_available,
 )
 
 

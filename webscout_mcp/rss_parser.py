@@ -4,11 +4,14 @@ RSS/Atom feed parser.
 Parses RSS 2.0 and Atom 1.0 feeds, extracting feed metadata and entries.
 Supports common fields: title, link, description, pubDate, author, categories.
 """
+
 from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 from urllib.parse import urljoin
+
 import httpx
 from bs4 import BeautifulSoup
 
@@ -16,6 +19,7 @@ from bs4 import BeautifulSoup
 @dataclass
 class FeedEntry:
     """A single feed entry (item)."""
+
     title: str = ""
     link: str = ""
     description: str = ""
@@ -43,6 +47,7 @@ class FeedEntry:
 @dataclass
 class Feed:
     """Parsed RSS/Atom feed."""
+
     title: str = ""
     link: str = ""
     description: str = ""

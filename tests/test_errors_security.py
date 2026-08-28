@@ -1,38 +1,41 @@
 """Tests for unified errors and security modules."""
-import pytest
+
 import time
+
+import pytest
+
 from webscout_mcp.errors import (
-    WebScoutError,
     ConfigurationError,
-    MissingConfigError,
-    InvalidConfigError,
-    NetworkError,
     ConnectionError,
-    TimeoutError,
+    ErrorRegistry,
     HTTPError,
-    SearchError,
-    ValidationError,
+    InvalidConfigError,
     InvalidURLError,
+    MissingConfigError,
+    NetworkError,
     RateLimitError,
+    SearchError,
     SecurityError,
     SSRFError,
-    ErrorRegistry,
-    safe_execute,
+    TimeoutError,
+    ValidationError,
+    WebScoutError,
     format_error,
     get_error_context,
+    safe_execute,
 )
 from webscout_mcp.security import (
-    SSRFProtector,
     InputValidator,
-    TokenBucket,
     RateLimiter,
-    SensitiveDataFilter,
     SecurityHeaders,
     SecurityManager,
+    SensitiveDataFilter,
+    SSRFProtector,
+    TokenBucket,
 )
 
-
 # ============ Error Tests ============
+
 
 class TestWebScoutError:
     """Test base error class."""
@@ -141,15 +144,19 @@ class TestErrorUtilities:
     def test_safe_execute_error(self):
         def raise_error():
             raise ValueError("test")
+
         result = safe_execute(raise_error, default="fallback")
         assert result == "fallback"
 
     def test_safe_execute_on_error(self):
         errors = []
+
         def raise_error():
             raise ValueError("test")
+
         def on_error(exc):
             errors.append(str(exc))
+
         safe_execute(raise_error, default=None, on_error=on_error)
         assert len(errors) == 1
 
@@ -171,6 +178,7 @@ class TestErrorUtilities:
 
 
 # ============ Security Tests ============
+
 
 class TestSSRFProtector:
     """Test SSRF protection."""

@@ -1,8 +1,10 @@
 """Tests for content quality assessment module."""
+
 import pytest
+
 from webscout_mcp.content_quality import (
-    ContentQualityMetrics,
     ContentQualityAnalyzer,
+    ContentQualityMetrics,
     analyze_content_quality,
 )
 
@@ -75,12 +77,14 @@ class TestContentQualityAnalyzer:
     def test_analyze_long_content(self):
         analyzer = ContentQualityAnalyzer()
         # Generate a longer text
-        text = " ".join([
-            f"This is sentence number {i} about content quality analysis. "
-            f"Quality analysis helps improve readability and SEO. "
-            f"Good content should be clear, concise, and well-structured."
-            for i in range(50)
-        ])
+        text = " ".join(
+            [
+                f"This is sentence number {i} about content quality analysis. "
+                f"Quality analysis helps improve readability and SEO. "
+                f"Good content should be clear, concise, and well-structured."
+                for i in range(50)
+            ]
+        )
         metrics = analyzer.analyze(text)
         assert metrics.word_count > 300
         assert metrics.content_depth_score >= 60

@@ -10,7 +10,8 @@ Demonstrates how to use the AI processor for:
 - Document comparison
 - Entity extraction
 """
-from webscout_mcp.ai_processor import AIProcessor, AIConfig
+
+from webscout_mcp.ai_processor import AIConfig, AIProcessor
 
 
 def example_summarization():

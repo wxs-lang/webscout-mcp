@@ -12,10 +12,13 @@ Supports multiple LLM backends:
 - Doubao (ByteDance) API
 - Custom OpenAI-compatible API
 """
+
 from __future__ import annotations
+
 import json
 from dataclasses import dataclass, field
-from typing import Optional, Any
+from typing import Any, Optional
+
 from .logging import get_logger
 
 log = get_logger(__name__)
@@ -24,6 +27,7 @@ log = get_logger(__name__)
 @dataclass
 class AIConfig:
     """Configuration for AI processor."""
+
     # Backend: ollama, openai, doubao, custom
     backend: str = "ollama"
     # Model name
@@ -45,6 +49,7 @@ class AIConfig:
     def from_env(cls) -> "AIConfig":
         """Load configuration from environment variables."""
         import os
+
         return cls(
             backend=os.environ.get("WEBSCOUT_AI_BACKEND", "ollama"),
             model=os.environ.get("WEBSCOUT_AI_MODEL", "qwen2.5:7b"),
@@ -59,6 +64,7 @@ class AIConfig:
 @dataclass
 class AIResponse:
     """Response from AI processor."""
+
     content: str
     model: str = ""
     backend: str = ""
@@ -102,6 +108,7 @@ class AIProcessor:
         """Check if Ollama is available locally."""
         try:
             import httpx
+
             response = httpx.get("http://localhost:11434/api/tags", timeout=5.0)
             return response.status_code == 200
         except Exception:
@@ -129,6 +136,7 @@ class AIProcessor:
         """Create Ollama client."""
         try:
             import httpx
+
             return httpx.Client(
                 base_url="http://localhost:11434",
                 timeout=self.config.timeout,
@@ -140,6 +148,7 @@ class AIProcessor:
         """Create OpenAI client."""
         try:
             from openai import OpenAI
+
             return OpenAI(
                 api_key=self.config.api_key,
                 base_url=self.config.api_base or None,
@@ -152,6 +161,7 @@ class AIProcessor:
         """Create Doubao (ByteDance) client."""
         try:
             from openai import OpenAI
+
             return OpenAI(
                 api_key=self.config.api_key,
                 base_url=self.config.api_base or "https://ark.cn-beijing.volces.com/api/v3",
@@ -164,6 +174,7 @@ class AIProcessor:
         """Create custom OpenAI-compatible client."""
         try:
             from openai import OpenAI
+
             return OpenAI(
                 api_key=self.config.api_key,
                 base_url=self.config.api_base,
@@ -354,7 +365,9 @@ class AIProcessor:
         Returns:
             AIResponse with extracted entities.
         """
-        system_prompt = "你是一个专业的实体提取助手。请从文本中提取人名、地名、组织机构、时间、数字等实体，按类别分组输出。"
+        system_prompt = (
+            "你是一个专业的实体提取助手。请从文本中提取人名、地名、组织机构、时间、数字等实体，按类别分组输出。"
+        )
         prompt = f"请从以下文本中提取实体：\n\n{text}"
         return self._generate(prompt, system_prompt)
 
@@ -371,6 +384,7 @@ def get_available_backends() -> list[str]:
     # Check Ollama
     try:
         import httpx
+
         response = httpx.get("http://localhost:11434/api/tags", timeout=2.0)
         if response.status_code == 200:
             backends.append("ollama")
@@ -378,6 +392,7 @@ def get_available_backends() -> list[str]:
         pass
     # Check API key based backends
     import os
+
     if os.environ.get("WEBSCOUT_AI_API_KEY"):
         backends.extend(["openai", "doubao", "custom"])
     return backends

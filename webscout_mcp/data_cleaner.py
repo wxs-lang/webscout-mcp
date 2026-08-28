@@ -14,12 +14,15 @@ Features:
 - Configurable rules
 - Progress reporting
 """
+
 from __future__ import annotations
+
 import re
 import unicodedata
-from dataclasses import dataclass, field
-from typing import Optional, Callable, Any
 from collections import OrderedDict
+from dataclasses import dataclass, field
+from typing import Any, Callable, Optional
+
 from .logging import get_logger
 
 log = get_logger(__name__)
@@ -28,6 +31,7 @@ log = get_logger(__name__)
 @dataclass
 class CleaningResult:
     """Result of data cleaning."""
+
     original_count: int = 0
     cleaned_count: int = 0
     removed_count: int = 0
@@ -66,7 +70,7 @@ class TextCleaner:
         """Remove HTML tags from text."""
         if not text:
             return ""
-        return re.sub(r'<[^>]+>', '', text)
+        return re.sub(r"<[^>]+>", "", text)
 
     @staticmethod
     def decode_html_entities(text: str) -> str:
@@ -82,22 +86,22 @@ class TextCleaner:
         """Normalize whitespace (multiple spaces to single, trim)."""
         if not text:
             return ""
-        return re.sub(r'\s+', ' ', text).strip()
+        return re.sub(r"\s+", " ", text).strip()
 
     @staticmethod
     def remove_special_chars(text: str, keep: str = "") -> str:
         """Remove special characters, keeping alphanumeric and specified chars."""
         if not text:
             return ""
-        pattern = rf'[^a-zA-Z0-9\s{re.escape(keep)}]'
-        return re.sub(pattern, '', text)
+        pattern = rf"[^a-zA-Z0-9\s{re.escape(keep)}]"
+        return re.sub(pattern, "", text)
 
     @staticmethod
     def normalize_unicode(text: str) -> str:
         """Normalize Unicode to NFKC form."""
         if not text:
             return ""
-        return unicodedata.normalize('NFKC', text)
+        return unicodedata.normalize("NFKC", text)
 
     @staticmethod
     def to_lowercase(text: str) -> str:
@@ -114,28 +118,28 @@ class TextCleaner:
         """Remove URLs from text."""
         if not text:
             return ""
-        return re.sub(r'https?://\S+|www\.\S+', '', text)
+        return re.sub(r"https?://\S+|www\.\S+", "", text)
 
     @staticmethod
     def remove_emails(text: str) -> str:
         """Remove email addresses from text."""
         if not text:
             return ""
-        return re.sub(r'[\w.+-]+@[\w-]+\.[\w.-]+', '', text)
+        return re.sub(r"[\w.+-]+@[\w-]+\.[\w.-]+", "", text)
 
     @staticmethod
     def remove_phone_numbers(text: str) -> str:
         """Remove phone numbers from text."""
         if not text:
             return ""
-        return re.sub(r'[\+\(]?[1-9][0-9 .\-\(\)]{8,}[0-9]', '', text)
+        return re.sub(r"[\+\(]?[1-9][0-9 .\-\(\)]{8,}[0-9]", "", text)
 
     @staticmethod
     def truncate(text: str, max_length: int, suffix: str = "...") -> str:
         """Truncate text to max length."""
         if not text or len(text) <= max_length:
             return text or ""
-        return text[:max_length - len(suffix)] + suffix
+        return text[: max_length - len(suffix)] + suffix
 
     @staticmethod
     def clean_full(text: str) -> str:
@@ -242,8 +246,12 @@ class DataCleaner:
 
         result.cleaned_count = len(cleaned_records)
         result.stats = {
-            "retention_rate": round(result.cleaned_count / result.original_count * 100, 1) if result.original_count > 0 else 0,
-            "modification_rate": round(result.modified_count / result.original_count * 100, 1) if result.original_count > 0 else 0,
+            "retention_rate": (
+                round(result.cleaned_count / result.original_count * 100, 1) if result.original_count > 0 else 0
+            ),
+            "modification_rate": (
+                round(result.modified_count / result.original_count * 100, 1) if result.original_count > 0 else 0
+            ),
         }
 
         return cleaned_records, result
@@ -287,6 +295,7 @@ class CleaningPipeline:
         Returns:
             Self for chaining.
         """
+
         def clean_text(record: dict) -> dict:
             for field in fields:
                 if field in record and isinstance(record[field], str):
@@ -306,6 +315,7 @@ class CleaningPipeline:
         Returns:
             Self for chaining.
         """
+
         def validate(record: dict) -> Optional[dict]:
             if field not in record or not validator(record[field]):
                 return None
@@ -324,6 +334,7 @@ class CleaningPipeline:
         Returns:
             Self for chaining.
         """
+
         def transform(record: dict) -> dict:
             if field in record:
                 record[field] = transformer(record[field])
@@ -362,6 +373,7 @@ class CleaningPipeline:
         Returns:
             Self for chaining.
         """
+
         def filter_record(record: dict) -> Optional[dict]:
             return record if condition(record) else None
 
@@ -411,7 +423,9 @@ class CleaningPipeline:
 
         result.cleaned_count = len(processed)
         result.stats = {
-            "retention_rate": round(result.cleaned_count / result.original_count * 100, 1) if result.original_count > 0 else 0,
+            "retention_rate": (
+                round(result.cleaned_count / result.original_count * 100, 1) if result.original_count > 0 else 0
+            ),
             "step_removals": step_stats,
             "num_steps": len(self._steps),
         }

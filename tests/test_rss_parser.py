@@ -1,11 +1,13 @@
 """
 Tests for rss_parser module.
 """
+
 import pytest
+
 from webscout_mcp.rss_parser import (
-    RSSParser,
     Feed,
     FeedEntry,
+    RSSParser,
     parse_feed,
 )
 

@@ -13,10 +13,13 @@ Features:
 - Language detection
 - Readability scoring
 """
+
 from __future__ import annotations
+
 import re
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+
 from .logging import get_logger
 
 log = get_logger(__name__)
@@ -25,6 +28,7 @@ log = get_logger(__name__)
 @dataclass
 class ExtractedContent:
     """Enhanced extracted content result."""
+
     title: str = ""
     content: str = ""
     raw_html: str = ""
@@ -71,20 +75,20 @@ class ContentQualityAssessor:
 
     # Common boilerplate patterns to detect
     BOILERPLATE_PATTERNS = [
-        r'cookie (policy|notice|consent)',
-        r'privacy policy',
-        r'terms of (service|use)',
-        r'copyright \d{4}',
-        r'all rights reserved',
-        r'subscribe to (our )?newsletter',
-        r'sign up for (our )?newsletter',
-        r'follow us on',
-        r'share (this|on)',
-        r'related (articles|posts|content)',
-        r'read more',
-        r'click here',
-        r'advertisement',
-        r'sponsored (content|link)',
+        r"cookie (policy|notice|consent)",
+        r"privacy policy",
+        r"terms of (service|use)",
+        r"copyright \d{4}",
+        r"all rights reserved",
+        r"subscribe to (our )?newsletter",
+        r"sign up for (our )?newsletter",
+        r"follow us on",
+        r"share (this|on)",
+        r"related (articles|posts|content)",
+        r"read more",
+        r"click here",
+        r"advertisement",
+        r"sponsored (content|link)",
     ]
 
     def assess_quality(self, content: str, title: str = "") -> Tuple[float, Dict[str, float]]:
@@ -168,7 +172,7 @@ class ContentQualityAssessor:
         avg_word_length = sum(len(word) for word in words) / len(words)
 
         # Sentence count
-        sentences = re.split(r'[.!?。！？]+', text)
+        sentences = re.split(r"[.!?。！？]+", text)
         sentences = [s for s in sentences if s.strip()]
         avg_sentence_length = len(words) / max(1, len(sentences))
 
@@ -191,27 +195,27 @@ class ContentQualityAssessor:
             return "unknown"
 
         # Chinese character detection
-        chinese_chars = len(re.findall(r'[\u4e00-\u9fff]', text))
+        chinese_chars = len(re.findall(r"[\u4e00-\u9fff]", text))
         if chinese_chars > 10:
             return "zh"
 
         # Japanese character detection
-        japanese_chars = len(re.findall(r'[\u3040-\u309f\u30a0-\u30ff]', text))
+        japanese_chars = len(re.findall(r"[\u3040-\u309f\u30a0-\u30ff]", text))
         if japanese_chars > 10:
             return "ja"
 
         # Korean character detection
-        korean_chars = len(re.findall(r'[\uac00-\ud7af]', text))
+        korean_chars = len(re.findall(r"[\uac00-\ud7af]", text))
         if korean_chars > 10:
             return "ko"
 
         # Cyrillic detection
-        cyrillic_chars = len(re.findall(r'[\u0400-\u04ff]', text))
+        cyrillic_chars = len(re.findall(r"[\u0400-\u04ff]", text))
         if cyrillic_chars > 10:
             return "ru"
 
         # Default to English for Latin script
-        if re.search(r'[a-zA-Z]', text):
+        if re.search(r"[a-zA-Z]", text):
             return "en"
 
         return "unknown"
@@ -298,6 +302,7 @@ class MultiAlgorithmExtractor:
         if algorithm == "trafilatura":
             try:
                 import trafilatura
+
                 content = trafilatura.extract(
                     html,
                     url=url,
@@ -321,10 +326,11 @@ class MultiAlgorithmExtractor:
         elif algorithm == "readability":
             try:
                 from readability import Document
+
                 doc = Document(html)
                 content = doc.summary(html_partial=False)
                 # Remove HTML tags from summary
-                content = re.sub(r'<[^>]+>', '', content)
+                content = re.sub(r"<[^>]+>", "", content)
                 content = content.strip()
                 return {
                     "content": content,
@@ -340,6 +346,7 @@ class MultiAlgorithmExtractor:
         elif algorithm == "html2text":
             try:
                 import html2text
+
                 h = html2text.HTML2Text()
                 h.ignore_links = True
                 h.ignore_images = True
@@ -362,12 +369,12 @@ class MultiAlgorithmExtractor:
     def _simple_extract(self, html: str) -> str:
         """Simple fallback extraction (remove HTML tags)."""
         # Remove script and style elements
-        text = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL | re.IGNORECASE)
-        text = re.sub(r'<style[^>]*>.*?</style>', '', text, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(r"<script[^>]*>.*?</script>", "", html, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(r"<style[^>]*>.*?</style>", "", text, flags=re.DOTALL | re.IGNORECASE)
         # Remove HTML tags
-        text = re.sub(r'<[^>]+>', ' ', text)
+        text = re.sub(r"<[^>]+>", " ", text)
         # Normalize whitespace
-        text = re.sub(r'\s+', ' ', text).strip()
+        text = re.sub(r"\s+", " ", text).strip()
         return text
 
     def _post_process(self, result: ExtractedContent) -> ExtractedContent:
@@ -375,8 +382,8 @@ class MultiAlgorithmExtractor:
         content = result.content
 
         # Clean up excessive whitespace
-        content = re.sub(r'\n{3,}', '\n\n', content)
-        content = re.sub(r'[ \t]+', ' ', content)
+        content = re.sub(r"\n{3,}", "\n\n", content)
+        content = re.sub(r"[ \t]+", " ", content)
         content = content.strip()
 
         result.content = content
@@ -394,11 +401,7 @@ class MultiAlgorithmExtractor:
         result.language = self.quality_assessor.detect_language(content)
 
         # Article detection
-        result.is_article = (
-            result.word_count >= 200
-            and result.paragraph_count >= 3
-            and result.quality_score >= 0.5
-        )
+        result.is_article = result.word_count >= 200 and result.paragraph_count >= 3 and result.quality_score >= 0.5
 
         return result
 

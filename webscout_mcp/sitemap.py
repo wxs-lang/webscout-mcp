@@ -3,6 +3,7 @@
 Parses sitemap.xml and sitemap index files, extracts all URLs, and supports
 incremental fetching with lastmod filtering.
 """
+
 from __future__ import annotations
 
 import asyncio

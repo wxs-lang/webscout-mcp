@@ -1,22 +1,25 @@
 """Tests for health check and operations monitoring module."""
-import pytest
+
 import time
+
+import pytest
+
 from webscout_mcp.health import (
-    HealthStatus,
-    SystemMetrics,
-    HealthChecker,
-    SystemMonitor,
     DependencyChecker,
+    HealthChecker,
+    HealthStatus,
     ServiceStatus,
-    health_checker,
-    system_monitor,
+    SystemMetrics,
+    SystemMonitor,
     dependency_checker,
-    service_status,
     get_health_report,
+    health_checker,
+    service_status,
+    system_monitor,
 )
 
-
 # ============ HealthStatus Tests ============
+
 
 class TestHealthStatus:
     """Test HealthStatus class."""
@@ -39,6 +42,7 @@ class TestHealthStatus:
 
 # ============ SystemMetrics Tests ============
 
+
 class TestSystemMetrics:
     """Test SystemMetrics class."""
 
@@ -58,6 +62,7 @@ class TestSystemMetrics:
 
 
 # ============ HealthChecker Tests ============
+
 
 class TestHealthChecker:
     """Test HealthChecker class."""
@@ -133,6 +138,7 @@ class TestHealthChecker:
 
 # ============ SystemMonitor Tests ============
 
+
 class TestSystemMonitor:
     """Test SystemMonitor class."""
 
@@ -167,6 +173,7 @@ class TestSystemMonitor:
 
 
 # ============ DependencyChecker Tests ============
+
 
 class TestDependencyChecker:
     """Test DependencyChecker class."""
@@ -208,6 +215,7 @@ class TestDependencyChecker:
 
 
 # ============ ServiceStatus Tests ============
+
 
 class TestServiceStatus:
     """Test ServiceStatus class."""
@@ -276,6 +284,7 @@ class TestServiceStatus:
 
 
 # ============ Health Report Tests ============
+
 
 class TestHealthReport:
     """Test health report function."""

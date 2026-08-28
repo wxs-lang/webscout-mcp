@@ -17,11 +17,14 @@ Features:
 - Robots meta tag check
 - Overall SEO score and recommendations
 """
+
 from __future__ import annotations
+
 import re
 from dataclasses import dataclass, field
 from typing import Optional
 from urllib.parse import urlparse
+
 from .logging import get_logger
 
 log = get_logger(__name__)
@@ -30,6 +33,7 @@ log = get_logger(__name__)
 @dataclass
 class SEOMetrics:
     """SEO analysis metrics."""
+
     # Meta tags
     title: str = ""
     title_length: int = 0
@@ -185,6 +189,7 @@ class SEOAnalyzer:
 
         try:
             from bs4 import BeautifulSoup
+
             soup = BeautifulSoup(html, "html.parser")
 
             # Analyze meta tags
@@ -324,7 +329,7 @@ class SEOAnalyzer:
         metrics.url_has_hyphens = "-" in path
 
         # Check for stop words in URL
-        path_words = set(re.findall(r'[a-z]+', path.lower()))
+        path_words = set(re.findall(r"[a-z]+", path.lower()))
         metrics.url_has_stop_words = bool(path_words & self.URL_STOP_WORDS)
 
     def _analyze_content(self, soup, text: str, metrics: SEOMetrics) -> None:
@@ -334,7 +339,7 @@ class SEOAnalyzer:
             text = soup.get_text(separator=" ", strip=True)
 
         metrics.content_length = len(text)
-        words = re.findall(r'\b\w+\b', text)
+        words = re.findall(r"\b\w+\b", text)
         metrics.word_count = len(words)
 
         # Ideal content length: 300+ words for good SEO
@@ -373,6 +378,7 @@ class SEOAnalyzer:
             for script in json_ld_scripts:
                 try:
                     import json
+
                     data = json.loads(script.string)
                     if isinstance(data, dict):
                         schema_type = data.get("@type", "")
@@ -502,7 +508,9 @@ class SEOAnalyzer:
             metrics.issues.append("Missing meta description")
             metrics.recommendations.append("Add a meta description (150-160 characters) to improve click-through rates")
         elif not metrics.meta_description_ok:
-            metrics.warnings.append(f"Meta description length is {metrics.meta_description_length} characters (ideal: 150-160)")
+            metrics.warnings.append(
+                f"Meta description length is {metrics.meta_description_length} characters (ideal: 150-160)"
+            )
 
         if not metrics.has_canonical:
             metrics.warnings.append("Missing canonical URL")
@@ -555,7 +563,9 @@ class SEOAnalyzer:
         elif metrics.overall_score >= 60:
             metrics.recommendations.append("Good start! Address the issues above to improve your SEO score.")
         else:
-            metrics.recommendations.append("Significant SEO improvements needed. Start with the critical issues listed above.")
+            metrics.recommendations.append(
+                "Significant SEO improvements needed. Start with the critical issues listed above."
+            )
 
 
 def analyze_seo(html: str, url: str = "", text: str = "") -> SEOMetrics:

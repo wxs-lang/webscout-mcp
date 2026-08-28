@@ -6,7 +6,8 @@ Demonstrates how to use the vector store for:
 - RAG (Retrieval-Augmented Generation) question answering
 - Document management
 """
-from webscout_mcp.vector_store import VectorStore, RAGEngine, Document, VectorStoreConfig
+
+from webscout_mcp.vector_store import Document, RAGEngine, VectorStore, VectorStoreConfig
 
 
 def example_semantic_search():

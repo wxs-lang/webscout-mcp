@@ -1,7 +1,9 @@
 """
 Tests for metadata_extractor module.
 """
+
 import pytest
+
 from webscout_mcp.metadata_extractor import (
     MetadataExtractor,
     PageMetadata,

@@ -1,23 +1,25 @@
 """Tests for plugin system."""
+
 import pytest
-from webscout_mcp.plugin_system import (
-    Plugin,
-    SearchBackendPlugin,
-    ExtractorPlugin,
-    AlertChannelPlugin,
-    PostProcessorPlugin,
-    PluginInfo,
-    PluginManager,
-    get_plugin_manager,
-    register_plugin,
-)
+
 from webscout_mcp.builtin_plugins import (
-    ExampleSearchBackend,
-    ReadabilityExtractor,
     ConsoleAlertChannel,
     ContentLengthFilter,
-    LanguageDetector,
     DuplicateRemover,
+    ExampleSearchBackend,
+    LanguageDetector,
+    ReadabilityExtractor,
+)
+from webscout_mcp.plugin_system import (
+    AlertChannelPlugin,
+    ExtractorPlugin,
+    Plugin,
+    PluginInfo,
+    PluginManager,
+    PostProcessorPlugin,
+    SearchBackendPlugin,
+    get_plugin_manager,
+    register_plugin,
 )
 
 

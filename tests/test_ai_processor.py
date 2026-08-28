@@ -1,11 +1,13 @@
 """Tests for AI processor module."""
+
 import pytest
+
 from webscout_mcp.ai_processor import (
     AIConfig,
-    AIResponse,
     AIProcessor,
-    is_ai_available,
+    AIResponse,
     get_available_backends,
+    is_ai_available,
 )
 
 

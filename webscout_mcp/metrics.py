@@ -13,12 +13,15 @@ Features:
 - In-memory metrics storage
 - Metric registration and discovery
 """
+
 from __future__ import annotations
-import time
+
 import threading
-from dataclasses import dataclass, field
-from typing import Optional, Callable
+import time
 from collections import defaultdict
+from dataclasses import dataclass, field
+from typing import Callable, Optional
+
 from .logging import get_logger
 
 log = get_logger(__name__)
@@ -27,6 +30,7 @@ log = get_logger(__name__)
 @dataclass
 class Metric:
     """Base metric class."""
+
     name: str
     help: str = ""
     type: str = "gauge"
@@ -324,9 +328,7 @@ class MetricsRegistry:
             "num_gauges": len(self._gauges),
             "num_histograms": len(self._histograms),
             "num_summaries": len(self._summaries),
-            "total_metrics": (
-                len(self._counters) + len(self._gauges) + len(self._histograms) + len(self._summaries)
-            ),
+            "total_metrics": (len(self._counters) + len(self._gauges) + len(self._histograms) + len(self._summaries)),
         }
 
 

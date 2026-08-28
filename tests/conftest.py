@@ -2,13 +2,16 @@
 
 Provides shared fixtures, test configuration, and integration/performance test setup.
 """
+
 from __future__ import annotations
+
 import os
+import shutil
 import sys
 import tempfile
-import shutil
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
+
 import pytest
 
 # Add project root to path
@@ -17,23 +20,14 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # ============ Test Configuration ============
 
+
 def pytest_configure(config):
     """Register custom markers."""
-    config.addinivalue_line(
-        "markers", "e2e: mark end-to-end network tests (skipped in CI)"
-    )
-    config.addinivalue_line(
-        "markers", "integration: marks tests as integration tests"
-    )
-    config.addinivalue_line(
-        "markers", "performance: marks tests as performance benchmarks"
-    )
-    config.addinivalue_line(
-        "markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')"
-    )
-    config.addinivalue_line(
-        "markers", "network: marks tests that require network access"
-    )
+    config.addinivalue_line("markers", "e2e: mark end-to-end network tests (skipped in CI)")
+    config.addinivalue_line("markers", "integration: marks tests as integration tests")
+    config.addinivalue_line("markers", "performance: marks tests as performance benchmarks")
+    config.addinivalue_line("markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')")
+    config.addinivalue_line("markers", "network: marks tests that require network access")
 
 
 def pytest_collection_modifyitems(config, items):
@@ -48,6 +42,7 @@ def pytest_collection_modifyitems(config, items):
 
 
 # ============ Common Fixtures ============
+
 
 @pytest.fixture
 def temp_dir():
@@ -215,6 +210,7 @@ def mock_search_results():
 
 # ============ Integration Test Fixtures ============
 
+
 @pytest.fixture
 def integration_test_config():
     """Provide configuration for integration tests."""
@@ -258,6 +254,7 @@ def test_environment(integration_test_config, temp_dir):
 
 # ============ Performance Test Fixtures ============
 
+
 @pytest.fixture
 def performance_test_config():
     """Provide configuration for performance tests."""
@@ -283,6 +280,7 @@ def large_html_sample(sample_html):
 
 
 # ============ Utility Fixtures ============
+
 
 @pytest.fixture
 def timer():

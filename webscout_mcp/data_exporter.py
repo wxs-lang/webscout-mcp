@@ -11,12 +11,15 @@ Features:
 - Metadata export
 - Append mode for incremental exports
 """
+
 from __future__ import annotations
-import json
+
 import csv
+import json
 import os
 from dataclasses import dataclass, field
-from typing import Optional, Any, Union
+from typing import Any, Optional, Union
+
 from .logging import get_logger
 
 log = get_logger(__name__)
@@ -25,6 +28,7 @@ log = get_logger(__name__)
 @dataclass
 class ExportConfig:
     """Configuration for data export."""
+
     # Output format: json, csv, excel, parquet, sqlite, markdown, html
     format: str = "json"
     # Output file path
@@ -68,6 +72,7 @@ class ExportConfig:
 @dataclass
 class ExportResult:
     """Result of data export."""
+
     success: bool = False
     output_path: str = ""
     format: str = ""
@@ -126,7 +131,9 @@ class DataExporter:
             return result
 
         if result.format not in self.SUPPORTED_FORMATS:
-            result.error_message = f"Unsupported format: {result.format}. Supported: {', '.join(sorted(self.SUPPORTED_FORMATS))}"
+            result.error_message = (
+                f"Unsupported format: {result.format}. Supported: {', '.join(sorted(self.SUPPORTED_FORMATS))}"
+            )
             return result
 
         if not data:
@@ -161,12 +168,15 @@ class DataExporter:
                 result.file_size_kb = round(result.file_size_bytes / 1024, 2)
 
             result.success = True
-            log.info("Data exported successfully", extra={
-                "format": result.format,
-                "path": result.output_path,
-                "records": result.record_count,
-                "size": result.file_size_kb,
-            })
+            log.info(
+                "Data exported successfully",
+                extra={
+                    "format": result.format,
+                    "path": result.output_path,
+                    "records": result.record_count,
+                    "size": result.file_size_kb,
+                },
+            )
 
         except Exception as exc:
             result.success = False

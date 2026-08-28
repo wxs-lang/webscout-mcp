@@ -3,23 +3,26 @@
 Tests module interactions and end-to-end workflows.
 These tests verify that multiple modules work together correctly.
 """
-import pytest
-import time
+
 import json
 import os
-from webscout_mcp.search_optimizer import SearchOptimizer, SearchResultItem
-from webscout_mcp.content_extractor import ContentExtractor, ExtractedContent
-from webscout_mcp.rag_optimizer import RAGOptimizer, Chunk
-from webscout_mcp.browser_optimizer import BrowserOptimizer
-from webscout_mcp.ai_optimizer import AIOptimizer
-from webscout_mcp.errors import WebScoutError, ValidationError
-from webscout_mcp.security import SecurityManager, SSRFProtector
-from webscout_mcp.async_utils import PerformanceMonitor, ConcurrencyLimiter
-from webscout_mcp.architecture import EventBus, DIContainer
-from webscout_mcp.health import HealthChecker, SystemMonitor
+import time
 
+import pytest
+
+from webscout_mcp.ai_optimizer import AIOptimizer
+from webscout_mcp.architecture import DIContainer, EventBus
+from webscout_mcp.async_utils import ConcurrencyLimiter, PerformanceMonitor
+from webscout_mcp.browser_optimizer import BrowserOptimizer
+from webscout_mcp.content_extractor import ContentExtractor, ExtractedContent
+from webscout_mcp.errors import ValidationError, WebScoutError
+from webscout_mcp.health import HealthChecker, SystemMonitor
+from webscout_mcp.rag_optimizer import Chunk, RAGOptimizer
+from webscout_mcp.search_optimizer import SearchOptimizer, SearchResultItem
+from webscout_mcp.security import SecurityManager, SSRFProtector
 
 # ============ Search + Content Extraction Integration ============
+
 
 class TestSearchContentIntegration:
     """Test search and content extraction working together."""
@@ -71,16 +74,14 @@ class TestSearchContentIntegration:
 
         # Convert search results to extraction batch
         extractor = ContentExtractor()
-        pages = [
-            {"html": sample_html, "url": result.url, "title": result.title}
-            for result in search_result.results
-        ]
+        pages = [{"html": sample_html, "url": result.url, "title": result.title} for result in search_result.results]
         extracted_results = extractor.extract_batch(pages)
         assert len(extracted_results) == 3
         assert all(isinstance(r, ExtractedContent) for r in extracted_results)
 
 
 # ============ RAG + AI Integration ============
+
 
 class TestRAGAIIntegration:
     """Test RAG and AI processing working together."""
@@ -128,6 +129,7 @@ class TestRAGAIIntegration:
 
 # ============ Security + Search Integration ============
 
+
 class TestSecuritySearchIntegration:
     """Test security validation working with search operations."""
 
@@ -166,6 +168,7 @@ class TestSecuritySearchIntegration:
 
 
 # ============ Performance Monitoring Integration ============
+
 
 class TestPerformanceMonitoringIntegration:
     """Test performance monitoring across multiple modules."""
@@ -206,6 +209,7 @@ class TestPerformanceMonitoringIntegration:
 
 
 # ============ Event Bus + Module Integration ============
+
 
 class TestEventBusIntegration:
     """Test event bus coordinating module interactions."""
@@ -254,6 +258,7 @@ class TestEventBusIntegration:
 
 # ============ Health Check Integration ============
 
+
 class TestHealthCheckIntegration:
     """Test health checks with actual module states."""
 
@@ -294,12 +299,13 @@ class TestHealthCheckIntegration:
 
 # ============ Error Handling Integration ============
 
+
 class TestErrorHandlingIntegration:
     """Test error handling across module boundaries."""
 
     def test_error_propagation_in_pipeline(self):
         """Test that errors propagate correctly through pipeline."""
-        from webscout_mcp.errors import safe_execute, WebScoutError
+        from webscout_mcp.errors import WebScoutError, safe_execute
 
         # Test safe execution with error
         def failing_operation():
@@ -310,7 +316,7 @@ class TestErrorHandlingIntegration:
 
     def test_error_context_extraction(self):
         """Test extracting context from errors."""
-        from webscout_mcp.errors import get_error_context, ValidationError
+        from webscout_mcp.errors import ValidationError, get_error_context
 
         error = ValidationError(field="url", message="Invalid URL", value="bad-url")
         context = get_error_context(error)
@@ -320,7 +326,7 @@ class TestErrorHandlingIntegration:
 
     def test_error_registry_lookup(self):
         """Test looking up errors by code."""
-        from webscout_mcp.errors import ErrorRegistry, ConfigurationError
+        from webscout_mcp.errors import ConfigurationError, ErrorRegistry
 
         error_class = ErrorRegistry.get_by_code("WS100")
         assert error_class == ConfigurationError
@@ -331,6 +337,7 @@ class TestErrorHandlingIntegration:
 
 
 # ============ Dependency Injection Integration ============
+
 
 class TestDependencyInjectionIntegration:
     """Test dependency injection across modules."""
