@@ -258,6 +258,63 @@ class TestUserAgentRotator:
         rotator2 = UserAgentRotator(seed=123)
         assert rotator1.get_user_agent() == rotator2.get_user_agent()
 
+    def test_get_fingerprint_chrome_version_parse_failure(self):
+        """Test get_fingerprint handles Chrome version parse failure."""
+        rotator = UserAgentRotator(seed=42)
+        original_get = rotator.get_user_agent
+
+        def mock_get():
+            # Contains "Chrome" but not "Chrome/" (triggers IndexError on split)
+            # Also no "Safari/" so detected as chrome
+            return "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome"
+
+        rotator.get_user_agent = mock_get
+        fp = rotator.get_fingerprint()
+        assert isinstance(fp, BrowserFingerprint)
+        assert fp.browser_type == "chrome"
+        assert "120" in fp.sec_ch_ua  # Default version on parse failure
+        rotator.get_user_agent = original_get
+
+    def test_get_fingerprint_macintosh_platform(self):
+        """Test get_fingerprint detects Macintosh platform."""
+        rotator = UserAgentRotator(seed=42)
+        original_get = rotator.get_user_agent
+
+        def mock_get():
+            return "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+        rotator.get_user_agent = mock_get
+        fp = rotator.get_fingerprint()
+        assert fp.sec_ch_ua_platform == '"macOS"'
+        rotator.get_user_agent = original_get
+
+    def test_get_fingerprint_linux_platform(self):
+        """Test get_fingerprint detects Linux platform."""
+        rotator = UserAgentRotator(seed=42)
+        original_get = rotator.get_user_agent
+
+        def mock_get():
+            return "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+        rotator.get_user_agent = mock_get
+        fp = rotator.get_fingerprint()
+        assert fp.sec_ch_ua_platform == '"Linux"'
+        rotator.get_user_agent = original_get
+
+    def test_get_fingerprint_android_platform(self):
+        """Test get_fingerprint detects Android platform."""
+        rotator = UserAgentRotator(mobile=True, seed=42)
+        original_get = rotator.get_user_agent
+
+        def mock_get():
+            return "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+
+        rotator.get_user_agent = mock_get
+        fp = rotator.get_fingerprint()
+        assert fp.sec_ch_ua_platform == '"Android"'
+        assert fp.sec_ch_ua_mobile == "?1"
+        rotator.get_user_agent = original_get
+
 
 class TestUtilityFunctions:
     """Tests for utility functions."""
