@@ -1,0 +1,47 @@
+# Docker Compose for webscout-mcp
+# https://github.com/wxs-lang/webscout-mcp
+version: "3.8"
+services:
+  webscout-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: wxslang/webscout-mcp:latest
+    container_name: webscout-mcp
+    restart: unless-stopped
+    ports:
+      - "8000:8000"  # SSE transport port
+    volumes:
+      - webscout-cache:/home/appuser/.cache/webscout
+    environment:
+      - WEBSCOUT_LOG_LEVEL=INFO
+      - WEBSCOUT_CACHE_TTL=7200
+      - WEBSCOUT_CACHE_MAX_SIZE_MB=512
+      - WEBSCOUT_REQUEST_TIMEOUT=15.0
+      - WEBSCOUT_MAX_RETRIES=3
+      - WEBSCOUT_RATE_LIMIT_PER_SECOND=2.0
+      - WEBSCOUT_SEARCH_MAX_RESULTS=10
+      - WEBSCOUT_SEARCH_BACKENDS=bing,duckduckgo
+      - WEBSCOUT_SEARCH_MERGE_BACKENDS=false
+      - WEBSCOUT_CRAWLER_CONCURRENCY=5
+      - WEBSCOUT_CRAWLER_DELAY=0.0
+      - WEBSCOUT_CRAWLER_MAX_RETRIES=2
+      - WEBSCOUT_RESPECT_ROBOTS=true
+      - WEBSCOUT_EXTRACT_OUTPUT_FORMAT=markdown
+    command: ["serve", "--transport", "sse", "--host", "0.0.0.0", "--port", "8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - webscout-network
+
+volumes:
+  webscout-cache:
+    driver: local
+
+networks:
+  webscout-network:
+    driver: bridge

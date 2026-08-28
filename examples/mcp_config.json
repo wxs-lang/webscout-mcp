@@ -1,0 +1,75 @@
+{
+  "_comment": "MCP server configuration for webscout-mcp. Add this to your MCP client config.",
+  "mcpServers": {
+    "webscout": {
+      "_comment": "Basic configuration - works with Claude Desktop, Cursor, Codex, etc.",
+      "command": "webscout-mcp",
+      "args": []
+    },
+    "webscout-custom": {
+      "_comment": "Custom configuration with environment variables",
+      "command": "webscout-mcp",
+      "args": [],
+      "env": {
+        "WEBSCOUT_CACHE_TTL": "3600",
+        "WEBSCOUT_SEARCH_MAX_RESULTS": "10",
+        "WEBSCOUT_SEARCH_MERGE_BACKENDS": "1",
+        "WEBSCOUT_CRAWLER_MAX_DEPTH": "2",
+        "WEBSCOUT_CRAWLER_MAX_PAGES": "20",
+        "WEBSCOUT_CRAWLER_CONCURRENCY": "5",
+        "WEBSCOUT_CRAWLER_DELAY": "0.5",
+        "WEBSCOUT_CRAWLER_MAX_RETRIES": "3",
+        "WEBSCOUT_RESPECT_ROBOTS": "true",
+        "WEBSCOUT_LOG_LEVEL": "WARNING"
+      }
+    },
+    "webscout-proxy": {
+      "_comment": "Configuration with HTTP/HTTPS proxy",
+      "command": "webscout-mcp",
+      "args": [],
+      "env": {
+        "WEBSCOUT_PROXY_HTTP": "http://proxy.example.com:8080",
+        "WEBSCOUT_PROXY_HTTPS": "http://proxy.example.com:8080"
+      }
+    },
+    "webscout-sse": {
+      "_comment": "SSE transport for remote or browser-based clients",
+      "command": "webscout-mcp",
+      "args": ["serve", "--transport", "sse", "--host", "0.0.0.0", "--port", "8000"],
+      "url": "http://localhost:8000/sse"
+    }
+  },
+  "_client_config_locations": {
+    "claude_desktop_macos": "~/Library/Application Support/Claude/claude_desktop_config.json",
+    "claude_desktop_windows": "%APPDATA%\\Claude\\claude_desktop_config.json",
+    "claude_desktop_linux": "~/.config/Claude/claude_desktop_config.json",
+    "cursor": "Settings → MCP → Add new MCP server",
+    "codex": "~/.codex/config.json"
+  },
+  "_available_tools": [
+    {
+      "name": "web_search",
+      "description": "Search the web via Bing with automatic DuckDuckGo HTML fallback"
+    },
+    {
+      "name": "web_fetch",
+      "description": "Fetch a page and extract the main article (markdown/text/html)"
+    },
+    {
+      "name": "web_crawl",
+      "description": "Concurrent BFS crawl with depth/page limits, respects robots.txt"
+    },
+    {
+      "name": "web_extract",
+      "description": "Pull structured data with CSS selectors, attributes, regex"
+    },
+    {
+      "name": "cache_stats",
+      "description": "Inspect the local cache"
+    },
+    {
+      "name": "cache_clear",
+      "description": "Wipe the cache"
+    }
+  ]
+}

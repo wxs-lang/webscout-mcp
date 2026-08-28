@@ -1,0 +1,104 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "webscout-mcp"
+version = "0.5.0"
+description = "AI-powered web intelligence platform: search, fetch, crawl, extract, understand, and monitor the web with built-in AI, vector search, browser automation, and alerting"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "webscout-mcp contributors"},
+]
+maintainers = [
+    {name = "wxs-lang", email = "393456156@qq.com"},
+]
+keywords = ["mcp", "model-context-protocol", "web-search", "web-scraping", "ai-agent", "caching"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Internet :: WWW/HTTP :: Indexing/Search",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "mcp>=1.0.0",
+    "httpx>=0.25.0",
+    "beautifulsoup4>=4.12.0",
+    "lxml>=5.0.0",
+    "trafilatura>=1.6.0",
+    "readability-lxml>=0.8.0",
+    "tomli>=2.0.0; python_version < '3.11'",
+]
+
+[project.urls]
+Homepage = "https://github.com/wxs-lang/webscout-mcp"
+Repository = "https://github.com/wxs-lang/webscout-mcp.git"
+Documentation = "https://github.com/wxs-lang/webscout-mcp#readme"
+Issues = "https://github.com/wxs-lang/webscout-mcp/issues"
+Changelog = "https://github.com/wxs-lang/webscout-mcp/blob/main/CHANGELOG.md"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+browser = [
+    "playwright>=1.40.0",
+]
+vector = [
+    "chromadb>=0.4.0",
+    "sentence-transformers>=2.2.0",
+]
+ai = [
+    "openai>=1.0.0",
+]
+monitor = [
+    "psutil>=5.9.0",
+]
+all = [
+    "playwright>=1.40.0",
+    "chromadb>=0.4.0",
+    "sentence-transformers>=2.2.0",
+    "openai>=1.0.0",
+    "psutil>=5.9.0",
+    "html2text>=2020.1.16",
+]
+
+[project.scripts]
+webscout-mcp = "webscout_mcp.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["webscout_mcp*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+ignore_missing_imports = true
+exclude = ["venv/", "build/", "dist/"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+extend-exclude = ["venv/", "build/", "dist/"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.black]
+line-length = 100
+target-version = ["py310"]
+extend-exclude = "venv/|build/|dist/"
