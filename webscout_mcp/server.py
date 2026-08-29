@@ -39,6 +39,7 @@ from .metadata_extractor import MetadataExtractor
 from .robots import RobotsChecker
 from .rss_parser import fetch_and_parse_feed
 from .search import SearchEngine
+from .search_service import create_search_service_from_config
 
 log = get_logger(__name__)
 
@@ -56,6 +57,12 @@ def create_server(config: Config | None = None) -> MCPServer:
     )
     fetcher = Fetcher(cfg, cache)
     search_engine = SearchEngine(cfg, cache)
+    try:
+        search_service = create_search_service_from_config(cfg, cache)
+        log.info("SearchService initialized with new SearchProvider architecture")
+    except Exception as e:
+        log.warning(f"Could not initialize SearchService, falling back to SearchEngine: {e}")
+        search_service = None
     robots_checker = RobotsChecker(cfg, respect_robots=cfg.respect_robots)
     crawler = Crawler(cfg, fetcher, robots_checker)
     extractor = DataExtractor(cfg, fetcher)
@@ -88,19 +95,49 @@ def create_server(config: Config | None = None) -> MCPServer:
         fails or returns nothing. No API key required.
         """
         max_results = max(1, min(max_results, 25))
-        try:
+        from .search_provider import SearchRequest
+
+        # Try new SearchService first, fall back to old SearchEngine
+        if search_service is not None:
+            try:
+                request = SearchRequest(
+                    query=query,
+                    max_results=max_results,
+                    region=region,
+                    safe_search=safe_search,
+                )
+                response = await search_service.search(request)
+                if response.is_success:
+                    results = response.results
+                else:
+                    # Fall back to old SearchEngine
+                    log.warning(
+                        "SearchService returned error, falling back to SearchEngine",
+                        extra={"error": response.error_message},
+                    )
+                    results = await search_engine.search(
+                        query=query,
+                        max_results=max_results,
+                        region=region,
+                        safe_search=safe_search,
+                    )
+            except Exception as exc:
+                log.warning(
+                    "SearchService failed, falling back to SearchEngine",
+                    extra={"error": str(exc)},
+                )
+                results = await search_engine.search(
+                    query=query,
+                    max_results=max_results,
+                    region=region,
+                    safe_search=safe_search,
+                )
+        else:
             results = await search_engine.search(
                 query=query,
                 max_results=max_results,
                 region=region,
                 safe_search=safe_search,
-            )
-        except Exception as exc:
-            log.error("web_search failed", extra={"query": query, "error": str(exc)})
-            return json.dumps(
-                {"error": f"Search failed: {exc}", "query": query},
-                ensure_ascii=False,
-                indent=2,
             )
         output = [
             {

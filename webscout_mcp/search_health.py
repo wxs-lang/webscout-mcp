@@ -58,6 +58,9 @@ class BackendHealth:
         if self.consecutive_failures >= self.failure_threshold and not self.circuit_open:
             self.circuit_open = True
             self.circuit_open_time = time.time()
+        elif self.circuit_open:
+            # Half-open request failed - reset the recovery timer
+            self.circuit_open_time = time.time()
 
     def can_use(self) -> bool:
         """Check if this backend can be used.
