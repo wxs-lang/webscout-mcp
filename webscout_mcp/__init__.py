@@ -59,6 +59,7 @@ def __getattr__(name: str):
         if name not in _imported:
             module_name, attr_name = _lazy_imports[name]
             import importlib
+
             module = importlib.import_module(module_name, __name__)
             _imported[name] = getattr(module, attr_name)
         return _imported[name]
@@ -66,6 +67,7 @@ def __getattr__(name: str):
         if name not in _imported:
             try:
                 from .server import create_server as _cs
+
                 _imported[name] = _cs
             except ImportError:
                 _imported[name] = None

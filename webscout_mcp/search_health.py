@@ -6,7 +6,7 @@ and provides health status reporting.
 """
 
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 
@@ -225,9 +225,7 @@ class SearchHealthManager:
         total_failures = sum(b.total_failures for b in self._backends.values())
 
         overall_health = (
-            sum(b.get_health_score() for b in self._backends.values()) / len(self._backends)
-            if self._backends
-            else 1.0
+            sum(b.get_health_score() for b in self._backends.values()) / len(self._backends) if self._backends else 1.0
         )
 
         return {
@@ -240,9 +238,7 @@ class SearchHealthManager:
             "total_requests": total_requests,
             "total_successes": total_successes,
             "total_failures": total_failures,
-            "overall_success_rate": (
-                round(total_successes / total_requests, 3) if total_requests > 0 else 1.0
-            ),
+            "overall_success_rate": (round(total_successes / total_requests, 3) if total_requests > 0 else 1.0),
             "backends": backends,
             "timestamp": time.time(),
         }

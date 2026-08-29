@@ -15,17 +15,16 @@ import warnings
 from .extras.rag_optimizer import *  # noqa: F401,F403
 from .extras.rag_optimizer import (
     Chunk,
-    RAGResponse,
-    SemanticChunker,
     ContextCompressor,
     QueryRewriter,
     RAGOptimizer,
+    RAGResponse,
+    SemanticChunker,
     optimize_rag,
 )
 
 warnings.warn(
-    "webscout_mcp.rag_optimizer is deprecated, "
-    "import from webscout_mcp.extras.rag_optimizer instead.",
+    "webscout_mcp.rag_optimizer is deprecated, import from webscout_mcp.extras.rag_optimizer instead.",
     DeprecationWarning,
     stacklevel=2,
 )

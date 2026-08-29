@@ -14,19 +14,18 @@ import warnings
 
 from .extras.ai_optimizer import *  # noqa: F401,F403
 from .extras.ai_optimizer import (
+    AIOptimizer,
     AIResponse,
-    PromptTemplate,
-    PromptEngineer,
-    OutputValidator,
     HallucinationDetector,
     ModelOptimizer,
-    AIOptimizer,
+    OutputValidator,
+    PromptEngineer,
+    PromptTemplate,
     optimize_ai_processing,
 )
 
 warnings.warn(
-    "webscout_mcp.ai_optimizer is deprecated, "
-    "import from webscout_mcp.extras.ai_optimizer instead.",
+    "webscout_mcp.ai_optimizer is deprecated, import from webscout_mcp.extras.ai_optimizer instead.",
     DeprecationWarning,
     stacklevel=2,
 )

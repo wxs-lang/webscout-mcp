@@ -21,6 +21,7 @@ This allows SearchService to:
 Adding new providers (Brave, Google API, Tavily, Exa, etc.) requires
 only implementing this interface - no changes to core logic needed.
 """
+
 from __future__ import annotations
 
 import time

@@ -14,15 +14,14 @@ import warnings
 
 from .extras.competitor_analyzer import *  # noqa: F401,F403
 from .extras.competitor_analyzer import (
-    SiteMetrics,
     ComparisonResult,
     CompetitorAnalyzer,
+    SiteMetrics,
     compare_sites,
 )
 
 warnings.warn(
-    "webscout_mcp.competitor_analyzer is deprecated, "
-    "import from webscout_mcp.extras.competitor_analyzer instead.",
+    "webscout_mcp.competitor_analyzer is deprecated, import from webscout_mcp.extras.competitor_analyzer instead.",
     DeprecationWarning,
     stacklevel=2,
 )

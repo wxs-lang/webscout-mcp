@@ -14,24 +14,23 @@ import warnings
 
 from .extras.alert_channels import *  # noqa: F401,F403
 from .extras.alert_channels import (
+    AlertManager,
     AlertMessage,
     AlertResult,
     BaseAlertChannel,
-    WebhookAlert,
-    EmailAlert,
     DingTalkAlert,
-    WeComAlert,
+    EmailAlert,
     FeishuAlert,
+    ServerChanAlert,
     SlackAlert,
     TelegramAlert,
-    ServerChanAlert,
-    AlertManager,
+    WebhookAlert,
+    WeComAlert,
     create_alert_manager,
 )
 
 warnings.warn(
-    "webscout_mcp.alert_channels is deprecated, "
-    "import from webscout_mcp.extras.alert_channels instead.",
+    "webscout_mcp.alert_channels is deprecated, import from webscout_mcp.extras.alert_channels instead.",
     DeprecationWarning,
     stacklevel=2,
 )

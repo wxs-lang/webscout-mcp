@@ -14,21 +14,20 @@ import warnings
 
 from .extras.monitor import *  # noqa: F401,F403
 from .extras.monitor import (
-    MonitorConfig,
-    ChangeRecord,
-    AlertMessage,
     AlertChannel,
-    WebhookAlert,
-    EmailAlert,
+    AlertMessage,
+    ChangeRecord,
     DingTalkAlert,
-    WeComAlert,
+    EmailAlert,
+    MonitorConfig,
+    WebhookAlert,
     WebMonitor,
+    WeComAlert,
     is_monitor_available,
 )
 
 warnings.warn(
-    "webscout_mcp.monitor is deprecated, "
-    "import from webscout_mcp.extras.monitor instead.",
+    "webscout_mcp.monitor is deprecated, import from webscout_mcp.extras.monitor instead.",
     DeprecationWarning,
     stacklevel=2,
 )

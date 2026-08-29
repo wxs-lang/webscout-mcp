@@ -18,6 +18,7 @@ Test coverage:
 - Error responses
 - Multiple sequential calls
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -51,6 +52,7 @@ def get_server_params() -> StdioServerParameters:
         args=["-m", "webscout_mcp", "serve"],
         env=env,
     )
+
 
 class TestMCPServerStartup:
     """Test MCP server process startup and initialization."""

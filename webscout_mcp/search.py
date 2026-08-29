@@ -535,6 +535,7 @@ _BACKENDS: dict[str, type[SearchBackend]] = {
 # Lazy import SerpAPI backend to avoid circular import
 try:
     from .serpapi_backend import SerpAPIBackend
+
     _BACKENDS["serpapi"] = SerpAPIBackend
 except ImportError:
     pass  # SerpAPI backend optional, skip if import fails
@@ -642,9 +643,7 @@ class SearchEngine:
         failures: dict[str, str] = {}
 
         # Filter backends by health status (skip open circuits)
-        available_names = self._health_manager.get_available_backends(
-            [b.name for b in self._backends]
-        )
+        available_names = self._health_manager.get_available_backends([b.name for b in self._backends])
         available_backends = [b for b in self._backends if b.name in available_names]
 
         if not available_backends:
@@ -682,9 +681,7 @@ class SearchEngine:
         failures: dict[str, str] = {}
 
         # Filter backends by health status (skip open circuits)
-        available_names = self._health_manager.get_available_backends(
-            [b.name for b in self._backends]
-        )
+        available_names = self._health_manager.get_available_backends([b.name for b in self._backends])
         available_backends = [b for b in self._backends if b.name in available_names]
 
         if not available_backends:

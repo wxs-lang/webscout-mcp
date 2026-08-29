@@ -1,6 +1,7 @@
 """Tests for search backend health management."""
 
 import time
+
 import pytest
 
 from webscout_mcp.search_health import BackendHealth, SearchHealthManager

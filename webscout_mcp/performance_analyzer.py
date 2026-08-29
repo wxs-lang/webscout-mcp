@@ -14,14 +14,13 @@ import warnings
 
 from .extras.performance_analyzer import *  # noqa: F401,F403
 from .extras.performance_analyzer import (
-    PerformanceMetrics,
     PerformanceAnalyzer,
+    PerformanceMetrics,
     analyze_performance,
 )
 
 warnings.warn(
-    "webscout_mcp.performance_analyzer is deprecated, "
-    "import from webscout_mcp.extras.performance_analyzer instead.",
+    "webscout_mcp.performance_analyzer is deprecated, import from webscout_mcp.extras.performance_analyzer instead.",
     DeprecationWarning,
     stacklevel=2,
 )

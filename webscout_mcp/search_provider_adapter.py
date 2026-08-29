@@ -6,6 +6,7 @@ with the new standardized SearchProvider interface without modification.
 New backends should implement SearchProvider directly.
 Existing backends can be wrapped with SearchBackendAdapter.
 """
+
 from __future__ import annotations
 
 import time

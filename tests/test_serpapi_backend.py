@@ -10,6 +10,7 @@ Tests cover:
 - Circuit breaker integration
 - Fallback behavior
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -83,20 +84,22 @@ class TestSerpAPINormalSearch:
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.raise_for_status = MagicMock()
-        mock_response.json = MagicMock(return_value={
-            "organic_results": [
-                {
-                    "title": "Test Result 1",
-                    "link": "https://example.com/1",
-                    "snippet": "This is test result 1",
-                },
-                {
-                    "title": "Test Result 2",
-                    "link": "https://example.com/2",
-                    "snippet": "This is test result 2",
-                },
-            ]
-        })
+        mock_response.json = MagicMock(
+            return_value={
+                "organic_results": [
+                    {
+                        "title": "Test Result 1",
+                        "link": "https://example.com/1",
+                        "snippet": "This is test result 1",
+                    },
+                    {
+                        "title": "Test Result 2",
+                        "link": "https://example.com/2",
+                        "snippet": "This is test result 2",
+                    },
+                ]
+            }
+        )
 
         mock_client = MagicMock()
         mock_client.get = AsyncMock(return_value=mock_response)
@@ -143,8 +146,7 @@ class TestSerpAPINormalSearch:
         backend = SerpAPIBackend(config)
 
         organic_results = [
-            {"title": f"Result {i}", "link": f"https://example.com/{i}", "snippet": f"Snippet {i}"}
-            for i in range(20)
+            {"title": f"Result {i}", "link": f"https://example.com/{i}", "snippet": f"Snippet {i}"} for i in range(20)
         ]
 
         mock_response = MagicMock()
@@ -172,12 +174,14 @@ class TestSerpAPINormalSearch:
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.raise_for_status = MagicMock()
-        mock_response.json = MagicMock(return_value={
-            "organic_results": [
-                {"title": "No URL", "snippet": "This has no link"},
-                {"title": "Has URL", "link": "https://example.com", "snippet": "This has link"},
-            ]
-        })
+        mock_response.json = MagicMock(
+            return_value={
+                "organic_results": [
+                    {"title": "No URL", "snippet": "This has no link"},
+                    {"title": "Has URL", "link": "https://example.com", "snippet": "This has link"},
+                ]
+            }
+        )
 
         mock_client = MagicMock()
         mock_client.get = AsyncMock(return_value=mock_response)
@@ -507,15 +511,17 @@ class TestSerpAPISearchResultCleaning:
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.raise_for_status = MagicMock()
-        mock_response.json = MagicMock(return_value={
-            "organic_results": [
-                {
-                    "title": "  Test   Result  ",
-                    "link": "https://example.com",
-                    "snippet": "  This is   test  snippet  ",
-                }
-            ]
-        })
+        mock_response.json = MagicMock(
+            return_value={
+                "organic_results": [
+                    {
+                        "title": "  Test   Result  ",
+                        "link": "https://example.com",
+                        "snippet": "  This is   test  snippet  ",
+                    }
+                ]
+            }
+        )
 
         mock_client = MagicMock()
         mock_client.get = AsyncMock(return_value=mock_response)
@@ -540,15 +546,17 @@ class TestSerpAPISearchResultCleaning:
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.raise_for_status = MagicMock()
-        mock_response.json = MagicMock(return_value={
-            "organic_results": [
-                {
-                    "title": "",
-                    "link": "https://example.com",
-                    "snippet": "",
-                }
-            ]
-        })
+        mock_response.json = MagicMock(
+            return_value={
+                "organic_results": [
+                    {
+                        "title": "",
+                        "link": "https://example.com",
+                        "snippet": "",
+                    }
+                ]
+            }
+        )
 
         mock_client = MagicMock()
         mock_client.get = AsyncMock(return_value=mock_response)
@@ -587,10 +595,7 @@ class TestSerpAPIConcurrency:
             return mock_client
 
         with patch.object(backend, "_get_client", mock_get_client):
-            tasks = [
-                backend.search(f"query {i}", max_results=5, safe_search=False, region="us-en")
-                for i in range(5)
-            ]
+            tasks = [backend.search(f"query {i}", max_results=5, safe_search=False, region="us-en") for i in range(5)]
             results = await asyncio.gather(*tasks)
 
         assert len(results) == 5

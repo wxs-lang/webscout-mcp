@@ -76,9 +76,7 @@ class PerformanceMonitor:
             "total_timings": len(self._timings),
             "total_time_ms": self._total_time_ms,
             "recent_timings": self._timings[-10:],
-            "average_time_ms": (
-                self._total_time_ms / len(self._timings) if self._timings else 0.0
-            ),
+            "average_time_ms": (self._total_time_ms / len(self._timings) if self._timings else 0.0),
             "max_history": self._max_history,
         }
 
@@ -174,9 +172,7 @@ class ConcurrencyLimiter:
             "total_operations": self._total_operations,
             "total_wait_time_ms": self._total_wait_time,
             "average_wait_time_ms": (
-                self._total_wait_time / self._total_operations
-                if self._total_operations > 0
-                else 0.0
+                self._total_wait_time / self._total_operations if self._total_operations > 0 else 0.0
             ),
         }
 
