@@ -51,9 +51,25 @@ class SearchBackend(ABC):
     def __init__(self, config: Config) -> None:
         self.config = config
         self._client: httpx.AsyncClient | None = None
+        self._client_loop: object | None = None
 
     async def _get_client(self) -> httpx.AsyncClient:
-        if self._client is None or self._client.is_closed:
+        # Check if client is still valid (not closed, and bound to current loop)
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            current_loop = None
+
+        needs_new_client = self._client is None or self._client.is_closed or self._client_loop is not current_loop
+
+        if needs_new_client:
+            # Close old client if it exists
+            if self._client and not self._client.is_closed:
+                try:
+                    await self._client.aclose()
+                except Exception:
+                    pass
+
             client_kwargs: dict = {
                 "timeout": httpx.Timeout(self.config.request_timeout),
                 "follow_redirects": True,
@@ -75,6 +91,7 @@ class SearchBackend(ABC):
             if proxies:
                 client_kwargs["proxies"] = proxies
             self._client = httpx.AsyncClient(**client_kwargs)
+            self._client_loop = current_loop
         return self._client
 
     async def close(self) -> None:
