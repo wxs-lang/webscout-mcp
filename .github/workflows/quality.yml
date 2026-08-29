@@ -38,6 +38,11 @@ jobs:
         run: |
           ruff format --check webscout_mcp/ tests/
 
+      - name: Check documentation is up-to-date
+        run: |
+          python scripts/generate_docs.py --check
+          git diff --exit-code MODULE_STATUS.md docs/tools.md
+
       - name: Upload ruff results
         if: always()
         uses: actions/upload-artifact@v4
