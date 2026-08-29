@@ -110,15 +110,11 @@ jobs:
 
       - name: Run bandit security scan
         run: |
-          set -o pipefail
-          bandit --version
-          bandit -r webscout_mcp/ -f json -o bandit-results.json -ll 2>&1 | tee bandit_output.txt
-          BANDIT_EXIT=${PIPESTATUS[0]}
-          echo "Bandit exit code: $BANDIT_EXIT"
-          if [ -f bandit-results.json ]; then
-            python3 -c "import json; data=json.load(open('bandit-results.json')); results=data.get('results',[]); print(f'Total issues: {len(results)}')"
-          fi
-          exit $BANDIT_EXIT
+          bandit -r webscout_mcp/ \
+            -f json \
+            -o bandit-results.json \
+            -ll \
+            2>&1 | tee bandit_output.txt
 
       - name: Upload bandit results
         if: always()
