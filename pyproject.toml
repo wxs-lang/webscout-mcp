@@ -138,7 +138,6 @@ ignore = [
 "tests/*.py" = [
     "F401",   # Unused import - common in tests
     "F841",   # Unused variable - common in tests
-    "F821",   # Undefined name - common in tests
     "RUF059", # Unpacked variable never used - common in tests
     "S101",   # Use assert - that's what tests do
 ]
@@ -151,8 +150,8 @@ ignore = [
 ]
 
 # Non-core modules - will be cleaned up gradually
-"webscout_mcp/health.py" = ["F401", "F841", "F821"]
-"webscout_mcp/data_exporter.py" = ["F401", "F841", "F821", "I001"]
+"webscout_mcp/health.py" = ["F401", "F841"]
+"webscout_mcp/data_exporter.py" = ["F401", "F841", "I001"]
 "webscout_mcp/api_server.py" = ["F401", "F841", "F402"]
 "webscout_mcp/pdf_processor.py" = ["F401", "F841", "F402"]
 "webscout_mcp/vector_store.py" = ["F401", "F841"]

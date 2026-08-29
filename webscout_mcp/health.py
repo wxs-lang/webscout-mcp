@@ -305,9 +305,9 @@ class DependencyChecker:
     """Check health of external dependencies."""
 
     def __init__(self) -> None:
-        self._checks: dict[str, Callable[[], Tuple[bool, str]]] = {}
+        self._checks: dict[str, Callable[[], tuple[bool, str]]] = {}
 
-    def register(self, name: str, check_fn: Callable[[], Tuple[bool, str]]) -> None:
+    def register(self, name: str, check_fn: Callable[[], tuple[bool, str]]) -> None:
         """Register a dependency check.
 
         Args:
@@ -316,7 +316,7 @@ class DependencyChecker:
         """
         self._checks[name] = check_fn
 
-    def check_network(self, host: str = "8.8.8.8", port: int = 53, timeout: float = 2.0) -> Tuple[bool, str]:
+    def check_network(self, host: str = "8.8.8.8", port: int = 53, timeout: float = 2.0) -> tuple[bool, str]:
         """Check network connectivity.
 
         Args:
@@ -338,7 +338,7 @@ class DependencyChecker:
         except Exception as exc:
             return False, f"Network connectivity failed: {exc}"
 
-    def check_dns(self, hostname: str = "github.com", timeout: float = 2.0) -> Tuple[bool, str]:
+    def check_dns(self, hostname: str = "github.com", timeout: float = 2.0) -> tuple[bool, str]:
         """Check DNS resolution.
 
         Args:
@@ -357,7 +357,7 @@ class DependencyChecker:
         except Exception as exc:
             return False, f"DNS resolution failed: {exc}"
 
-    def check_http(self, url: str = "https://github.com", timeout: float = 5.0) -> Tuple[bool, str]:
+    def check_http(self, url: str = "https://github.com", timeout: float = 5.0) -> tuple[bool, str]:
         """Check HTTP endpoint availability.
 
         Args:
