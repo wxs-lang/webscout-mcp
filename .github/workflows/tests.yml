@@ -12,10 +12,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
-    name: Test (Python ${{ matrix.python-version }})
+  # ============================================================
+  # Unit Tests - fast, no network, run on all Python versions
+  # ============================================================
+  unit-tests:
+    name: Unit Tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
@@ -30,79 +33,96 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-          cache-dependency-path: |
-            pyproject.toml
-            setup.cfg
-            requirements*.txt
 
-      - name: Upgrade pip
-        run: python -m pip install --upgrade pip setuptools wheel
-
-      - name: Install system dependencies
+      - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libxml2-dev \
-            libxslt1-dev \
-            libjpeg-dev \
-            zlib1g-dev
-
-      - name: Install package with all dependencies
-        run: |
+          python -m pip install --upgrade pip setuptools wheel
           pip install -e ".[all,dev,test]" || pip install -e .
           pip install pytest pytest-cov pytest-asyncio pytest-xdist anyio
 
-      - name: Show environment
-        run: |
-          python --version
-          pip list
-          python -c "import webscout_mcp; print('webscout_mcp version:', webscout_mcp.__version__)"
-
-      - name: Collect tests
-        run: python -m pytest tests/ --collect-only -q 2>&1 | tail -20
-
-      - name: Run tests with coverage
+      - name: Run unit tests
         run: |
           python -m pytest tests/ \
+            --ignore=tests/test_mcp_e2e.py \
+            --ignore=tests/test_fault_injection.py \
+            --ignore=tests/test_integration.py \
             -v \
             --tb=short \
-            --cov=webscout_mcp \
-            --cov-report=xml \
-            --cov-report=term-missing \
-            --cov-report=html:htmlcov \
-            --junitxml=test-results.xml \
             -n auto \
-            2>&1 | tee test_output.txt
+            --junitxml=unit-test-results.xml \
+            2>&1 | tee unit_test_output.txt
           exit ${PIPESTATUS[0]}
 
-      - name: Upload test results
+      - name: Upload unit test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-py${{ matrix.python-version }}
+          name: unit-tests-${{ matrix.python-version }}
           path: |
-            test-results.xml
-            test_output.txt
-            coverage.xml
-            htmlcov/
-          retention-days: 14
+            unit-test-results.xml
+            unit_test_output.txt
+          retention-days: 7
 
-      - name: Test summary
-        if: always()
-        uses: test-summary/action@v2
-        with:
-          paths: test-results.xml
-
-  coverage:
-    name: Coverage Report
+  # ============================================================
+  # Integration Tests - medium speed, may use local resources
+  # ============================================================
+  integration-tests:
+    name: Integration Tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
-    needs: test
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -e ".[all,dev,test]" || pip install -e .
+          pip install pytest pytest-asyncio anyio
+
+      - name: Run integration tests
+        run: |
+          python -m pytest tests/test_integration.py \
+            -v \
+            --tb=short \
+            --junitxml=integration-test-results.xml \
+            2>&1 | tee integration_test_output.txt
+          exit ${PIPESTATUS[0]}
+
+      - name: Upload integration test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-tests-${{ matrix.python-version }}
+          path: |
+            integration-test-results.xml
+            integration_test_output.txt
+          retention-days: 7
+
+  # ============================================================
+  # MCP E2E Tests - slow, real stdio MCP protocol, single Python
+  # ============================================================
+  mcp-e2e-tests:
+    name: MCP E2E Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -110,31 +130,133 @@ jobs:
 
       - name: Install dependencies
         run: |
+          python -m pip install --upgrade pip setuptools wheel
           pip install -e ".[all,dev,test]" || pip install -e .
-          pip install pytest pytest-cov pytest-asyncio anyio
+          pip install pytest pytest-asyncio anyio mcp
+
+      - name: Run MCP E2E tests (no parallel)
+        run: |
+          python -m pytest tests/test_mcp_e2e.py \
+            -v \
+            --tb=long \
+            --junitxml=mcp-e2e-test-results.xml \
+            2>&1 | tee mcp_e2e_test_output.txt
+          exit ${PIPESTATUS[0]}
+
+      - name: Upload MCP E2E test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcp-e2e-tests
+          path: |
+            mcp-e2e-test-results.xml
+            mcp_e2e_test_output.txt
+          retention-days: 14
+
+  # ============================================================
+  # Fault Injection Tests - system-level fault scenarios
+  # ============================================================
+  fault-injection-tests:
+    name: Fault Injection Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -e ".[all,dev,test]" || pip install -e .
+          pip install pytest pytest-asyncio anyio
+
+      - name: Run fault injection tests
+        run: |
+          python -m pytest tests/test_fault_injection.py \
+            -v \
+            --tb=short \
+            --junitxml=fault-test-results.xml \
+            2>&1 | tee fault_test_output.txt
+          exit ${PIPESTATUS[0]}
+
+      - name: Upload fault injection test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fault-injection-tests
+          path: |
+            fault-test-results.xml
+            fault_test_output.txt
+          retention-days: 14
+
+  # ============================================================
+  # Coverage - single Python, all tests except E2E
+  # ============================================================
+  coverage:
+    name: Coverage Report
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [unit-tests, integration-tests]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -e ".[all,dev,test]" || pip install -e .
+          pip install pytest pytest-cov pytest-asyncio pytest-xdist anyio
 
       - name: Run tests with coverage
         run: |
           python -m pytest tests/ \
+            --ignore=tests/test_mcp_e2e.py \
+            --ignore=tests/test_fault_injection.py \
+            --tb=short \
             --cov=webscout_mcp \
             --cov-report=xml \
             --cov-report=term-missing \
-            --cov-fail-under=70
+            --cov-report=html:htmlcov \
+            -n auto \
+            2>&1 | tee coverage_output.txt
+          exit ${PIPESTATUS[0]}
 
-      - name: Upload coverage to Codecov
-        if: success()
-        uses: codecov/codecov-action@v4
-        with:
-          file: ./coverage.xml
-          flags: unittests
-          name: codecov-umbrella
-          fail_ci_if_error: false
-
-      - name: Check coverage threshold
+      - name: Check minimum coverage
         run: |
-          COVERAGE=$(python -c "import xml.etree.ElementTree as ET; tree=ET.parse('coverage.xml'); root=tree.getroot(); print(float(root.attrib['line-rate'])*100)")
-          echo "Total coverage: ${COVERAGE}%"
-          if (( $(echo "$COVERAGE < 70" | bc -l) )); then
-            echo "Coverage below 70% threshold!"
-            exit 1
-          fi
+          python -c "
+          import xml.etree.ElementTree as ET
+          tree = ET.parse('coverage.xml')
+          root = tree.getroot()
+          line_rate = float(root.get('line-rate', 0)) * 100
+          print(f'Line coverage: {line_rate:.1f}%')
+          if line_rate < 70:
+              print(f'WARNING: Coverage {line_rate:.1f}% is below 70% threshold')
+              exit(1)
+          else:
+              print(f'Coverage {line_rate:.1f}% meets 70% threshold')
+          "
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            coverage.xml
+            htmlcov/
+            coverage_output.txt
+          retention-days: 14
