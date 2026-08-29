@@ -2,12 +2,24 @@
 
 Exposes the following tools to AI agents:
 
+Core Web Tools:
 - ``web_search`` - Search the web (Bing + DuckDuckGo failover, no API key).
 - ``web_fetch`` - Fetch a single URL and extract main content.
 - ``web_crawl`` - Crawl a website with depth/page limits (concurrent).
 - ``web_extract`` - Extract structured data from a page using CSS selectors.
+
+Cache Management:
 - ``cache_stats`` - Show cache statistics.
 - ``cache_clear`` - Clear the cache.
+
+Health & Monitoring:
+- ``search_health`` - Get health report for all search backends (circuit breaker status).
+
+Content Analysis:
+- ``metadata_extract`` - Extract page metadata (JSON-LD, OpenGraph, Twitter Cards).
+- ``rss_parse`` - Parse RSS/Atom feeds and return entries.
+- ``content_quality`` - Analyze content quality (readability, keyword density, structure).
+- ``broken_links`` - Check for broken links on a web page.
 """
 
 from __future__ import annotations

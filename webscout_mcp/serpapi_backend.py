@@ -71,18 +71,83 @@ class SerpAPIBackend(SearchBackend):
             SearchError: If the API request fails or returns invalid data.
         """
         if not self.is_configured:
-            raise SearchError("SerpAPI API key not configured. Set SERPAPI_API_KEY environment variable.")
+            raise SearchError(
+                query=query,
+                backend="serpapi",
+                message="SerpAPI API key not configured. Set SERPAPI_API_KEY environment variable.",
+            )
 
         client = await self._get_client()
 
-        # Parse region for country/language
+        # Parse region for country/language with proper mapping
+        # Common region codes: wt-wt (worldwide), us-en, zh-cn, etc.
+        region_map = {
+            "wt-wt": ("en", "us"),  # Worldwide -> default English/US
+            "wt": ("en", "us"),
+            "us": ("en", "us"),
+            "us-en": ("en", "us"),
+            "uk": ("en", "uk"),
+            "gb": ("en", "uk"),
+            "uk-en": ("en", "uk"),
+            "cn": ("zh", "cn"),
+            "zh-cn": ("zh", "cn"),
+            "cn-zh": ("zh", "cn"),
+            "tw": ("zh", "tw"),
+            "zh-tw": ("zh", "tw"),
+            "hk": ("zh", "hk"),
+            "zh-hk": ("zh", "hk"),
+            "jp": ("ja", "jp"),
+            "ja-jp": ("ja", "jp"),
+            "kr": ("ko", "kr"),
+            "ko-kr": ("ko", "kr"),
+            "de": ("de", "de"),
+            "de-de": ("de", "de"),
+            "fr": ("fr", "fr"),
+            "fr-fr": ("fr", "fr"),
+            "es": ("es", "es"),
+            "es-es": ("es", "es"),
+            "it": ("it", "it"),
+            "it-it": ("it", "it"),
+            "pt": ("pt", "pt"),
+            "pt-pt": ("pt", "pt"),
+            "br": ("pt", "br"),
+            "pt-br": ("pt", "br"),
+            "ru": ("ru", "ru"),
+            "ru-ru": ("ru", "ru"),
+            "in": ("en", "in"),
+            "in-en": ("en", "in"),
+            "au": ("en", "au"),
+            "au-en": ("en", "au"),
+            "ca": ("en", "ca"),
+            "ca-en": ("en", "ca"),
+        }
+
         country = "us"
         language = "en"
-        if "-" in region:
-            parts = region.split("-")
+        region_lower = region.lower().strip()
+
+        if region_lower in region_map:
+            language, country = region_map[region_lower]
+        elif "-" in region_lower:
+            parts = region_lower.split("-")
             if len(parts) == 2:
-                language = parts[0].lower()
-                country = parts[1].lower()
+                lang_part, country_part = parts
+                # Validate language code (2 letters)
+                if len(lang_part) == 2 and lang_part.isalpha():
+                    language = lang_part
+                # Validate country code (2 letters)
+                if len(country_part) == 2 and country_part.isalpha():
+                    country = country_part
+                # If either part looks invalid, use defaults
+                if language == "wt" or country == "wt":
+                    language, country = "en", "us"
+        # If no dash and it's a known country code, use appropriate language
+        elif region_lower in {r.split("-")[0] for r in region_map if "-" in r}:
+            # Single country code like "us", "cn"
+            for key, (lang, cntry) in region_map.items():
+                if key == region_lower and "-" not in key:
+                    language, country = lang, cntry
+                    break
 
         params = {
             "q": query,
@@ -112,7 +177,7 @@ class SerpAPIBackend(SearchBackend):
 
             # Check for API errors
             if "error" in data:
-                raise SearchError(f"SerpAPI error: {data['error']}")
+                raise SearchError(query=query, backend="serpapi", message=f"SerpAPI error: {data['error']}")
 
             # Extract organic results
             organic_results = data.get("organic_results", [])
@@ -153,15 +218,15 @@ class SerpAPIBackend(SearchBackend):
             elif exc.response.status_code == 429:
                 error_msg += " - Rate limit exceeded"
             log.error("SerpAPI request failed", extra={"query": query, "error": error_msg})
-            raise SearchError(error_msg) from exc
+            raise SearchError(query=query, backend="serpapi", message=error_msg) from exc
         except httpx.RequestError as exc:
             error_msg = f"SerpAPI request failed: {exc}"
             log.error("SerpAPI request error", extra={"query": query, "error": error_msg})
-            raise SearchError(error_msg) from exc
+            raise SearchError(query=query, backend="serpapi", message=error_msg) from exc
         except (KeyError, ValueError, TypeError) as exc:
             error_msg = f"SerpAPI response parsing error: {exc}"
             log.error("SerpAPI parsing error", extra={"query": query, "error": error_msg})
-            raise SearchError(error_msg) from exc
+            raise SearchError(query=query, backend="serpapi", message=error_msg) from exc
 
 
 def is_serpapi_available() -> bool:
