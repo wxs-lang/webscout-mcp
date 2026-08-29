@@ -89,11 +89,12 @@ class PerformanceMonitor:
 class _ConcurrencySlot:
     """Async context manager for a concurrency slot."""
 
-    def __init__(self, limiter: "ConcurrencyLimiter") -> None:
+    def __init__(self, semaphore: asyncio.Semaphore, limiter: "ConcurrencyLimiter") -> None:
+        self._semaphore = semaphore
         self._limiter = limiter
 
     async def __aenter__(self) -> "_ConcurrencySlot":
-        await self._limiter._semaphore.acquire()
+        await self._semaphore.acquire()
         self._limiter._total_operations += 1
         self._limiter._current_concurrent += 1
         if self._limiter._current_concurrent > self._limiter._peak_concurrent:
@@ -102,13 +103,15 @@ class _ConcurrencySlot:
 
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         self._limiter._current_concurrent -= 1
-        self._limiter._semaphore.release()
+        self._semaphore.release()
 
 
 class ConcurrencyLimiter:
     """Limit the number of concurrent async operations.
 
     Provides a semaphore-based limiter with statistics tracking.
+    The semaphore is created lazily inside the running event loop to avoid
+    binding to a stale loop when the limiter is instantiated outside asyncio.run().
     """
 
     def __init__(self, max_concurrent: int = 10) -> None:
@@ -118,11 +121,21 @@ class ConcurrencyLimiter:
             max_concurrent: Maximum number of concurrent operations.
         """
         self._max_concurrent = max_concurrent
-        self._semaphore = asyncio.Semaphore(max_concurrent)
+        self._semaphore: asyncio.Semaphore | None = None
         self._current_concurrent = 0
         self._peak_concurrent = 0
         self._total_operations = 0
         self._total_wait_time = 0.0
+
+    def _get_or_create_semaphore(self) -> asyncio.Semaphore:
+        """Get or create a semaphore in the current running event loop.
+
+        Returns:
+            Semaphore bound to the current event loop.
+        """
+        if self._semaphore is None:
+            self._semaphore = asyncio.Semaphore(self._max_concurrent)
+        return self._semaphore
 
     def acquire(self) -> _ConcurrencySlot:
         """Acquire a concurrency slot.
@@ -134,7 +147,8 @@ class ConcurrencyLimiter:
         Returns:
             Async context manager for the concurrency slot.
         """
-        return _ConcurrencySlot(self)
+        sem = self._get_or_create_semaphore()
+        return _ConcurrencySlot(sem, self)
 
     async def map(
         self,
@@ -143,6 +157,9 @@ class ConcurrencyLimiter:
     ) -> list[T]:
         """Apply an async function to items with concurrency limiting.
 
+        Creates a fresh semaphore local to this call so it is always bound
+        to the event loop that is currently running.
+
         Args:
             func: Async function to apply.
             items: List of items to process.
@@ -150,9 +167,10 @@ class ConcurrencyLimiter:
         Returns:
             List of results in the same order as input items.
         """
+        semaphore = asyncio.Semaphore(self._max_concurrent)
 
         async def process_item(item: Any) -> T:
-            async with self.acquire():
+            async with _ConcurrencySlot(semaphore, self):
                 return await func(item)
 
         tasks = [process_item(item) for item in items]

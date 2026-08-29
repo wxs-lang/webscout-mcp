@@ -61,6 +61,19 @@ def temp_file():
         os.unlink(file_path)
 
 
+@pytest.fixture(scope="session")
+def content_extractor():
+    """Session-level ContentExtractor to avoid repeated trafilatura loading.
+
+    trafilatura takes several seconds to load on first use.
+    Using a session-scoped fixture ensures it only loads once per test session,
+    significantly speeding up integration and unit tests.
+    """
+    from webscout_mcp.content_extractor import ContentExtractor
+
+    return ContentExtractor()
+
+
 @pytest.fixture
 def sample_html():
     """Sample HTML for testing content extraction."""

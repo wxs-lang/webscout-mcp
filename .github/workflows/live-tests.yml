@@ -39,6 +39,7 @@ jobs:
 
       - name: Run live search tests
         run: |
+          set -o pipefail
           mkdir -p live-test-results
           python -m pytest tests/live/test_live_search.py \
             -v \
@@ -46,7 +47,7 @@ jobs:
             --run-live \
             --junitxml=live-test-results/live-search-results.xml \
             2>&1 | tee live-test-results/live-search-output.txt
-          echo "Exit code: $?"
+          exit ${PIPESTATUS[0]}
 
       - name: Generate live test summary
         if: always()
@@ -70,15 +71,10 @@ jobs:
             live-test-results/
           retention-days: 90
 
-      - name: Commit live test report
-        if: always()
-        run: |
-          if [ -f live-test-results/live_report.json ]; then
-            mkdir -p docs/live-test-reports
-            cp live-test-results/live_report.json docs/live-test-reports/$(date -u '+%Y-%m-%d').json
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add docs/live-test-reports/
-            git commit -m "docs: add live test report for $(date -u '+%Y-%m-%d')" || echo "No changes to commit"
-            git push || echo "Push failed (may be protected branch)"
-          fi
+
+      # Note: Live test reports are stored as artifacts (90 days retention)
+      # and summarized in the GitHub Actions run summary.
+      # We do NOT push reports directly to main because:
+      # 1. main is a protected branch
+      # 2. main should only contain code and reviewed config, not daily monitoring data
+      # 3. Historical data can be analyzed from artifacts or a dedicated dashboard
