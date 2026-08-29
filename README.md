@@ -571,6 +571,8 @@ check_interval = 300
 - [Examples](examples/) — Usage examples and sample code
 - [CHANGELOG](CHANGELOG.md) — Version history
 - [CONTRIBUTING](CONTRIBUTING.md) — Contributing guidelines
+- [CODE OF CONDUCT](CODE_OF_CONDUCT.md) — Community code of conduct
+- [SECURITY](SECURITY.md) — Security policy and vulnerability reporting
 
 ## 🧪 Testing
 
