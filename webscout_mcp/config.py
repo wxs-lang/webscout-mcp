@@ -64,6 +64,15 @@ class Config:
     search_backends: list[str] = field(default_factory=lambda: ["bing", "duckduckgo"])
     search_merge_backends: bool = False  # Merge results from all backends
 
+    # --- Circuit Breaker ---
+    search_circuit_failure_threshold: int = 5  # Consecutive failures before circuit opens
+    search_circuit_recovery_time: int = 60  # Seconds before circuit half-opens
+
+    # --- SerpAPI (optional stable backend) ---
+    serpapi_api_key: str = ""  # SerpAPI API key (optional, enables stable API-based search)
+    serpapi_engine: str = "google"  # Search engine: google, bing, duckduckgo, etc.
+    serpapi_timeout: float = 30.0  # Request timeout in seconds
+
     # --- Crawler ---
     crawler_max_depth: int = 2
     crawler_max_pages: int = 20
@@ -207,6 +216,11 @@ class Config:
             "WEBSCOUT_SEARCH_MAX_RESULTS": ("search_max_results", int),
             "WEBSCOUT_SEARCH_BACKENDS": ("search_backends", lambda v: [x.strip() for x in v.split(",") if x.strip()]),
             "WEBSCOUT_SEARCH_MERGE_BACKENDS": ("search_merge_backends", lambda v: v.lower() in ("1", "true", "yes")),
+            "WEBSCOUT_SEARCH_CIRCUIT_FAILURE_THRESHOLD": ("search_circuit_failure_threshold", int),
+            "WEBSCOUT_SEARCH_CIRCUIT_RECOVERY_TIME": ("search_circuit_recovery_time", int),
+            "SERPAPI_API_KEY": ("serpapi_api_key", str),
+            "SERPAPI_ENGINE": ("serpapi_engine", str),
+            "SERPAPI_TIMEOUT": ("serpapi_timeout", float),
             "WEBSCOUT_CRAWLER_MAX_DEPTH": ("crawler_max_depth", int),
             "WEBSCOUT_CRAWLER_MAX_PAGES": ("crawler_max_pages", int),
             "WEBSCOUT_CRAWLER_CONCURRENCY": ("crawler_concurrency", int),

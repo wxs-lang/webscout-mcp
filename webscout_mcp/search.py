@@ -532,6 +532,13 @@ _BACKENDS: dict[str, type[SearchBackend]] = {
     "brave": BraveHTMLBackend,
 }
 
+# Lazy import SerpAPI backend to avoid circular import
+try:
+    from .serpapi_backend import SerpAPIBackend
+    _BACKENDS["serpapi"] = SerpAPIBackend
+except ImportError:
+    pass  # SerpAPI backend optional, skip if import fails
+
 
 class SearchEngine:
     """Search engine wrapper with caching, automatic backend failover, and result merging."""
