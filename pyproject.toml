@@ -140,6 +140,7 @@ ignore = [
     "F841",   # Unused variable - common in tests
     "RUF059", # Unpacked variable never used - common in tests
     "S101",   # Use assert - that's what tests do
+    "SIM117", # Nested with statements - common in test setup with mocks
 ]
 
 # Experimental modules can be more lenient
