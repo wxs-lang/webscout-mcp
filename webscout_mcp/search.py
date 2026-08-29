@@ -26,6 +26,7 @@ from .cache import Cache
 from .config import Config
 from .exceptions import AllBackendsFailedError, SearchError
 from .logging_config import get_logger
+from .search_health import SearchHealthManager
 
 log = get_logger(__name__)
 
@@ -557,9 +558,30 @@ class SearchEngine:
             log.warning("no valid backends configured, falling back to bing")
             self._backends.append(BingBackend(config))
 
+        # Initialize health manager for circuit breaking
+        backend_names = [b.name for b in self._backends]
+        self._health_manager = SearchHealthManager(
+            backend_names=backend_names,
+            failure_threshold=getattr(config, "search_circuit_failure_threshold", 5),
+            recovery_time=getattr(config, "search_circuit_recovery_time", 60),
+        )
+
     async def close(self) -> None:
         for backend in self._backends:
             await backend.close()
+
+    def get_health_report(self) -> dict:
+        """Get health report for all search backends.
+
+        Returns:
+            Dictionary with overall health score, per-backend status,
+            and statistics. Includes circuit breaker status.
+        """
+        return self._health_manager.get_health_report()
+
+    def reset_health(self) -> None:
+        """Reset all backend health statistics and close all circuits."""
+        self._health_manager.reset_all()
 
     @staticmethod
     def _deduplicate_results(results: list[SearchResult]) -> list[SearchResult]:
@@ -609,21 +631,36 @@ class SearchEngine:
     async def _search_single_backend(
         self, query: str, limit: int, safe: bool, region: str
     ) -> tuple[list[SearchResult], dict[str, str]]:
-        """Try backends in order until one succeeds."""
+        """Try backends in order until one succeeds, with circuit breaker support."""
         failures: dict[str, str] = {}
-        for backend in self._backends:
+
+        # Filter backends by health status (skip open circuits)
+        available_names = self._health_manager.get_available_backends(
+            [b.name for b in self._backends]
+        )
+        available_backends = [b for b in self._backends if b.name in available_names]
+
+        if not available_backends:
+            log.warning("all backends are circuit-broken, trying all anyway")
+            available_backends = self._backends
+
+        for backend in available_backends:
             try:
                 log.info("searching", extra={"backend": backend.name, "query": query, "max_results": limit})
                 results = await backend.search(query, limit, safe, region)
                 if results:
                     log.info("search succeeded", extra={"backend": backend.name, "query": query, "count": len(results)})
+                    self._health_manager.record_success(backend.name)
                     return results, failures
                 failures[backend.name] = "returned empty results"
+                self._health_manager.record_failure(backend.name, "empty results")
             except SearchError as exc:
                 failures[backend.name] = str(exc)
+                self._health_manager.record_failure(backend.name, str(exc))
                 log.warning("search backend failed", extra={"backend": backend.name, "query": query, "error": str(exc)})
             except Exception as exc:
                 failures[backend.name] = f"{type(exc).__name__}: {exc}"
+                self._health_manager.record_failure(backend.name, f"{type(exc).__name__}: {exc}")
                 log.warning(
                     "search backend unexpected error",
                     extra={"backend": backend.name, "query": query, "error": type(exc).__name__},
@@ -633,10 +670,21 @@ class SearchEngine:
     async def _search_all_backends(
         self, query: str, limit: int, safe: bool, region: str
     ) -> tuple[list[SearchResult], dict[str, str]]:
-        """Try all backends and merge results."""
+        """Try all backends and merge results, with circuit breaker support."""
         all_results: list[SearchResult] = []
         failures: dict[str, str] = {}
-        for backend in self._backends:
+
+        # Filter backends by health status (skip open circuits)
+        available_names = self._health_manager.get_available_backends(
+            [b.name for b in self._backends]
+        )
+        available_backends = [b for b in self._backends if b.name in available_names]
+
+        if not available_backends:
+            log.warning("all backends are circuit-broken, trying all anyway")
+            available_backends = self._backends
+
+        for backend in available_backends:
             try:
                 log.info(
                     "searching (merge mode)", extra={"backend": backend.name, "query": query, "max_results": limit}
@@ -644,14 +692,18 @@ class SearchEngine:
                 results = await backend.search(query, limit, safe, region)
                 if results:
                     all_results.extend(results)
+                    self._health_manager.record_success(backend.name)
                     log.info("search succeeded", extra={"backend": backend.name, "query": query, "count": len(results)})
                 else:
                     failures[backend.name] = "returned empty results"
+                    self._health_manager.record_failure(backend.name, "empty results")
             except SearchError as exc:
                 failures[backend.name] = str(exc)
+                self._health_manager.record_failure(backend.name, str(exc))
                 log.warning("search backend failed", extra={"backend": backend.name, "query": query, "error": str(exc)})
             except Exception as exc:
                 failures[backend.name] = f"{type(exc).__name__}: {exc}"
+                self._health_manager.record_failure(backend.name, f"{type(exc).__name__}: {exc}")
                 log.warning(
                     "search backend unexpected error",
                     extra={"backend": backend.name, "query": query, "error": type(exc).__name__},
