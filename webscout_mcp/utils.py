@@ -131,7 +131,7 @@ def is_safe_url(url: str, *, allow_private: bool = False) -> tuple[bool, str]:
         port = parsed.port
 
         # Check for localhost variants
-        localhost_variants = {"localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]"}
+        localhost_variants = {"localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]"}  # nosec B104 - just a set for comparison, not binding
         if hostname.lower() in localhost_variants:
             if not allow_private:
                 return False, f"Access to localhost is blocked: {hostname}"

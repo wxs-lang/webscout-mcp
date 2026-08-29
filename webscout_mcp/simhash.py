@@ -235,7 +235,7 @@ class SimHash:
             Integer hash value.
         """
         if self.hash_bits == 64:
-            return int(hashlib.md5(token.encode("utf-8")).hexdigest()[:16], 16)
+            return int(hashlib.md5(token.encode("utf-8"), usedforsecurity=False).hexdigest()[:16], 16)
         else:
             return int(hashlib.sha256(token.encode("utf-8")).hexdigest()[:32], 16)
 

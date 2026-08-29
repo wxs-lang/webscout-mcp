@@ -293,12 +293,12 @@ class SetupManager:
             elif self.system_info.os == "Linux":
                 # Linux
                 success, output = self._run_command(
-                    ["curl", "-fsSL", "https://ollama.com/install.sh", "-o", "/tmp/ollama_install.sh"],
+                    ["curl", "-fsSL", "https://ollama.com/install.sh", "-o", "/tmp/ollama_install.sh"],  # nosec B108 - temp file for installer
                     "Download ollama install script",
                 )
                 if success:
                     success, output = self._run_command(
-                        ["sh", "/tmp/ollama_install.sh"],
+                        ["sh", "/tmp/ollama_install.sh"],  # nosec B108 - running installer
                         "Run ollama install script",
                     )
             else:

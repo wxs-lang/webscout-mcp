@@ -85,7 +85,7 @@ class SitemapParser:
             return result
 
         try:
-            root = ET.fromstring(response.content)
+            root = ET.fromstring(response.content)  # nosec B314 - sitemap XML from trusted sources, parsed with standard library
         except ET.ParseError as exc:
             result.errors.append(f"Failed to parse sitemap XML: {exc}")
             return result

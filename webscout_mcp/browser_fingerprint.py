@@ -110,7 +110,7 @@ class BrowserFingerprint:
             self.timezone,
         ]
         combined = "|".join(components)
-        return hashlib.md5(combined.encode()).hexdigest()
+        return hashlib.md5(combined.encode(), usedforsecurity=False).hexdigest()
 
 
 class FingerprintGenerator:
@@ -365,18 +365,18 @@ class FingerprintGenerator:
         # Canvas fingerprint is based on text rendering differences
         # We simulate it with a random hash
         random_data = str(self._random.random()) + str(self._random.random())
-        return hashlib.md5(random_data.encode()).hexdigest()
+        return hashlib.md5(random_data.encode(), usedforsecurity=False).hexdigest()
 
     def _generate_webgl_fp(self, fp: BrowserFingerprint) -> str:
         """Generate a simulated WebGL fingerprint."""
         data = fp.webgl_vendor + fp.webgl_renderer + str(self._random.random())
-        return hashlib.md5(data.encode()).hexdigest()
+        return hashlib.md5(data.encode(), usedforsecurity=False).hexdigest()
 
     def _generate_audio_fp(self) -> str:
         """Generate a simulated AudioContext fingerprint."""
         # Audio fingerprint is based on subtle differences in audio processing
         random_data = str(self._random.random()) + str(self._random.random())
-        return hashlib.md5(random_data.encode()).hexdigest()
+        return hashlib.md5(random_data.encode(), usedforsecurity=False).hexdigest()
 
     def generate_consistent_set(self, count: int, browser_type: str | None = None) -> list[BrowserFingerprint]:
         """Generate a set of consistent but distinct fingerprints.

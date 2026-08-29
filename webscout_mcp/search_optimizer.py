@@ -288,7 +288,7 @@ class SearchCache:
     def _make_key(self, query: str, max_results: int, backends: list[str]) -> str:
         """Make cache key."""
         key_str = f"{query.lower().strip()}:{max_results}:{','.join(sorted(backends))}"
-        return hashlib.md5(key_str.encode()).hexdigest()
+        return hashlib.md5(key_str.encode(), usedforsecurity=False).hexdigest()
 
     def get(self, query: str, max_results: int, backends: list[str]) -> SearchResponse | None:
         """Get cached response.

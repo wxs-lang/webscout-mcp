@@ -407,7 +407,7 @@ def create_app(
 
 
 def run_server(
-    host: str = "0.0.0.0",
+    host: str = "0.0.0.0",  # nosec B104 - default bind address, user can override
     port: int = 8000,
     api_key: str | None = None,
     cors_origins: list[str] | None = None,

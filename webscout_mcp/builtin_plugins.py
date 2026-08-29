@@ -339,7 +339,7 @@ class DuplicateRemover(PostProcessorPlugin):
                 continue
 
             content = item.get("content", "")
-            content_hash = hashlib.md5(content.encode()).hexdigest()
+            content_hash = hashlib.md5(content.encode(), usedforsecurity=False).hexdigest()
 
             if content_hash not in self._seen_hashes:
                 self._seen_hashes.add(content_hash)

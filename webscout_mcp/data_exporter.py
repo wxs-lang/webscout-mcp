@@ -304,7 +304,7 @@ class DataExporter:
         # Insert data
         placeholders = ", ".join(["?" for _ in fieldnames])
         columns_str = ", ".join([f'"{f}"' for f in fieldnames])
-        insert_query = f"INSERT INTO {self.config.sqlite_table_name} ({columns_str}) VALUES ({placeholders})"
+        insert_query = f"INSERT INTO {self.config.sqlite_table_name} ({columns_str}) VALUES ({placeholders})"  # nosec B608 - SQLite with parameterized values, table name from config
 
         for item in data:
             values = [item.get(field, "") for field in fieldnames]

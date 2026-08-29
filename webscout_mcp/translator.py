@@ -138,7 +138,7 @@ class Translator:
     def _get_cache_key(self, text: str, source: str, target: str) -> str:
         """Generate cache key for translation."""
         key_str = f"{self.backend}:{source}:{target}:{text}"
-        return hashlib.md5(key_str.encode()).hexdigest()
+        return hashlib.md5(key_str.encode(), usedforsecurity=False).hexdigest()
 
     def detect_language(self, text: str) -> tuple[str, float]:
         """Detect the language of text.
@@ -350,7 +350,7 @@ class Translator:
                 }
                 params = {"api-version": "3.0", "from": source, "to": target}
                 body = [{"text": text}]
-                response = requests.post(f"{endpoint}/translate", headers=headers, params=params, json=body)
+                response = requests.post(f"{endpoint}/translate", headers=headers, params=params, json=body, timeout=30)
                 if response.status_code == 200:
                     return response.json()[0]["translations"][0]["text"]
                 return text

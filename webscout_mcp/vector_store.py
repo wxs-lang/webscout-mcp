@@ -77,7 +77,7 @@ class Document:
     @classmethod
     def from_text(cls, text: str, source: str = "", metadata: dict | None = None) -> Document:
         """Create a document from text."""
-        doc_id = hashlib.md5(f"{source}:{text[:100]}".encode()).hexdigest()
+        doc_id = hashlib.md5(f"{source}:{text[:100]}".encode(), usedforsecurity=False).hexdigest()
         return cls(
             id=doc_id,
             content=text,

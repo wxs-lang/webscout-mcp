@@ -386,7 +386,7 @@ class WebMonitor:
 
     def _compute_hash(self, content: str) -> str:
         """Compute hash of content."""
-        return hashlib.md5(content.encode("utf-8")).hexdigest()
+        return hashlib.md5(content.encode("utf-8"), usedforsecurity=False).hexdigest()
 
     def _generate_diff(self, old: str, new: str) -> str:
         """Generate a simple diff between old and new content."""

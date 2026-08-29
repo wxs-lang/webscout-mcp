@@ -371,7 +371,7 @@ class DependencyChecker:
             import urllib.request
 
             req = urllib.request.Request(url, method="HEAD")
-            with urllib.request.urlopen(req, timeout=timeout) as response:
+            with urllib.request.urlopen(req, timeout=timeout) as response:  # nosec B310 - health check only, URLs are validated
                 return True, f"HTTP endpoint OK ({url} -> {response.status})"
         except Exception as exc:
             return False, f"HTTP endpoint check failed: {exc}"

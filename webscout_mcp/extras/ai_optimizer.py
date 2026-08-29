@@ -494,7 +494,7 @@ class AIOptimizer:
         response.prompt_tokens = self.model_optimizer.estimate_tokens(system_prompt + user_prompt)
 
         # Check cache
-        cache_key = hashlib.md5(f"{task}:{text}:{context}".encode()).hexdigest()
+        cache_key = hashlib.md5(f"{task}:{text}:{context}".encode(), usedforsecurity=False).hexdigest()
         if self.enable_caching:
             cached = self.model_optimizer.get_cached_response(cache_key)
             if cached:
