@@ -61,7 +61,6 @@ def temp_file():
         os.unlink(file_path)
 
 
-
 @pytest.fixture(scope="session")
 def content_extractor():
     """Session-level ContentExtractor to avoid repeated trafilatura loading.
@@ -71,6 +70,7 @@ def content_extractor():
     significantly speeding up integration and unit tests.
     """
     from webscout_mcp.content_extractor import ContentExtractor
+
     return ContentExtractor()
 
 
