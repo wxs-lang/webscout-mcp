@@ -103,41 +103,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
 
       - name: Install bandit
-        run: pip install bandit
+        run: pip install bandit==1.9.4
 
       - name: Run bandit security scan
-        run: |
-          bandit --version
-          bandit -r webscout_mcp/ -ll -f json -o bandit-results.json --exit-zero -v
-          echo "Bandit exit code: $?"
-
-      - name: Show bandit results
-        if: always()
-        run: |
-          if [ -f bandit-results.json ]; then
-            python3 -c "import json; data=json.load(open('bandit-results.json')); results=data.get('results',[]); print(f'Total issues: {len(results)}'); [print(f'  [{r["issue_severity"]}] {r["test_id"]}: {r["issue_text"][:80]}') for r in results]"
-          fi
-
-      - name: Upload bandit results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: bandit-results
-          path: |
-            bandit-results.json
-          retention-days: 14
-
-      - name: Security summary
-        if: always()
-        run: |
-          echo "## Security Scan Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          if [ -f bandit-results.json ]; then
-            python3 -c "import json; data=json.load(open('bandit-results.json')); results=data.get('results',[]); metrics=data.get('metrics',{}).get('_totals',{}); print(f'- Total issues found: {len(results)}'); print(f'- High severity: {metrics.get(\"SEVERITY.HIGH\",{}).get(\"count\",0)}'); print(f'- Medium severity: {metrics.get(\"SEVERITY.MEDIUM\",{}).get(\"count\",0)}'); print(f'- Low severity: {metrics.get(\"SEVERITY.LOW\",{}).get(\"count\",0)}')" >> $GITHUB_STEP_SUMMARY
-          fi
+        run: bandit -r webscout_mcp/ -ll
 
   codeql:
     name: CodeQL Analysis
