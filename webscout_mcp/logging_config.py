@@ -23,18 +23,25 @@ _LOGGER_NAME = "webscout"
 _initialised = False
 
 
-class StructuredLogger(logging.Logger):
-    """Logger that supports structured logging with arbitrary keyword arguments.
+class StructuredLogger:
+    """Logger wrapper that supports structured logging with arbitrary keyword arguments.
+
+    This is a wrapper around standard Python logging.Logger, NOT a subclass.
+    It does NOT modify global logging behavior (no setLoggerClass call),
+    so it won't affect third-party loggers in the same process.
 
     Standard Python logging only accepts specific kwargs (exc_info, extra, etc.).
-    This logger automatically wraps arbitrary kwargs into the ``extra`` dict,
+    This wrapper automatically wraps arbitrary kwargs into the ``extra`` dict,
     allowing calls like:
         log.info("fetching url", url="https://example.com", status=200)
 
     The extra fields are then picked up by the custom formatters.
     """
 
-    def _log_with_extra(self, level: int, msg: Any, args: tuple, kwargs: dict) -> None:
+    def __init__(self, logger: logging.Logger) -> None:
+        self._logger = logger
+
+    def _process_kwargs(self, kwargs: dict) -> dict:
         """Extract arbitrary kwargs and merge them into extra."""
         # Standard logging kwargs that should be passed through directly
         standard_kwargs = {"exc_info", "stack_info", "stacklevel", "extra"}
@@ -48,35 +55,89 @@ class StructuredLogger(logging.Logger):
         if extra:
             kwargs["extra"] = extra
 
-        super().log(level, msg, *args, **kwargs)
+        return kwargs
 
     def debug(self, msg: Any, *args: Any, **kwargs: Any) -> None:
-        if self.isEnabledFor(logging.DEBUG):
-            self._log_with_extra(logging.DEBUG, msg, args, kwargs)
+        if self._logger.isEnabledFor(logging.DEBUG):
+            kwargs = self._process_kwargs(kwargs)
+            self._logger.debug(msg, *args, **kwargs)
 
     def info(self, msg: Any, *args: Any, **kwargs: Any) -> None:
-        if self.isEnabledFor(logging.INFO):
-            self._log_with_extra(logging.INFO, msg, args, kwargs)
+        if self._logger.isEnabledFor(logging.INFO):
+            kwargs = self._process_kwargs(kwargs)
+            self._logger.info(msg, *args, **kwargs)
 
     def warning(self, msg: Any, *args: Any, **kwargs: Any) -> None:
-        if self.isEnabledFor(logging.WARNING):
-            self._log_with_extra(logging.WARNING, msg, args, kwargs)
+        if self._logger.isEnabledFor(logging.WARNING):
+            kwargs = self._process_kwargs(kwargs)
+            self._logger.warning(msg, *args, **kwargs)
 
     def error(self, msg: Any, *args: Any, **kwargs: Any) -> None:
-        if self.isEnabledFor(logging.ERROR):
-            self._log_with_extra(logging.ERROR, msg, args, kwargs)
+        if self._logger.isEnabledFor(logging.ERROR):
+            kwargs = self._process_kwargs(kwargs)
+            self._logger.error(msg, *args, **kwargs)
 
     def critical(self, msg: Any, *args: Any, **kwargs: Any) -> None:
-        if self.isEnabledFor(logging.CRITICAL):
-            self._log_with_extra(logging.CRITICAL, msg, args, kwargs)
+        if self._logger.isEnabledFor(logging.CRITICAL):
+            kwargs = self._process_kwargs(kwargs)
+            self._logger.critical(msg, *args, **kwargs)
 
     def exception(self, msg: Any, *args: Any, **kwargs: Any) -> None:
         kwargs["exc_info"] = True
         self.error(msg, *args, **kwargs)
 
+    def log(self, level: int, msg: Any, *args: Any, **kwargs: Any) -> None:
+        if self._logger.isEnabledFor(level):
+            kwargs = self._process_kwargs(kwargs)
+            self._logger.log(level, msg, *args, **kwargs)
 
-# Register our custom logger class
-logging.setLoggerClass(StructuredLogger)
+    def isEnabledFor(self, level: int) -> bool:
+        return self._logger.isEnabledFor(level)
+
+    def setLevel(self, level: int) -> None:
+        self._logger.setLevel(level)
+
+    def getEffectiveLevel(self) -> int:
+        return self._logger.getEffectiveLevel()
+
+    def addHandler(self, handler: logging.Handler) -> None:
+        self._logger.addHandler(handler)
+
+    def removeHandler(self, handler: logging.Handler) -> None:
+        self._logger.removeHandler(handler)
+
+    @property
+    def name(self) -> str:
+        return self._logger.name
+
+    @property
+    def level(self) -> int:
+        return self._logger.level
+
+    @property
+    def parent(self) -> logging.Logger | None:
+        return self._logger.parent
+
+    @property
+    def propagate(self) -> bool:
+        return self._logger.propagate
+
+    @propagate.setter
+    def propagate(self, value: bool) -> None:
+        self._logger.propagate = value
+
+    @property
+    def handlers(self) -> list:
+        return self._logger.handlers
+
+    def __repr__(self) -> str:
+        return f"<StructuredLogger name={self._logger.name!r}>"
+
+
+# NOTE: We do NOT call logging.setLoggerClass() here.
+# This avoids modifying global logging behavior that could affect
+# third-party loggers when webscout is embedded in other Python processes.
+# Instead, get_logger() returns a StructuredLogger wrapper instance.
 
 
 class _ContextFilter(logging.Filter):
@@ -217,10 +278,16 @@ def setup_logging(
     _initialised = True
 
 
-def get_logger(name: str | None = None) -> logging.Logger:
-    """Return a child logger under the ``webscout`` namespace."""
+def get_logger(name: str | None = None) -> StructuredLogger:
+    """Return a structured logger under the ``webscout`` namespace.
+
+    Returns a StructuredLogger wrapper that supports arbitrary keyword arguments
+    for structured logging, without modifying global logging behavior.
+    """
     if not _initialised:
         setup_logging()
     if name is None or name == "__main__":
-        return logging.getLogger(_LOGGER_NAME)
-    return logging.getLogger(f"{_LOGGER_NAME}.{name}")
+        logger = logging.getLogger(_LOGGER_NAME)
+    else:
+        logger = logging.getLogger(f"{_LOGGER_NAME}.{name}")
+    return StructuredLogger(logger)
