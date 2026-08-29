@@ -1,0 +1,356 @@
+name: Performance Benchmarks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'webscout_mcp/**'
+      - 'tests/benchmarks/**'
+      - '.github/workflows/performance.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'webscout_mcp/**'
+      - 'tests/benchmarks/**'
+  workflow_dispatch:
+    inputs:
+      benchmark_type:
+        description: 'Benchmark type to run'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - search
+          - extraction
+          - cache
+          - browser
+
+concurrency:
+  group: performance-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+  BENCHMARK_ITERATIONS: 100
+
+jobs:
+  benchmarks:
+    name: Run Benchmarks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libxml2-dev \
+            libxslt1-dev \
+            libjpeg-dev \
+            zlib1g-dev
+
+      - name: Install package and benchmark dependencies
+        run: |
+          pip install -e ".[all,dev,test]" || pip install -e .
+          pip install pytest pytest-benchmark pytest-asyncio anyio
+          pip install memory_profiler psutil
+
+      - name: Create benchmark directory
+        run: mkdir -p tests/benchmarks benchmark-results
+
+      - name: Create benchmark tests
+        run: |
+          cat > tests/benchmarks/conftest.py << 'EOF'
+          import pytest
+          import sys
+          import os
+
+          sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+          EOF
+
+          cat > tests/benchmarks/test_search_benchmarks.py << 'EOF'
+          import pytest
+          import time
+          from webscout_mcp.search import SearchEngine
+
+          @pytest.mark.benchmark(group="search", min_rounds=10)
+          def test_search_basic(benchmark):
+              """Benchmark basic search initialization."""
+              def init_search():
+                  engine = SearchEngine()
+                  return engine
+              benchmark(init_search)
+
+          @pytest.mark.benchmark(group="search", min_rounds=10)
+          def test_search_query_parsing(benchmark):
+              """Benchmark search query parsing."""
+              engine = SearchEngine()
+              def parse_query():
+                  return engine.parse_query("test query site:example.com")
+              benchmark(parse_query)
+          EOF
+
+          cat > tests/benchmarks/test_cache_benchmarks.py << 'EOF'
+          import pytest
+          import time
+          from webscout_mcp.cache import LRUCache, Cache
+          import tempfile
+          from pathlib import Path
+
+          @pytest.mark.benchmark(group="cache", min_rounds=100)
+          def test_lru_cache_set(benchmark):
+              """Benchmark LRU cache set operations."""
+              cache = LRUCache(max_size=1000)
+              def set_item():
+                  cache.set("key", "value", "text/plain", time.time(), time.time() + 3600)
+              benchmark(set_item)
+
+          @pytest.mark.benchmark(group="cache", min_rounds=100)
+          def test_lru_cache_get(benchmark):
+              """Benchmark LRU cache get operations."""
+              cache = LRUCache(max_size=1000)
+              cache.set("key", "value", "text/plain", time.time(), time.time() + 3600)
+              def get_item():
+                  return cache.get("key")
+              benchmark(get_item)
+
+          @pytest.mark.benchmark(group="cache", min_rounds=100)
+          def test_lru_cache_eviction(benchmark):
+              """Benchmark LRU cache eviction."""
+              def create_and_evict():
+                  cache = LRUCache(max_size=100)
+                  for i in range(200):
+                      cache.set(f"key{i}", f"value{i}", "text/plain", time.time(), time.time() + 3600)
+              benchmark(create_and_evict)
+          EOF
+
+          cat > tests/benchmarks/test_utils_benchmarks.py << 'EOF'
+          import pytest
+          from webscout_mcp.utils import normalize_url, is_valid_url, extract_domain, truncate_text
+
+          @pytest.mark.benchmark(group="utils", min_rounds=1000)
+          def test_normalize_url(benchmark):
+              """Benchmark URL normalization."""
+              def normalize():
+                  return normalize_url("https://WWW.Example.COM/path#fragment?query=value")
+              benchmark(normalize)
+
+          @pytest.mark.benchmark(group="utils", min_rounds=1000)
+          def test_is_valid_url(benchmark):
+              """Benchmark URL validation."""
+              def validate():
+                  return is_valid_url("https://example.com/path")
+              benchmark(validate)
+
+          @pytest.mark.benchmark(group="utils", min_rounds=1000)
+          def test_extract_domain(benchmark):
+              """Benchmark domain extraction."""
+              def extract():
+                  return extract_domain("https://sub.example.com:8080/path?query=value")
+              benchmark(extract)
+
+          @pytest.mark.benchmark(group="utils", min_rounds=1000)
+          def test_truncate_text(benchmark):
+              """Benchmark text truncation."""
+              long_text = "a" * 10000
+              def truncate():
+                  return truncate_text(long_text, max_chars=1000)
+              benchmark(truncate)
+          EOF
+
+          cat > tests/benchmarks/test_errors_benchmarks.py << 'EOF'
+          import pytest
+          from webscout_mcp.errors import WebScoutError, HTTPError, ConfigurationError
+
+          @pytest.mark.benchmark(group="errors", min_rounds=1000)
+          def test_error_creation(benchmark):
+              """Benchmark error creation."""
+              def create_error():
+                  return WebScoutError("Test error message", code="TEST001")
+              benchmark(create_error)
+
+          @pytest.mark.benchmark(group="errors", min_rounds=1000)
+          def test_error_to_dict(benchmark):
+              """Benchmark error serialization."""
+              err = WebScoutError("Test error", code="TEST001", details={"key": "value"})
+              def serialize():
+                  return err.to_dict()
+              benchmark(serialize)
+
+          @pytest.mark.benchmark(group="errors", min_rounds=1000)
+          def test_http_error_creation(benchmark):
+              """Benchmark HTTP error creation."""
+              def create_http_error():
+                  return HTTPError(404, "https://example.com", "Not Found")
+              benchmark(create_http_error)
+          EOF
+
+      - name: Run benchmarks
+        run: |
+          BENCHMARK_TYPE="${{ github.event.inputs.benchmark_type || 'all' }}"
+
+          if [ "$BENCHMARK_TYPE" = "all" ]; then
+            TEST_PATH="tests/benchmarks/"
+          else
+            TEST_PATH="tests/benchmarks/test_${BENCHMARK_TYPE}_benchmarks.py"
+          fi
+
+          python -m pytest $TEST_PATH \
+            --benchmark-only \
+            --benchmark-json=benchmark-results/results-py${{ matrix.python-version }}.json \
+            --benchmark-columns=min,max,mean,median,stddev,ops \
+            --benchmark-sort=name \
+            -v \
+            2>&1 | tee benchmark-results/output-py${{ matrix.python-version }}.txt
+
+      - name: Generate benchmark summary
+        if: always()
+        run: |
+          echo "## 📊 Performance Benchmarks (Python ${{ matrix.python-version }})" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ -f benchmark-results/output-py${{ matrix.python-version }}.txt ]; then
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            tail -50 benchmark-results/output-py${{ matrix.python-version }}.txt >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload benchmark results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-py${{ matrix.python-version }}
+          path: benchmark-results/
+          retention-days: 30
+
+  compare-benchmarks:
+    name: Compare Benchmarks
+    runs-on: ubuntu-latest
+    needs: benchmarks
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download benchmark results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: benchmark-results-*
+          path: benchmark-results
+          merge-multiple: true
+
+      - name: Compare with base branch
+        run: |
+          echo "## 📈 Performance Comparison" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Benchmark results have been generated for this PR." >> $GITHUB_STEP_SUMMARY
+          echo "Please review the benchmark artifacts for detailed performance metrics." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Notes" >> $GITHUB_STEP_SUMMARY
+          echo "- Results may vary between runs" >> $GITHUB_STEP_SUMMARY
+          echo "- Focus on significant regressions (>20%)" >> $GITHUB_STEP_SUMMARY
+          echo "- Cache performance may improve after warmup" >> $GITHUB_STEP_SUMMARY
+
+  memory-profiling:
+    name: Memory Profiling
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -e ".[all,dev,test]" || pip install -e .
+          pip install memory_profiler psutil
+
+      - name: Run memory profiling
+        run: |
+          cat > memory_profile.py << 'EOF'
+          import sys
+          import os
+          import time
+          import psutil
+
+          sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+          def profile_memory():
+              process = psutil.Process(os.getpid())
+              baseline = process.memory_info().rss / 1024 / 1024  # MB
+
+              print(f"Baseline memory: {baseline:.2f} MB")
+
+              # Test 1: Import modules
+              start = time.time()
+              from webscout_mcp.cache import LRUCache
+              from webscout_mcp.errors import WebScoutError
+              from webscout_mcp.utils import normalize_url
+              import_time = time.time() - start
+              after_import = process.memory_info().rss / 1024 / 1024
+              print(f"Import time: {import_time:.3f}s")
+              print(f"Memory after import: {after_import:.2f} MB (+{after_import - baseline:.2f} MB)")
+
+              # Test 2: Create many cache entries
+              cache = LRUCache(max_size=10000)
+              for i in range(10000):
+                  cache.set(f"key{i}", f"value{i}" * 100, "text/plain", time.time(), time.time() + 3600)
+              after_cache = process.memory_info().rss / 1024 / 1024
+              print(f"Memory after 10k cache entries: {after_cache:.2f} MB (+{after_cache - after_import:.2f} MB)")
+
+              # Test 3: Create many errors
+              errors = []
+              for i in range(10000):
+                  errors.append(WebScoutError(f"Error {i}", code=f"ERR{i}"))
+              after_errors = process.memory_info().rss / 1024 / 1024
+              print(f"Memory after 10k errors: {after_errors:.2f} MB (+{after_errors - after_cache:.2f} MB)")
+
+              print("\n✅ Memory profiling complete!")
+
+          if __name__ == "__main__":
+              profile_memory()
+          EOF
+
+          python memory_profile.py 2>&1 | tee memory-profile-results.txt
+
+      - name: Memory profiling summary
+        if: always()
+        run: |
+          echo "## 🧠 Memory Profiling Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f memory-profile-results.txt ]; then
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            cat memory-profile-results.txt >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload memory profiling results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: memory-profiling-results
+          path: memory-profile-results.txt
+          retention-days: 30

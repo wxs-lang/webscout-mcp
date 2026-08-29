@@ -1,0 +1,201 @@
+name: Automated Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      version_bump:
+        description: 'Version bump type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      dry_run:
+        description: 'Dry run (no release created)'
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  check-version:
+    name: Check if release is needed
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      new_version: ${{ steps.check.outputs.new_version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install semver
+        run: pip install semver
+
+      - name: Determine version bump
+        id: check
+        run: |
+          # Get current version from pyproject.toml
+          CURRENT_VERSION=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          echo "Current version: $CURRENT_VERSION"
+
+          # Get latest tag
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "Latest tag: $LATEST_TAG"
+
+          # Determine version bump based on commits
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            BUMP="${{ github.event.inputs.version_bump }}"
+          else
+            # Auto-detect based on commit messages since last tag
+            COMMITS=$(git log ${LATEST_TAG}..HEAD --oneline 2>/dev/null || echo "")
+            if echo "$COMMITS" | grep -qE '^[a-f0-9]+ (feat|feature)!:'; then
+              BUMP="major"
+            elif echo "$COMMITS" | grep -qE '^[a-f0-9]+ (feat|feature):'; then
+              BUMP="minor"
+            elif echo "$COMMITS" | grep -qE '^[a-f0-9]+ (fix|patch|bugfix):'; then
+              BUMP="patch"
+            else
+              BUMP="none"
+            fi
+          fi
+
+          echo "Version bump: $BUMP"
+
+          if [ "$BUMP" = "none" ]; then
+            echo "should_release=false" >> $GITHUB_OUTPUT
+            echo "No version bump needed"
+          else
+            # Calculate new version
+            NEW_VERSION=$(python -c "
+          import semver
+          v = semver.VersionInfo.parse('$CURRENT_VERSION')
+          if '$BUMP' == 'major':
+              print(v.bump_major())
+          elif '$BUMP' == 'minor':
+              print(v.bump_minor())
+          else:
+              print(v.bump_patch())
+          ")
+            echo "New version: $NEW_VERSION"
+            echo "should_release=true" >> $GITHUB_OUTPUT
+            echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          fi
+
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: check-version
+    if: needs.check-version.outputs.should_release == 'true' && github.event.inputs.dry_run != 'true'
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Update version in pyproject.toml
+        run: |
+          NEW_VERSION="${{ needs.check-version.outputs.new_version }}"
+          echo "Updating version to $NEW_VERSION"
+          python -c "
+          import tomllib
+          with open('pyproject.toml', 'rb') as f:
+              data = tomllib.load(f)
+          data['project']['version'] = '$NEW_VERSION'
+          import tomli_w
+          with open('pyproject.toml', 'wb') as f:
+              tomli_w.dump(data, f)
+          " || sed -i "s/^version = \".*\"/version = \"$NEW_VERSION\"/" pyproject.toml
+
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          NEW_VERSION="${{ needs.check-version.outputs.new_version }}"
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+
+          echo "## 🎉 Release v$NEW_VERSION" > release_notes.md
+          echo "" >> release_notes.md
+          echo "### 📦 What's Changed" >> release_notes.md
+          echo "" >> release_notes.md
+
+          if [ -n "$LATEST_TAG" ]; then
+            git log ${LATEST_TAG}..HEAD --pretty=format:"- %s (%h)" --no-merges >> release_notes.md
+          else
+            git log --pretty=format:"- %s (%h)" --no-merges >> release_notes.md
+          fi
+
+          echo "" >> release_notes.md
+          echo "### 📝 Full Changelog" >> release_notes.md
+          echo "" >> release_notes.md
+          echo "https://github.com/${{ github.repository }}/compare/${LATEST_TAG}...v$NEW_VERSION" >> release_notes.md
+          echo "" >> release_notes.md
+          echo "### 🚀 Installation" >> release_notes.md
+          echo "" >> release_notes.md
+          echo "\`\`\`bash" >> release_notes.md
+          echo "pip install webscout-mcp==$NEW_VERSION" >> release_notes.md
+          echo "\`\`\`" >> release_notes.md
+
+          cat release_notes.md
+
+      - name: Commit version bump
+        run: |
+          NEW_VERSION="${{ needs.check-version.outputs.new_version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add pyproject.toml
+          git commit -m "chore: bump version to v$NEW_VERSION"
+          git push
+
+      - name: Create tag
+        run: |
+          NEW_VERSION="${{ needs.check-version.outputs.new_version }}"
+          git tag -a "v$NEW_VERSION" -m "Release v$NEW_VERSION"
+          git push origin "v$NEW_VERSION"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.check-version.outputs.new_version }}
+          name: Release v${{ needs.check-version.outputs.new_version }}
+          body_path: release_notes.md
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Release summary
+        run: |
+          NEW_VERSION="${{ needs.check-version.outputs.new_version }}"
+          echo "## 🎉 Release v$NEW_VERSION Created!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version**: v$NEW_VERSION" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tag**: v$NEW_VERSION" >> $GITHUB_STEP_SUMMARY
+          echo "- **Release**: https://github.com/${{ github.repository }}/releases/tag/v$NEW_VERSION" >> $GITHUB_STEP_SUMMARY
+          echo "- **PyPI**: https://pypi.org/project/webscout-mcp/$NEW_VERSION/" >> $GITHUB_STEP_SUMMARY
