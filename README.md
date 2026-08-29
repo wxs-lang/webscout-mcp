@@ -3,8 +3,15 @@
 [![PyPI version](https://img.shields.io/pypi/v/webscout-mcp.svg)](https://pypi.org/project/webscout-mcp/)
 [![Python versions](https://img.shields.io/pypi/pyversions/webscout-mcp.svg)](https://pypi.org/project/webscout-mcp/)
 [![Tests](https://github.com/wxs-lang/webscout-mcp/actions/workflows/tests.yml/badge.svg)](https://github.com/wxs-lang/webscout-mcp/actions/workflows/tests.yml)
+[![Code Quality](https://github.com/wxs-lang/webscout-mcp/actions/workflows/quality.yml/badge.svg)](https://github.com/wxs-lang/webscout-mcp/actions/workflows/quality.yml)
+[![Documentation](https://github.com/wxs-lang/webscout-mcp/actions/workflows/docs.yml/badge.svg)](https://wxs-lang.github.io/webscout-mcp/)
 [![Docker Pulls](https://img.shields.io/docker/pulls/wxslang/webscout-mcp.svg)](https://hub.docker.com/r/wxslang/webscout-mcp)
 [![License](https://img.shields.io/github/license/wxs-lang/webscout-mcp.svg)](https://github.com/wxs-lang/webscout-mcp/blob/main/LICENSE)
+[![GitHub Stars](https://img.shields.io/github/stars/wxs-lang/webscout-mcp.svg)](https://github.com/wxs-lang/webscout-mcp/stargazers)
+[![GitHub Forks](https://img.shields.io/github/forks/wxs-lang/webscout-mcp.svg)](https://github.com/wxs-lang/webscout-mcp/network/members)
+[![GitHub Issues](https://img.shields.io/github/issues/wxs-lang/webscout-mcp.svg)](https://github.com/wxs-lang/webscout-mcp/issues)
+[![Last Commit](https://img.shields.io/github/last-commit/wxs-lang/webscout-mcp.svg)](https://github.com/wxs-lang/webscout-mcp/commits/main)
+[![Commit Activity](https://img.shields.io/github/commit-activity/m/wxs-lang/webscout-mcp.svg)](https://github.com/wxs-lang/webscout-mcp/commits/main)
 
 AI-powered web intelligence platform for AI agents. Search, fetch, crawl, extract, understand, and monitor the web — with built-in AI, vector search, browser automation, and alerting. Everything stays on your machine.
 
