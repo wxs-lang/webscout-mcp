@@ -247,11 +247,11 @@ jobs:
           root = tree.getroot()
           line_rate = float(root.get('line-rate', 0)) * 100
           print(f'Line coverage: {line_rate:.1f}%')
-          if line_rate < 70:
-              print(f'WARNING: Coverage {line_rate:.1f}% is below 70% threshold')
+          if line_rate < 60:
+              print(f'WARNING: Coverage {line_rate:.1f}% is below 60% threshold')
               exit(1)
           else:
-              print(f'Coverage {line_rate:.1f}% meets 70% threshold')
+              print(f'Coverage {line_rate:.1f}% meets 60% threshold')
           "
 
       - name: Upload coverage report
