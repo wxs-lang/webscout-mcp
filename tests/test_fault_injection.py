@@ -9,6 +9,7 @@ Tests the system's behavior under various failure scenarios:
 These tests simulate real-world failure scenarios and verify that
 the system degrades gracefully rather than crashing.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -249,7 +250,7 @@ class TestFaultInjectionScenarios:
         """
         # Simulate 3 consecutive 429 errors from Bing
         for i in range(3):
-            health_manager.record_failure("bing", f"429 Too Many Requests (attempt {i+1})")
+            health_manager.record_failure("bing", f"429 Too Many Requests (attempt {i + 1})")
 
         bing = health_manager.get_backend("bing")
         assert bing.circuit_open is True
@@ -286,7 +287,7 @@ class TestFaultInjectionScenarios:
         # Fail all backends
         for backend in ["bing", "duckduckgo", "serpapi"]:
             for i in range(3):
-                health_manager.record_failure(backend, f"Failure {i+1}")
+                health_manager.record_failure(backend, f"Failure {i + 1}")
 
         # All circuits should be open
         available = health_manager.get_available_backends(["bing", "duckduckgo", "serpapi"])
@@ -304,7 +305,7 @@ class TestFaultInjectionScenarios:
         """
         # Open circuit
         for i in range(3):
-            health_manager.record_failure("bing", f"Failure {i+1}")
+            health_manager.record_failure("bing", f"Failure {i + 1}")
 
         bing = health_manager.get_backend("bing")
         assert bing.circuit_open is True
@@ -345,7 +346,7 @@ class TestFaultInjectionScenarios:
         Expected: Recorded as failure, circuit opens after threshold.
         """
         for i in range(3):
-            health_manager.record_failure("bing", f"DNS resolution failed (attempt {i+1})")
+            health_manager.record_failure("bing", f"DNS resolution failed (attempt {i + 1})")
 
         bing = health_manager.get_backend("bing")
         assert bing.circuit_open is True
@@ -497,7 +498,7 @@ class TestSystemResilience:
 
         # Fail Bing many times
         for i in range(10):
-            manager.record_failure("bing", f"Failure {i+1}")
+            manager.record_failure("bing", f"Failure {i + 1}")
 
         # DuckDuckGo should be completely unaffected
         ddg = manager.get_backend("duckduckgo")
