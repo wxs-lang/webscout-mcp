@@ -125,7 +125,7 @@ class TestMCPToolsList:
 
     @pytest.mark.asyncio
     async def test_each_tool_has_required_fields(self) -> None:
-        """Test that each tool has name, description, and inputSchema."""
+        """Test that each tool has name, description, and input_schema."""
         server_params = get_server_params()
         async with stdio_client(server_params) as (read_stream, write_stream):
             async with ClientSession(read_stream, write_stream) as session:
@@ -134,7 +134,7 @@ class TestMCPToolsList:
                 for tool in result.tools:
                     assert tool.name, "Tool missing name"
                     assert tool.description, f"Tool {tool.name} missing description"
-                    assert tool.inputSchema is not None, f"Tool {tool.name} missing inputSchema"
+                    assert tool.input_schema is not None, f"Tool {tool.name} missing input_schema"
 
 
 class TestMCPToolCalls:
@@ -176,13 +176,16 @@ class TestMCPToolCalls:
 
     @pytest.mark.asyncio
     async def test_call_nonexistent_tool(self) -> None:
-        """Test calling a tool that doesn't exist raises an error."""
+        """Test calling a tool that doesn't exist returns an error."""
         server_params = get_server_params()
         async with stdio_client(server_params) as (read_stream, write_stream):
             async with ClientSession(read_stream, write_stream) as session:
                 await session.initialize()
-                with pytest.raises(Exception):
-                    await session.call_tool("nonexistent_tool_12345", {})
+                result = await session.call_tool("nonexistent_tool_12345", {})
+                assert result is not None
+                # MCP returns error response, not exception
+                assert hasattr(result, "is_error")
+                assert result.is_error is True
 
     @pytest.mark.asyncio
     async def test_web_search_missing_query(self) -> None:
@@ -194,8 +197,8 @@ class TestMCPToolCalls:
                 # Call with empty arguments - should either error or return error content
                 result = await session.call_tool("web_search", {})
                 assert result is not None
-                # Either isError is True, or an exception was raised
-                assert hasattr(result, "isError")
+                # Either is_error is True, or an exception was raised
+                assert hasattr(result, "is_error")
 
 
 class TestMCPMultipleSequentialCalls:
