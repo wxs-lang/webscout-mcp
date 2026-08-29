@@ -60,11 +60,7 @@ class SearchBackend(ABC):
         except RuntimeError:
             current_loop = None
 
-        needs_new_client = (
-            self._client is None
-            or self._client.is_closed
-            or self._client_loop is not current_loop
-        )
+        needs_new_client = self._client is None or self._client.is_closed or self._client_loop is not current_loop
 
         if needs_new_client:
             # Close old client if it exists
