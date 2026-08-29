@@ -145,10 +145,8 @@ class LiveTestReport:
 # Live tests
 # ============================================================
 
-pytestmark = pytest.mark.skipif(
-    not pytest.config.getoption("--run-live", False),  # type: ignore
-    reason="Live tests require --run-live flag",
-)
+# Live tests are excluded from normal CI via --ignore=tests/live
+# Run them manually with: pytest tests/live/ --run-live
 
 
 @pytest.fixture(scope="session")
