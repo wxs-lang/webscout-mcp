@@ -232,9 +232,32 @@ def create_server(config: Config | None = None) -> MCPServer:
 
         Returns overall health score, per-backend status (healthy/degraded/open/half-open),
         circuit breaker state, and request statistics. Use this to diagnose search failures.
+
+        Reports the active SearchService health first, with legacy SearchEngine
+        health included as fallback reference during the migration period.
         """
-        report = search_engine.get_health_report()
-        return json.dumps(report, ensure_ascii=False, indent=2, default=str)
+        # Build unified health report
+        unified_report: dict = {
+            "active_search_path": "SearchService" if search_service is not None else "SearchEngine (legacy)",
+            "fallback_engine_enabled": search_service is not None,
+        }
+
+        # Primary: SearchService health (the actual active search path)
+        if search_service is not None:
+            try:
+                service_report = search_service.get_health_report()
+                unified_report["search_service"] = service_report
+            except Exception as exc:
+                unified_report["search_service"] = {"error": f"Failed to get service health: {exc}"}
+
+        # Secondary: legacy SearchEngine health (fallback reference)
+        try:
+            engine_report = search_engine.get_health_report()
+            unified_report["legacy_engine"] = engine_report
+        except Exception as exc:
+            unified_report["legacy_engine"] = {"error": f"Failed to get engine health: {exc}"}
+
+        return json.dumps(unified_report, ensure_ascii=False, indent=2, default=str)
 
     @mcp.tool()
     async def metadata_extract(url: str) -> str:
