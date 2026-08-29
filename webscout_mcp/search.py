@@ -542,7 +542,10 @@ except ImportError:
 
 
 class SearchEngine:
-    """Search engine wrapper with caching, automatic backend failover, and result merging."""
+    """
+    .. deprecated:: 0.6.0
+        Use SearchService instead. Will be removed in v1.0.
+Search engine wrapper with caching, automatic backend failover, and result merging."""
 
     def __init__(
         self,

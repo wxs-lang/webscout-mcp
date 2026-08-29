@@ -22,7 +22,7 @@ from webscout_mcp.security import SecurityManager, SSRFProtector
 class TestSearchContentIntegration:
     """Test search and content extraction working together."""
 
-    def test_search_then_extract_pipeline(self, sample_html):
+    def test_search_then_extract_pipeline(self, sample_html, content_extractor):
         """Test complete pipeline: search -> fetch -> extract."""
         # Step 1: Search (using mock function)
         search_optimizer = SearchOptimizer(backends=["mock"], enable_cache=False)
@@ -43,8 +43,7 @@ class TestSearchContentIntegration:
         assert search_result.results[0].url == "https://example.com/python"
 
         # Step 2: Extract content from HTML
-        extractor = ContentExtractor()
-        extracted = extractor.extract(sample_html, url="https://example.com/python")
+        extracted = content_extractor.extract(sample_html, url="https://example.com/python")
         assert isinstance(extracted, ExtractedContent)
         assert len(extracted.content) > 0
         assert extracted.quality_score > 0
@@ -54,7 +53,7 @@ class TestSearchContentIntegration:
         assert extracted.url == "https://example.com/python"
         assert "Python" in extracted.content or "python" in extracted.content.lower()
 
-    def test_search_result_to_extraction_input(self, sample_html):
+    def test_search_result_to_extraction_input(self, sample_html, content_extractor):
         """Test converting search results to extraction inputs."""
         search_optimizer = SearchOptimizer(backends=["mock"], enable_diversity=False)
 
@@ -68,9 +67,8 @@ class TestSearchContentIntegration:
         assert search_result.total_results == 3
 
         # Convert search results to extraction batch
-        extractor = ContentExtractor()
         pages = [{"html": sample_html, "url": result.url, "title": result.title} for result in search_result.results]
-        extracted_results = extractor.extract_batch(pages)
+        extracted_results = content_extractor.extract_batch(pages)
         assert len(extracted_results) == 3
         assert all(isinstance(r, ExtractedContent) for r in extracted_results)
 
@@ -168,7 +166,7 @@ class TestSecuritySearchIntegration:
 class TestPerformanceMonitoringIntegration:
     """Test performance monitoring across multiple modules."""
 
-    def test_track_pipeline_performance(self, sample_html):
+    def test_track_pipeline_performance(self, sample_html, content_extractor):
         """Test tracking performance of complete pipeline."""
         monitor = PerformanceMonitor()
 
@@ -176,8 +174,7 @@ class TestPerformanceMonitoringIntegration:
             time.sleep(0.01)
 
         with monitor.time("content_extraction"):
-            extractor = ContentExtractor()
-            extractor.extract(sample_html)
+            content_extractor.extract(sample_html)
 
         with monitor.time("ai_processing"):
             time.sleep(0.01)
