@@ -15,7 +15,24 @@
 
 AI-powered web intelligence platform for AI agents. Search, fetch, crawl, extract, understand, and monitor the web — with built-in AI, vector search, browser automation, and alerting. Everything stays on your machine.
 
+> **🎯 Project Positioning**: webscout-mcp is primarily a **Web Search / Fetch MCP server with extensive extension modules**. The core MCP server exposes 6 stable tools (search, fetch, crawl, extract, cache stats, cache clear). Additional modules (AI, RAG, browser, monitoring, SEO, etc.) are available as Python libraries and are planned for MCP integration. See [Module Status](MODULE_STATUS.md) for detailed stability and integration status.
+
 [**中文版本简介**](README_zh.md) | 快速了解项目，适合中文用户阅读
+
+## 🎯 What's Included in MCP (Right Now)
+
+The MCP server currently exposes these **6 core tools**:
+
+| Tool | Description | Stability |
+|------|-------------|-----------|
+| `web_search` | Multi-backend web search with result merging | ✅ Stable |
+| `web_fetch` | Fetch and parse web pages with content extraction | ✅ Stable |
+| `web_crawl` | Concurrent website crawling with depth limits | 🔶 Beta |
+| `web_extract` | Structured content extraction with CSS selectors | ✅ Stable |
+| `cache_stats` | View cache statistics and hit rates | ✅ Stable |
+| `cache_clear` | Clear the search/fetch cache | ✅ Stable |
+
+**Available as Python libraries (not yet MCP tools)**: AI content understanding, vector search & RAG, headless browser automation, web monitoring & alerting, SEO analysis, OCR, PDF processing, knowledge graphs, and more. See [Module Status](MODULE_STATUS.md) for the full list.
 
 ## ✨ Features
 
@@ -100,6 +117,33 @@ AI-powered web intelligence platform for AI agents. Search, fetch, crawl, extrac
 - **Python API** — full programmatic access to all features
 - **Sitemap support** — parse sitemap.xml and sitemap indexes
 - **Incremental crawling** — only re-fetch changed pages via ETag/Last-Modified
+
+## ⚠️ Search Backend Stability Notice
+
+webscout-mcp uses **direct HTML scraping** for search backends (Bing, DuckDuckGo, Google, Brave) by default — no API keys required. This makes it **free to use**, but please be aware of the stability trade-offs:
+
+### What can go wrong
+- **DOM changes**: Search engines frequently update their HTML structure, which can break scrapers
+- **CAPTCHAs**: Automated requests may trigger CAPTCHAs (especially Google and Brave)
+- **Bot detection**: Advanced bot detection may block or rate-limit requests
+- **IP blocking**: Sustained automated requests can lead to IP bans
+- **Parameter changes**: Search engines may change request parameters or headers
+
+### Mitigations built in
+- ✅ **Multi-backend failover**: If one backend fails, automatically try the next one
+- ✅ **Realistic browser headers**: Random User-Agents and realistic request headers
+- ✅ **Rate limiting**: Per-domain rate limiting to avoid overwhelming search engines
+- ✅ **Caching**: SQLite cache reduces repeated requests to the same queries
+- ✅ **Retry with backoff**: Exponential backoff on transient failures
+
+### For production use
+For production workloads requiring **higher reliability**, consider:
+1. Using official search APIs (Bing Search API, SerpAPI, etc.) — planned for future releases
+2. Deploying with rotating proxies
+3. Increasing cache TTL to reduce request frequency
+4. Monitoring search backend health and adjusting backends accordingly
+
+**Bottom line**: webscout-mcp's default search is **great for development, personal use, and low-volume workloads**. For high-volume production use, plan for additional reliability measures.
 
 ## 📦 Installation
 
@@ -566,6 +610,7 @@ check_interval = 300
 ## 📚 Documentation
 
 - [README](README.md) — This file
+- [Module Status](MODULE_STATUS.md) — Module stability levels and MCP integration status
 - [Project Introduction](PROJECT_INTRODUCTION.md) — Detailed project overview and architecture
 - [Deployment Guide](DEPLOYMENT.md) — Docker, systemd, Kubernetes deployment
 - [Examples](examples/) — Usage examples and sample code
