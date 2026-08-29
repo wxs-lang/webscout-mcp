@@ -18,6 +18,7 @@ from mcp.server.mcpserver import MCPServer
 
 from .cache import Cache
 from .config import Config
+from .content_quality import ContentQualityAnalyzer
 from .crawler import Crawler
 from .extractor import DataExtractor, ExtractionRule
 from .fetcher import Fetcher
@@ -48,6 +49,7 @@ def create_server(config: Config | None = None) -> MCPServer:
     extractor = DataExtractor(cfg, fetcher)
     metadata_extractor = MetadataExtractor()
     rss_parser = RSSParser()
+    content_quality_analyzer = ContentQualityAnalyzer()
 
     mcp = MCPServer(
         name="webscout",
@@ -219,5 +221,55 @@ def create_server(config: Config | None = None) -> MCPServer:
         except Exception as exc:
             log.error("rss_parse failed", extra={"url": url, "error": str(exc)})
             return json.dumps({"error": f"RSS parsing failed: {exc}", "url": url}, ensure_ascii=False)
+
+    @mcp.tool()
+    async def content_quality(url: str) -> str:
+        """Analyze content quality of a web page.
+
+        Evaluates readability scores (Flesch-Kincaid, Gunning Fog),
+        keyword density, content structure, metadata quality, and provides
+        actionable suggestions for improvement.
+        """
+        try:
+            # Fetch page content
+            result = await fetcher.fetch(url=url, extract=True, output_format="text", max_chars=50000)
+            text = result.content if hasattr(result, 'content') else result.text
+            html_result = await fetcher.fetch(url=url, extract=False, output_format="html", max_chars=200000)
+            html = html_result.content if hasattr(html_result, 'content') else html_result.raw_html
+
+            if not text:
+                return json.dumps({"error": "Failed to fetch page content", "url": url}, ensure_ascii=False)
+
+            # Analyze content quality
+            metrics = content_quality_analyzer.analyze(text, html=html or "")
+            return json.dumps(metrics.to_dict(), ensure_ascii=False, indent=2, default=str)
+        except Exception as exc:
+            log.error("content_quality failed", extra={"url": url, "error": str(exc)})
+            return json.dumps({"error": f"Content quality analysis failed: {exc}", "url": url}, ensure_ascii=False)
+
+    @mcp.tool()
+    async def broken_links(url: str, timeout: float = 10.0) -> str:
+        """Check for broken links on a web page.
+
+        Extracts all links from the page, checks each one's HTTP status,
+        and returns a report with broken links, redirects, and link statistics.
+        """
+        try:
+            from .broken_link_checker import BrokenLinkChecker
+
+            # Fetch page HTML
+            result = await fetcher.fetch(url=url, extract=False, output_format="html", max_chars=200000)
+            html = result.content if hasattr(result, 'content') else result.raw_html
+
+            if not html:
+                return json.dumps({"error": "Failed to fetch page content", "url": url}, ensure_ascii=False)
+
+            # Check broken links
+            checker = BrokenLinkChecker(timeout=timeout)
+            report = checker.check_page(html, base_url=url)
+            return json.dumps(report.to_dict(), ensure_ascii=False, indent=2, default=str)
+        except Exception as exc:
+            log.error("broken_links failed", extra={"url": url, "error": str(exc)})
+            return json.dumps({"error": f"Broken link check failed: {exc}", "url": url}, ensure_ascii=False)
 
     return mcp
