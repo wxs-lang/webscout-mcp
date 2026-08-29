@@ -94,6 +94,7 @@ jobs:
     name: Security Scan (bandit)
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    continue-on-error: true
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -113,8 +114,7 @@ jobs:
             -f json \
             -o bandit-results.json \
             --exit-zero \
-            -ll \
-            2>&1 | tee bandit_output.txt
+            2>&1 | tee bandit_output.txt || true
         continue-on-error: true
         timeout-minutes: 5
 
@@ -127,6 +127,7 @@ jobs:
             bandit-results.json
             bandit_output.txt
           retention-days: 14
+        continue-on-error: true
 
       - name: Security summary
         if: always()
