@@ -457,12 +457,12 @@ class SensitiveDataFilter:
 
     # Patterns for sensitive data
     SENSITIVE_PATTERNS = {
-        "api_key": re.compile(r'(?i)(?:api[_-]?key|apikey)\s*[:=]\s*["\']?([a-zA-Z0-9_\-]{20,})["\']?'),
+        "api_key": re.compile(r'(?i)(?:api[_-]?key|apikey)\s*[:=]\s*["\']?([a-zA-Z0-9_\-]{6,})["\']?'),
         "password": re.compile(r'(?i)(?:password|passwd|pwd)\s*[:=]\s*["\']?([^\s"\']{6,})["\']?'),
         "token": re.compile(
-            r'(?i)(?:token|auth[_-]?token|access[_-]?token|secret)\s*[:=]\s*["\']?([a-zA-Z0-9_\-]{20,})["\']?'
+            r'(?i)(?:token|auth[_-]?token|access[_-]?token|secret)\s*[:=]\s*["\']?([a-zA-Z0-9_\-]{6,})["\']?'
         ),
-        "bearer": re.compile(r"(?i)bearer\s+([a-zA-Z0-9_\-\.]{20,})"),
+        "bearer": re.compile(r"(?i)bearer\s+([a-zA-Z0-9_\-\.]{6,})"),
         "github_token": re.compile(r"gh[pousr]_[A-Za-z0-9]{36}"),
         "aws_key": re.compile(r"AKIA[0-9A-Z]{16}"),
         "aws_secret": re.compile(r'(?i)aws[_-]?secret\s*[:=]\s*["\']?([A-Za-z0-9/+=]{40})["\']?'),
