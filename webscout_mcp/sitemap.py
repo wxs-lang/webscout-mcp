@@ -14,7 +14,7 @@ from xml.etree import ElementTree as ET
 import httpx
 
 from .config import Config
-from .logging import get_logger
+from .logging_config import get_logger
 from .utils import normalize_url
 
 log = get_logger(__name__)

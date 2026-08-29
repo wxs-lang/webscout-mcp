@@ -21,7 +21,7 @@ from typing import Any
 
 from . import __version__
 from .config import Config
-from .logging import get_logger, setup_logging
+from .logging_config import get_logger, setup_logging
 
 
 def _build_config(args: argparse.Namespace) -> Config:

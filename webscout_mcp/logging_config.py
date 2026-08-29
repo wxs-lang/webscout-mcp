@@ -2,7 +2,7 @@
 
 Usage::
 
-    from webscout_mcp.logging import get_logger, setup_logging
+    from webscout_mcp.logging_config import get_logger, setup_logging
 
     setup_logging(level="INFO")
     log = get_logger(__name__)

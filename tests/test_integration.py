@@ -56,7 +56,7 @@ class TestSearchContentIntegration:
 
     def test_search_result_to_extraction_input(self, sample_html):
         """Test converting search results to extraction inputs."""
-        search_optimizer = SearchOptimizer(backends=["mock"])
+        search_optimizer = SearchOptimizer(backends=["mock"], enable_diversity=False)
 
         def mock_search(backend, query, max_results):
             return [

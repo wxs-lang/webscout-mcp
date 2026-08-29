@@ -25,7 +25,7 @@ from bs4 import BeautifulSoup
 from .cache import Cache
 from .config import Config
 from .exceptions import AllBackendsFailedError, SearchError
-from .logging import get_logger
+from .logging_config import get_logger
 
 log = get_logger(__name__)
 

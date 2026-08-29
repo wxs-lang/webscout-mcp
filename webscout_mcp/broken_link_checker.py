@@ -20,7 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from urllib.parse import urljoin, urlparse
 
-from .logging import get_logger
+from .logging_config import get_logger
 
 log = get_logger(__name__)
 

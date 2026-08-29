@@ -21,7 +21,7 @@ from .config import Config
 from .crawler import Crawler
 from .extractor import DataExtractor, ExtractionRule
 from .fetcher import Fetcher
-from .logging import get_logger, setup_logging
+from .logging_config import get_logger, setup_logging
 from .robots import RobotsChecker
 from .search import SearchEngine
 

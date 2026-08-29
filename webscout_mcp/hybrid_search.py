@@ -22,7 +22,7 @@ from collections import Counter, defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from .logging import get_logger
+from .logging_config import get_logger
 
 log = get_logger(__name__)
 

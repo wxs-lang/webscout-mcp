@@ -75,26 +75,36 @@ class PerformanceMonitor:
         return {
             "total_timings": len(self._timings),
             "total_time_ms": self._total_time_ms,
-            "recent_timings": self._timings[-10:],  # Last 10 timings
-            "average_time_ms": (self._total_time_ms / len(self._timings) if self._timings else 0.0),
+            "recent_timings": self._timings[-10:],
+            "average_time_ms": (
+                self._total_time_ms / len(self._timings) if self._timings else 0.0
+            ),
             "max_history": self._max_history,
         }
-
-    def get_timing_by_name(self, name: str) -> list[dict[str, Any]]:
-        """Get all timings for a specific operation name.
-
-        Args:
-            name: Name of the operation.
-
-        Returns:
-            List of timing records.
-        """
-        return [t for t in self._timings if t["name"] == name]
 
     def reset(self) -> None:
         """Reset all collected metrics."""
         self._timings.clear()
         self._total_time_ms = 0.0
+
+
+class _ConcurrencySlot:
+    """Async context manager for a concurrency slot."""
+
+    def __init__(self, limiter: "ConcurrencyLimiter") -> None:
+        self._limiter = limiter
+
+    async def __aenter__(self) -> "_ConcurrencySlot":
+        await self._limiter._semaphore.acquire()
+        self._limiter._total_operations += 1
+        self._limiter._current_concurrent += 1
+        if self._limiter._current_concurrent > self._limiter._peak_concurrent:
+            self._limiter._peak_concurrent = self._limiter._current_concurrent
+        return self
+
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        self._limiter._current_concurrent -= 1
+        self._limiter._semaphore.release()
 
 
 class ConcurrencyLimiter:
@@ -116,34 +126,17 @@ class ConcurrencyLimiter:
         self._total_operations = 0
         self._total_wait_time = 0.0
 
-    @contextmanager
-    def _track_concurrency(self):
-        """Track current concurrency level."""
-        self._current_concurrent += 1
-        self._peak_concurrent = max(self._peak_concurrent, self._current_concurrent)
-        try:
-            yield
-        finally:
-            self._current_concurrent -= 1
-
-    @contextmanager
-    async def acquire(self):
+    def acquire(self) -> _ConcurrencySlot:
         """Acquire a concurrency slot.
 
         Usage:
             async with limiter.acquire():
                 await do_work()
 
-        Yields:
-            None
+        Returns:
+            Async context manager for the concurrency slot.
         """
-        wait_start = time.perf_counter()
-        async with self._semaphore:
-            wait_time = (time.perf_counter() - wait_start) * 1000
-            self._total_wait_time += wait_time
-            self._total_operations += 1
-            with self._track_concurrency():
-                yield
+        return _ConcurrencySlot(self)
 
     async def map(
         self,
@@ -159,13 +152,10 @@ class ConcurrencyLimiter:
         Returns:
             List of results in the same order as input items.
         """
-        semaphore = self._semaphore
 
         async def process_item(item: Any) -> T:
-            async with semaphore:
-                self._total_operations += 1
-                with self._track_concurrency():
-                    return await func(item)
+            async with self.acquire():
+                return await func(item)
 
         tasks = [process_item(item) for item in items]
         results = await asyncio.gather(*tasks)
@@ -184,7 +174,9 @@ class ConcurrencyLimiter:
             "total_operations": self._total_operations,
             "total_wait_time_ms": self._total_wait_time,
             "average_wait_time_ms": (
-                self._total_wait_time / self._total_operations if self._total_operations > 0 else 0.0
+                self._total_wait_time / self._total_operations
+                if self._total_operations > 0
+                else 0.0
             ),
         }
 
@@ -196,166 +188,7 @@ class ConcurrencyLimiter:
         self._total_wait_time = 0.0
 
 
-class AsyncRateLimiter:
-    """Async rate limiter using token bucket algorithm.
-
-    Limits the number of operations per time period.
-    """
-
-    def __init__(self, rate: float = 10.0, burst: int = 5) -> None:
-        """Initialize async rate limiter.
-
-        Args:
-            rate: Tokens per second.
-            burst: Maximum burst size.
-        """
-        self._rate = rate
-        self._burst = burst
-        self._tokens = float(burst)
-        self._last_refill = time.monotonic()
-        self._lock = asyncio.Lock()
-
-    async def acquire(self, tokens: float = 1.0) -> None:
-        """Acquire tokens, waiting if necessary.
-
-        Args:
-            tokens: Number of tokens to acquire.
-        """
-        async with self._lock:
-            while True:
-                self._refill()
-                if self._tokens >= tokens:
-                    self._tokens -= tokens
-                    return
-                wait_time = (tokens - self._tokens) / self._rate
-                await asyncio.sleep(wait_time)
-
-    def _refill(self) -> None:
-        """Refill tokens based on elapsed time."""
-        now = time.monotonic()
-        elapsed = now - self._last_refill
-        self._tokens = min(self._burst, self._tokens + elapsed * self._rate)
-        self._last_refill = now
-
-    async def try_acquire(self, tokens: float = 1.0) -> bool:
-        """Try to acquire tokens without waiting.
-
-        Args:
-            tokens: Number of tokens to acquire.
-
-        Returns:
-            True if tokens were acquired, False otherwise.
-        """
-        async with self._lock:
-            self._refill()
-            if self._tokens >= tokens:
-                self._tokens -= tokens
-                return True
-            return False
-
-    def get_stats(self) -> dict[str, Any]:
-        """Get rate limiter statistics.
-
-        Returns:
-            Dictionary with statistics.
-        """
-        return {
-            "rate": self._rate,
-            "burst": self._burst,
-            "current_tokens": self._tokens,
-        }
-
-
-class AsyncRetrier:
-    """Async retry helper with exponential backoff.
-
-    Retries failed operations with configurable backoff strategy.
-    """
-
-    def __init__(
-        self,
-        max_retries: int = 3,
-        base_delay: float = 1.0,
-        max_delay: float = 60.0,
-        backoff_factor: float = 2.0,
-        retry_exceptions: tuple = (Exception,),
-    ) -> None:
-        """Initialize async retrier.
-
-        Args:
-            max_retries: Maximum number of retries.
-            base_delay: Initial delay in seconds.
-            max_delay: Maximum delay in seconds.
-            backoff_factor: Multiplier for exponential backoff.
-            retry_exceptions: Exception types to retry on.
-        """
-        self._max_retries = max_retries
-        self._base_delay = base_delay
-        self._max_delay = max_delay
-        self._backoff_factor = backoff_factor
-        self._retry_exceptions = retry_exceptions
-        self._total_retries = 0
-        self._total_failures = 0
-
-    async def execute(
-        self,
-        func: Callable[..., Awaitable[T]],
-        *args: Any,
-        **kwargs: Any,
-    ) -> T:
-        """Execute an async function with retries.
-
-        Args:
-            func: Async function to execute.
-            *args: Positional arguments.
-            **kwargs: Keyword arguments.
-
-        Returns:
-            Result of the function.
-
-        Raises:
-            Last exception if all retries fail.
-        """
-        last_exception: Exception | None = None
-
-        for attempt in range(self._max_retries + 1):
-            try:
-                return await func(*args, **kwargs)
-            except self._retry_exceptions as e:
-                last_exception = e
-                self._total_retries += 1
-
-                if attempt < self._max_retries:
-                    delay = min(
-                        self._base_delay * (self._backoff_factor**attempt),
-                        self._max_delay,
-                    )
-                    await asyncio.sleep(delay)
-                else:
-                    self._total_failures += 1
-
-        assert last_exception is not None
-        raise last_exception
-
-    def get_stats(self) -> dict[str, Any]:
-        """Get retrier statistics.
-
-        Returns:
-            Dictionary with statistics.
-        """
-        return {
-            "max_retries": self._max_retries,
-            "base_delay": self._base_delay,
-            "max_delay": self._max_delay,
-            "backoff_factor": self._backoff_factor,
-            "total_retries": self._total_retries,
-            "total_failures": self._total_failures,
-        }
-
-
 __all__ = [
-    "AsyncRateLimiter",
-    "AsyncRetrier",
-    "ConcurrencyLimiter",
     "PerformanceMonitor",
+    "ConcurrencyLimiter",
 ]

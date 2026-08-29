@@ -20,7 +20,7 @@ from urllib.robotparser import RobotFileParser
 import httpx
 
 from .config import Config
-from .logging import get_logger
+from .logging_config import get_logger
 
 log = get_logger(__name__)
 
