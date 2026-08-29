@@ -19,9 +19,9 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from collections import OrderedDict
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional
+from typing import Any
 
 from .logging import get_logger
 
@@ -158,9 +158,9 @@ class DataCleaner:
 
     def __init__(
         self,
-        text_fields: Optional[list[str]] = None,
-        required_fields: Optional[list[str]] = None,
-        dedup_fields: Optional[list[str]] = None,
+        text_fields: list[str] | None = None,
+        required_fields: list[str] | None = None,
+        dedup_fields: list[str] | None = None,
         max_text_length: int = 100000,
         remove_empty: bool = True,
         normalize_unicode: bool = True,
@@ -173,7 +173,7 @@ class DataCleaner:
         self.normalize_unicode = normalize_unicode
         self._seen = set()
 
-    def clean_record(self, record: dict) -> Optional[dict]:
+    def clean_record(self, record: dict) -> dict | None:
         """Clean a single record.
 
         Args:
@@ -272,7 +272,7 @@ class CleaningPipeline:
         self._steps: list[tuple[str, Callable]] = []
         self._stats: dict = {}
 
-    def add_step(self, name: str, func: Callable[[dict], Optional[dict]]) -> "CleaningPipeline":
+    def add_step(self, name: str, func: Callable[[dict], dict | None]) -> CleaningPipeline:
         """Add a cleaning step.
 
         Args:
@@ -285,7 +285,7 @@ class CleaningPipeline:
         self._steps.append((name, func))
         return self
 
-    def add_text_cleaner(self, fields: list[str], **kwargs) -> "CleaningPipeline":
+    def add_text_cleaner(self, fields: list[str], **kwargs) -> CleaningPipeline:
         """Add a text cleaning step for specified fields.
 
         Args:
@@ -305,7 +305,7 @@ class CleaningPipeline:
         self.add_step(f"text_clean_{','.join(fields)}", clean_text)
         return self
 
-    def add_field_validator(self, field: str, validator: Callable[[Any], bool]) -> "CleaningPipeline":
+    def add_field_validator(self, field: str, validator: Callable[[Any], bool]) -> CleaningPipeline:
         """Add a field validation step.
 
         Args:
@@ -316,7 +316,7 @@ class CleaningPipeline:
             Self for chaining.
         """
 
-        def validate(record: dict) -> Optional[dict]:
+        def validate(record: dict) -> dict | None:
             if field not in record or not validator(record[field]):
                 return None
             return record
@@ -324,7 +324,7 @@ class CleaningPipeline:
         self.add_step(f"validate_{field}", validate)
         return self
 
-    def add_field_transformer(self, field: str, transformer: Callable[[Any], Any]) -> "CleaningPipeline":
+    def add_field_transformer(self, field: str, transformer: Callable[[Any], Any]) -> CleaningPipeline:
         """Add a field transformation step.
 
         Args:
@@ -343,7 +343,7 @@ class CleaningPipeline:
         self.add_step(f"transform_{field}", transform)
         return self
 
-    def add_deduplicator(self, fields: list[str]) -> "CleaningPipeline":
+    def add_deduplicator(self, fields: list[str]) -> CleaningPipeline:
         """Add a deduplication step.
 
         Args:
@@ -354,7 +354,7 @@ class CleaningPipeline:
         """
         seen = set()
 
-        def dedup(record: dict) -> Optional[dict]:
+        def dedup(record: dict) -> dict | None:
             key = tuple(str(record.get(f, "")) for f in fields)
             if key in seen:
                 return None
@@ -364,7 +364,7 @@ class CleaningPipeline:
         self.add_step(f"dedup_{','.join(fields)}", dedup)
         return self
 
-    def add_filter(self, condition: Callable[[dict], bool]) -> "CleaningPipeline":
+    def add_filter(self, condition: Callable[[dict], bool]) -> CleaningPipeline:
         """Add a filtering step.
 
         Args:
@@ -374,7 +374,7 @@ class CleaningPipeline:
             Self for chaining.
         """
 
-        def filter_record(record: dict) -> Optional[dict]:
+        def filter_record(record: dict) -> dict | None:
             return record if condition(record) else None
 
         self.add_step("filter", filter_record)
@@ -443,9 +443,9 @@ class CleaningPipeline:
 
 def clean_data(
     records: list[dict],
-    text_fields: Optional[list[str]] = None,
-    required_fields: Optional[list[str]] = None,
-    dedup_fields: Optional[list[str]] = None,
+    text_fields: list[str] | None = None,
+    required_fields: list[str] | None = None,
+    dedup_fields: list[str] | None = None,
 ) -> tuple[list[dict], CleaningResult]:
     """Convenience function to clean data with default settings.
 

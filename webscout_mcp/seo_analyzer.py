@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Optional
 from urllib.parse import urlparse
 
 from .logging import get_logger

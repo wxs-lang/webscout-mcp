@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from .logging import get_logger
 
@@ -40,13 +40,13 @@ class ExtractedContent:
     quality_score: float = 0.0
     confidence: float = 0.0
     algorithm_used: str = ""
-    algorithm_scores: Dict[str, float] = field(default_factory=dict)
+    algorithm_scores: dict[str, float] = field(default_factory=dict)
     word_count: int = 0
     paragraph_count: int = 0
     image_count: int = 0
     link_count: int = 0
     is_article: bool = False
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -91,7 +91,7 @@ class ContentQualityAssessor:
         r"sponsored (content|link)",
     ]
 
-    def assess_quality(self, content: str, title: str = "") -> Tuple[float, Dict[str, float]]:
+    def assess_quality(self, content: str, title: str = "") -> tuple[float, dict[str, float]]:
         """Assess content quality.
 
         Args:
@@ -227,7 +227,7 @@ class MultiAlgorithmExtractor:
     Tries multiple extraction algorithms and selects/fuses the best result.
     """
 
-    def __init__(self, algorithms: Optional[List[str]] = None) -> None:
+    def __init__(self, algorithms: list[str] | None = None) -> None:
         self.algorithms = algorithms or ["trafilatura", "readability", "html2text"]
         self.quality_assessor = ContentQualityAssessor()
 
@@ -288,7 +288,7 @@ class MultiAlgorithmExtractor:
 
         return result
 
-    def _extract_with_algorithm(self, algorithm: str, html: str, url: str) -> Optional[Dict[str, Any]]:
+    def _extract_with_algorithm(self, algorithm: str, html: str, url: str) -> dict[str, Any] | None:
         """Extract content using specified algorithm.
 
         Args:
@@ -411,7 +411,7 @@ class ContentExtractor:
 
     def __init__(
         self,
-        algorithms: Optional[List[str]] = None,
+        algorithms: list[str] | None = None,
         min_quality: float = 0.3,
         enable_cleaning: bool = True,
     ) -> None:
@@ -443,7 +443,7 @@ class ContentExtractor:
 
         return result
 
-    def extract_batch(self, pages: List[Dict[str, str]]) -> List[ExtractedContent]:
+    def extract_batch(self, pages: list[dict[str, str]]) -> list[ExtractedContent]:
         """Extract content from multiple pages.
 
         Args:
@@ -467,7 +467,7 @@ def extract_content(
     html: str,
     url: str = "",
     title: str = "",
-    algorithms: Optional[List[str]] = None,
+    algorithms: list[str] | None = None,
 ) -> ExtractedContent:
     """Convenience function for content extraction.
 

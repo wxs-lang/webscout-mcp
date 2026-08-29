@@ -12,7 +12,6 @@ Extracts common metadata from HTML:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup

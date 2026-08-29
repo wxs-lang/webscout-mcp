@@ -1,7 +1,5 @@
 """Tests for content extractor module."""
 
-import pytest
-
 from webscout_mcp.content_extractor import (
     ContentExtractor,
     ContentQualityAssessor,

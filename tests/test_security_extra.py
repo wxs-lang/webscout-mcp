@@ -4,14 +4,15 @@ Extra tests for security module - covering edge cases for SSRFProtector.
 These tests supplement test_errors_security.py with additional edge case coverage.
 """
 
-import pytest
-import sys
 import os
+import sys
+
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from webscout_mcp.security import SSRFProtector
 from webscout_mcp.errors import SSRFError
+from webscout_mcp.security import SSRFProtector
 
 
 class TestSSRFProtectorEdgeCases:

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from typing import Optional
 
 import httpx
 
@@ -31,7 +30,7 @@ class FetchResult:
     content_type: str = ""
     extracted: bool = False
     cached: bool = False
-    error: Optional[str] = None
+    error: str | None = None
     raw_html: str = ""
     metadata: dict = field(default_factory=dict)
     response_time: float = 0.0  # Response time in seconds
@@ -64,14 +63,14 @@ class Fetcher:
     - Smart content type detection
     """
 
-    def __init__(self, config: Config, cache: Optional[Cache] = None):
+    def __init__(self, config: Config, cache: Cache | None = None):
         self.config = config
         self.cache = cache
         self.rate_limiter = TokenBucket(
             rate=config.rate_limit_per_second,
             burst=config.rate_limit_burst,
         )
-        self._client: Optional[httpx.AsyncClient] = None
+        self._client: httpx.AsyncClient | None = None
         self._cookies: httpx.Cookies = httpx.Cookies()
         self._ua_rotator = UserAgentRotator(persistent=True)
         # Request statistics
@@ -153,8 +152,8 @@ class Fetcher:
         self,
         url: str,
         extract: bool = True,
-        output_format: Optional[str] = None,
-        max_chars: Optional[int] = None,
+        output_format: str | None = None,
+        max_chars: int | None = None,
         bypass_cache: bool = False,
     ) -> FetchResult:
         url = normalize_url(url)
@@ -218,7 +217,7 @@ class Fetcher:
         Retries on all httpx errors (Timeout, ConnectError, PoolTimeout, etc.),
         asyncio.TimeoutError, and HTTP 5xx status codes. Does not retry on 4xx.
         """
-        last_error: Optional[Exception] = None
+        last_error: Exception | None = None
         for attempt in range(self.config.max_retries):
             try:
                 client = await self._get_client()

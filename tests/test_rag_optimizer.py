@@ -1,7 +1,5 @@
 """Tests for RAG optimizer module."""
 
-import pytest
-
 from webscout_mcp.rag_optimizer import (
     Chunk,
     ContextCompressor,

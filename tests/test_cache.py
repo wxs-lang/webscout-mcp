@@ -4,16 +4,17 @@ Tests for cache module - LRUCache and layered Cache.
 Tests cache operations, TTL, eviction, statistics, and persistence.
 """
 
-import pytest
-import sys
 import os
-import time
+import sys
 import tempfile
+import time
 from pathlib import Path
+
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from webscout_mcp.cache import LRUCache, Cache
+from webscout_mcp.cache import Cache, LRUCache
 
 
 class TestLRUCache:

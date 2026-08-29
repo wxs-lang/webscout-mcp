@@ -18,7 +18,6 @@ import platform
 import subprocess
 import sys
 from dataclasses import dataclass, field
-from typing import Optional
 
 from .logging import get_logger
 
@@ -83,7 +82,7 @@ class SetupConfig:
     verbose: bool = False
 
     @classmethod
-    def from_env(cls) -> "SetupConfig":
+    def from_env(cls) -> SetupConfig:
         """Load configuration from environment variables."""
         return cls(
             install_playwright=os.environ.get("WEBSCOUT_SETUP_PLAYWRIGHT", "true").lower() == "true",
@@ -105,7 +104,7 @@ class SetupResult:
     """Result of setup process."""
 
     success: bool = False
-    system_info: Optional[SystemInfo] = None
+    system_info: SystemInfo | None = None
     installed_components: list[str] = field(default_factory=list)
     skipped_components: list[str] = field(default_factory=list)
     failed_components: list[str] = field(default_factory=list)
@@ -131,7 +130,7 @@ class SetupResult:
 class SetupManager:
     """Manages one-click setup process for webscout-mcp."""
 
-    def __init__(self, config: Optional[SetupConfig] = None) -> None:
+    def __init__(self, config: SetupConfig | None = None) -> None:
         self.config = config or SetupConfig.from_env()
         self.system_info = SystemInfo()
         self.result = SetupResult()
@@ -468,7 +467,7 @@ class SetupManager:
                     "[vector_store]",
                     "enabled = true",
                     'vector_db = "chroma"',
-                    f"embedding_backend = \"{'local' if self.system_info.has_sentence_transformers else 'openai'}\"",
+                    f'embedding_backend = "{"local" if self.system_info.has_sentence_transformers else "openai"}"',
                     f'embedding_model = "{self.config.embedding_model}"',
                     "",
                 ]
@@ -514,8 +513,6 @@ class SetupManager:
         # Check core imports
         checks_total += 1
         try:
-            import webscout_mcp
-
             checks_passed += 1
             print("  ✓ Core package import")
         except Exception as exc:
@@ -524,8 +521,6 @@ class SetupManager:
         # Check httpx
         checks_total += 1
         try:
-            import httpx
-
             checks_passed += 1
             print("  ✓ httpx (HTTP client)")
         except Exception as exc:
@@ -534,8 +529,6 @@ class SetupManager:
         # Check BeautifulSoup
         checks_total += 1
         try:
-            from bs4 import BeautifulSoup
-
             checks_passed += 1
             print("  ✓ BeautifulSoup (HTML parsing)")
         except Exception as exc:
@@ -544,8 +537,6 @@ class SetupManager:
         # Check trafilatura
         checks_total += 1
         try:
-            import trafilatura
-
             checks_passed += 1
             print("  ✓ trafilatura (content extraction)")
         except Exception as exc:
@@ -555,8 +546,6 @@ class SetupManager:
         if self.config.install_playwright:
             checks_total += 1
             try:
-                import playwright
-
                 checks_passed += 1
                 print("  ✓ Playwright (browser automation)")
             except Exception as exc:
@@ -566,8 +555,6 @@ class SetupManager:
         if self.config.install_chromadb:
             checks_total += 1
             try:
-                import chromadb
-
                 checks_passed += 1
                 print("  ✓ ChromaDB (vector database)")
             except Exception as exc:

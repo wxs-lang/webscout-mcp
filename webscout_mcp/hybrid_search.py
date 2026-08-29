@@ -19,8 +19,8 @@ from __future__ import annotations
 import math
 import re
 from collections import Counter, defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable, Optional
 
 from .logging import get_logger
 
@@ -76,7 +76,7 @@ class HybridSearchConfig:
     deduplicate: bool = True
 
     @classmethod
-    def from_dict(cls, data: dict) -> "HybridSearchConfig":
+    def from_dict(cls, data: dict) -> HybridSearchConfig:
         return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
 
 
@@ -90,7 +90,7 @@ class BM25Index:
         self,
         k1: float = 1.5,
         b: float = 0.75,
-        tokenizer: Optional[Callable[[str], list[str]]] = None,
+        tokenizer: Callable[[str], list[str]] | None = None,
     ) -> None:
         self.k1 = k1
         self.b = b
@@ -224,8 +224,8 @@ class HybridSearchEngine:
 
     def __init__(
         self,
-        config: Optional[HybridSearchConfig] = None,
-        semantic_search_fn: Optional[Callable[[str, int], list[tuple[str, float, str]]]] = None,
+        config: HybridSearchConfig | None = None,
+        semantic_search_fn: Callable[[str, int], list[tuple[str, float, str]]] | None = None,
     ) -> None:
         self.config = config or HybridSearchConfig()
         self.bm25 = BM25Index(k1=self.config.bm25_k1, b=self.config.bm25_b)
@@ -233,7 +233,7 @@ class HybridSearchEngine:
         self.documents: dict[str, str] = {}
         self.doc_metadata: dict[str, dict] = {}
 
-    def add_document(self, doc_id: str, content: str, metadata: Optional[dict] = None) -> None:
+    def add_document(self, doc_id: str, content: str, metadata: dict | None = None) -> None:
         """Add a document to the search engine.
 
         Args:
@@ -245,7 +245,7 @@ class HybridSearchEngine:
         self.doc_metadata[doc_id] = metadata or {}
         self.bm25.add_document(doc_id, content)
 
-    def add_documents(self, documents: dict[str, str], metadata: Optional[dict[str, dict]] = None) -> None:
+    def add_documents(self, documents: dict[str, str], metadata: dict[str, dict] | None = None) -> None:
         """Add multiple documents.
 
         Args:
@@ -428,7 +428,7 @@ class HybridSearchEngine:
                 unique_results.append(result)
         return unique_results
 
-    def search(self, query: str, top_k: Optional[int] = None) -> list[SearchResult]:
+    def search(self, query: str, top_k: int | None = None) -> list[SearchResult]:
         """Perform hybrid search.
 
         Args:
@@ -491,7 +491,7 @@ class HybridSearchEngine:
 
 def create_hybrid_search(
     documents: dict[str, str],
-    semantic_search_fn: Optional[Callable] = None,
+    semantic_search_fn: Callable | None = None,
     **kwargs,
 ) -> HybridSearchEngine:
     """Convenience function to create and build a hybrid search engine.

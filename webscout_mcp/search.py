@@ -17,8 +17,7 @@ import json
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional
-from urllib.parse import parse_qs, quote_plus, unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 import httpx
 from bs4 import BeautifulSoup
@@ -50,7 +49,7 @@ class SearchBackend(ABC):
 
     def __init__(self, config: Config) -> None:
         self.config = config
-        self._client: Optional[httpx.AsyncClient] = None
+        self._client: httpx.AsyncClient | None = None
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
@@ -539,8 +538,8 @@ class SearchEngine:
     def __init__(
         self,
         config: Config,
-        cache: Optional[Cache] = None,
-        backends: Optional[list[str]] = None,
+        cache: Cache | None = None,
+        backends: list[str] | None = None,
         merge_backends: bool = False,
     ) -> None:
         self.config = config
@@ -662,9 +661,9 @@ class SearchEngine:
     async def search(
         self,
         query: str,
-        max_results: Optional[int] = None,
+        max_results: int | None = None,
         region: str = "wt-wt",
-        safe_search: Optional[bool] = None,
+        safe_search: bool | None = None,
     ) -> list[SearchResult]:
         """Perform a web search with automatic backend failover and result merging."""
         limit = max_results or self.config.search_max_results

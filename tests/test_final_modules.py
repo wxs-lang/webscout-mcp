@@ -1,8 +1,5 @@
 """Tests for API server, OCR, translator, and alert channels modules."""
 
-import os
-import tempfile
-
 import pytest
 
 from webscout_mcp.alert_channels import (

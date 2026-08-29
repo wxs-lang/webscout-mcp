@@ -12,9 +12,7 @@ Exposes the following tools to AI agents:
 
 from __future__ import annotations
 
-import asyncio
 import json
-from typing import Any, Optional
 
 from mcp.server.mcpserver import MCPServer
 
@@ -30,7 +28,7 @@ from .search import SearchEngine
 log = get_logger(__name__)
 
 
-def create_server(config: Optional[Config] = None) -> MCPServer:
+def create_server(config: Config | None = None) -> MCPServer:
     """Create and configure the MCP server."""
     setup_logging()
     cfg = config or Config.from_env()

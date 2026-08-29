@@ -15,11 +15,10 @@ Features:
 
 from __future__ import annotations
 
-import math
 import random
 import time
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any
 
 from .logging import get_logger
 
@@ -62,10 +61,10 @@ class BrowserSession:
 
     session_id: str = ""
     url: str = ""
-    cookies: List[Dict[str, Any]] = field(default_factory=list)
-    localStorage: Dict[str, str] = field(default_factory=dict)
+    cookies: list[dict[str, Any]] = field(default_factory=list)
+    localStorage: dict[str, str] = field(default_factory=dict)
     user_agent: str = ""
-    viewport: Tuple[int, int] = (1920, 1080)
+    viewport: tuple[int, int] = (1920, 1080)
     created_at: float = 0.0
     last_used_at: float = 0.0
     request_count: int = 0
@@ -105,7 +104,7 @@ class HumanBehaviorSimulator:
         self.typing_speed_wpm = typing_speed_wpm
         self.mouse_speed = mouse_speed
 
-    def random_pause(self, min_ms: Optional[int] = None, max_ms: Optional[int] = None) -> float:
+    def random_pause(self, min_ms: int | None = None, max_ms: int | None = None) -> float:
         """Generate a random pause duration (seconds).
 
         Uses normal distribution for more natural timing.
@@ -121,10 +120,10 @@ class HumanBehaviorSimulator:
 
     def generate_mouse_path(
         self,
-        start: Tuple[int, int],
-        end: Tuple[int, int],
+        start: tuple[int, int],
+        end: tuple[int, int],
         num_points: int = 20,
-    ) -> List[Tuple[int, int]]:
+    ) -> list[tuple[int, int]]:
         """Generate a human-like mouse path using Bezier curves.
 
         Args:
@@ -164,7 +163,7 @@ class HumanBehaviorSimulator:
         total_height: int,
         viewport_height: int = 1080,
         num_scrolls: int = 5,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Generate a human-like scroll pattern.
 
         Args:
@@ -270,10 +269,10 @@ class BrowserInstancePool:
         self.max_instances = max_instances
         self.idle_timeout_seconds = idle_timeout_seconds
         self.max_requests_per_instance = max_requests_per_instance
-        self._instances: Dict[str, BrowserSession] = {}
-        self._active_instance_id: Optional[str] = None
+        self._instances: dict[str, BrowserSession] = {}
+        self._active_instance_id: str | None = None
 
-    def acquire(self, url: str = "") -> Optional[BrowserSession]:
+    def acquire(self, url: str = "") -> BrowserSession | None:
         """Acquire a browser instance from the pool.
 
         Args:
@@ -401,7 +400,7 @@ class BrowserOptimizer:
         max_instances: int = 3,
         enable_human_behavior: bool = True,
         enable_pooling: bool = True,
-        human_behavior_config: Optional[Dict[str, Any]] = None,
+        human_behavior_config: dict[str, Any] | None = None,
     ) -> None:
         self.enable_human_behavior = enable_human_behavior
         self.enable_pooling = enable_pooling
@@ -417,7 +416,7 @@ class BrowserOptimizer:
         else:
             self.behavior = None
 
-    def navigate(self, url: str, wait_for_load: bool = True) -> Optional[BrowserSession]:
+    def navigate(self, url: str, wait_for_load: bool = True) -> BrowserSession | None:
         """Navigate to a URL with optimized behavior.
 
         Args:
@@ -516,7 +515,7 @@ def optimize_browser_navigation(
     enable_human_behavior: bool = True,
     max_instances: int = 3,
     **kwargs,
-) -> Optional[BrowserSession]:
+) -> BrowserSession | None:
     """Convenience function for optimized browser navigation.
 
     Args:

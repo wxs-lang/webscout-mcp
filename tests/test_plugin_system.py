@@ -19,7 +19,6 @@ from webscout_mcp.plugin_system import (
     PostProcessorPlugin,
     SearchBackendPlugin,
     get_plugin_manager,
-    register_plugin,
 )
 
 

@@ -16,10 +16,9 @@ Features:
 
 from __future__ import annotations
 
-import json
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .logging import get_logger
 
@@ -33,8 +32,8 @@ class AlertMessage:
     title: str = ""
     content: str = ""
     level: str = "info"  # info, warning, error, critical
-    url: Optional[str] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    url: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
     timestamp: float = field(default_factory=time.time)
 
     def to_dict(self) -> dict:
@@ -56,8 +55,8 @@ class AlertResult:
     channel: str = ""
     message: str = ""
     status_code: int = 0
-    response: Optional[dict] = None
-    error: Optional[str] = None
+    response: dict | None = None
+    error: str | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -137,7 +136,7 @@ class EmailAlert(BaseAlertChannel):
         username: str,
         password: str,
         from_addr: str,
-        to_addrs: List[str],
+        to_addrs: list[str],
         use_tls: bool = True,
         enabled: bool = True,
     ) -> None:
@@ -187,7 +186,7 @@ class EmailAlert(BaseAlertChannel):
 class DingTalkAlert(BaseAlertChannel):
     """DingTalk (钉钉) alert channel."""
 
-    def __init__(self, webhook_url: str, secret: Optional[str] = None, enabled: bool = True) -> None:
+    def __init__(self, webhook_url: str, secret: str | None = None, enabled: bool = True) -> None:
         super().__init__("dingtalk", enabled)
         self.webhook_url = webhook_url
         self.secret = secret
@@ -322,7 +321,7 @@ class FeishuAlert(BaseAlertChannel):
 class SlackAlert(BaseAlertChannel):
     """Slack alert channel."""
 
-    def __init__(self, webhook_url: str, channel: Optional[str] = None, enabled: bool = True) -> None:
+    def __init__(self, webhook_url: str, channel: str | None = None, enabled: bool = True) -> None:
         super().__init__("slack", enabled)
         self.webhook_url = webhook_url
         self.channel = channel
@@ -438,7 +437,7 @@ class AlertManager:
     """
 
     def __init__(self) -> None:
-        self.channels: Dict[str, BaseAlertChannel] = {}
+        self.channels: dict[str, BaseAlertChannel] = {}
         self.min_level: str = "info"
         self._level_order = {"debug": 0, "info": 1, "warning": 2, "error": 3, "critical": 4}
 
@@ -458,7 +457,7 @@ class AlertManager:
         """Set minimum alert level to send."""
         self.min_level = level
 
-    def send(self, message: AlertMessage, channels: Optional[List[str]] = None) -> List[AlertResult]:
+    def send(self, message: AlertMessage, channels: list[str] | None = None) -> list[AlertResult]:
         """Send alert to specified or all channels.
 
         Args:
@@ -492,11 +491,11 @@ class AlertManager:
 
         return results
 
-    def send_to_all(self, message: AlertMessage) -> List[AlertResult]:
+    def send_to_all(self, message: AlertMessage) -> list[AlertResult]:
         """Send alert to all enabled channels."""
         return self.send(message)
 
-    def get_channel_status(self) -> Dict[str, bool]:
+    def get_channel_status(self) -> dict[str, bool]:
         """Get status of all channels."""
         return {name: channel.enabled for name, channel in self.channels.items()}
 
@@ -506,7 +505,7 @@ class AlertManager:
         return len(self.channels)
 
 
-def create_alert_manager(config: Dict[str, Any]) -> AlertManager:
+def create_alert_manager(config: dict[str, Any]) -> AlertManager:
     """Create AlertManager from configuration.
 
     Args:

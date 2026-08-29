@@ -2,8 +2,6 @@
 
 import time
 
-import pytest
-
 from webscout_mcp.search_optimizer import (
     QueryUnderstanding,
     SearchCache,

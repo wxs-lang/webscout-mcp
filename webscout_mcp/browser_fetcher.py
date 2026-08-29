@@ -13,9 +13,7 @@ Features:
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass, field
-from typing import Any, Optional
 
 from .logging import get_logger
 
@@ -34,9 +32,7 @@ class BrowserConfig:
     viewport_width: int = 1920
     viewport_height: int = 1080
     # User agent
-    user_agent: str = (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    )
+    user_agent: str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     # Timeout in milliseconds
     timeout: int = 30000
     # Navigation timeout in milliseconds
@@ -65,7 +61,7 @@ class BrowserConfig:
     proxy_password: str = ""
 
     @classmethod
-    def from_env(cls) -> "BrowserConfig":
+    def from_env(cls) -> BrowserConfig:
         """Load configuration from environment variables."""
         import os
 
@@ -104,7 +100,7 @@ class BrowserResult:
     pdf_path: str = ""
     cookies: list = field(default_factory=list)
     metadata: dict = field(default_factory=dict)
-    error: Optional[str] = None
+    error: str | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -131,7 +127,7 @@ class BrowserFetcher:
     - Login state management
     """
 
-    def __init__(self, config: Optional[BrowserConfig] = None) -> None:
+    def __init__(self, config: BrowserConfig | None = None) -> None:
         self.config = config or BrowserConfig.from_env()
         self._playwright = None
         self._browser = None
@@ -268,13 +264,16 @@ class BrowserFetcher:
 
         def handle_route(route):
             resource_type = route.request.resource_type
-            if self.config.block_images and resource_type == "image":
-                route.abort()
-            elif self.config.block_media and resource_type in ("media", "video", "audio"):
-                route.abort()
-            elif self.config.block_css and resource_type == "stylesheet":
-                route.abort()
-            elif self.config.block_fonts and resource_type == "font":
+            if (
+                self.config.block_images
+                and resource_type == "image"
+                or self.config.block_media
+                and resource_type in ("media", "video", "audio")
+                or self.config.block_css
+                and resource_type == "stylesheet"
+                or self.config.block_fonts
+                and resource_type == "font"
+            ):
                 route.abort()
             else:
                 route.continue_()

@@ -1,7 +1,5 @@
 """Tests for performance analyzer module."""
 
-import pytest
-
 from webscout_mcp.performance_analyzer import PerformanceAnalyzer, PerformanceMetrics, analyze_performance
 
 

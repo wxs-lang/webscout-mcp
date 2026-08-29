@@ -19,7 +19,7 @@ import os
 import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional, Type
+from typing import Any
 
 from .logging import get_logger
 
@@ -36,7 +36,6 @@ class Plugin(ABC):
     @abstractmethod
     def name(self) -> str:
         """Plugin name (unique identifier)."""
-        pass
 
     @property
     def version(self) -> str:
@@ -63,7 +62,7 @@ class Plugin(ABC):
         """Plugin type (e.g., 'search_backend', 'extractor', 'alert_channel')."""
         return "generic"
 
-    def initialize(self, config: Optional[dict] = None) -> bool:
+    def initialize(self, config: dict | None = None) -> bool:
         """Initialize the plugin.
 
         Args:
@@ -76,7 +75,6 @@ class Plugin(ABC):
 
     def cleanup(self) -> None:
         """Cleanup plugin resources."""
-        pass
 
     def get_info(self) -> dict:
         """Get plugin information."""
@@ -109,7 +107,6 @@ class SearchBackendPlugin(Plugin):
         Returns:
             List of search results (dicts with title, url, snippet).
         """
-        pass
 
 
 class ExtractorPlugin(Plugin):
@@ -131,7 +128,6 @@ class ExtractorPlugin(Plugin):
         Returns:
             Dictionary with extracted content (title, content, metadata).
         """
-        pass
 
 
 class AlertChannelPlugin(Plugin):
@@ -153,7 +149,6 @@ class AlertChannelPlugin(Plugin):
         Returns:
             True if alert was sent successfully.
         """
-        pass
 
 
 class PostProcessorPlugin(Plugin):
@@ -174,7 +169,6 @@ class PostProcessorPlugin(Plugin):
         Returns:
             Processed data.
         """
-        pass
 
 
 @dataclass
@@ -189,7 +183,7 @@ class PluginInfo:
     dependencies: list[str] = field(default_factory=list)
     enabled: bool = True
     loaded: bool = False
-    instance: Optional[Plugin] = None
+    instance: Plugin | None = None
     config: dict = field(default_factory=dict)
     error: str = ""
 
@@ -222,12 +216,12 @@ class PluginManager:
 
     def __init__(
         self,
-        plugin_dirs: Optional[list[str]] = None,
+        plugin_dirs: list[str] | None = None,
         auto_discover: bool = True,
     ) -> None:
         self._plugins: dict[str, PluginInfo] = {}
         self._plugin_dirs: list[str] = plugin_dirs or []
-        self._builtin_plugins: dict[str, Type[Plugin]] = {}
+        self._builtin_plugins: dict[str, type[Plugin]] = {}
 
         if auto_discover:
             self.discover()
@@ -242,7 +236,7 @@ class PluginManager:
             self._plugin_dirs.append(directory)
             log.info("Plugin directory added", extra={"directory": directory})
 
-    def register_builtin(self, plugin_class: Type[Plugin]) -> None:
+    def register_builtin(self, plugin_class: type[Plugin]) -> None:
         """Register a built-in plugin class.
 
         Args:
@@ -300,7 +294,7 @@ class PluginManager:
         log.info("Plugin discovery completed", extra={"discovered": len(discovered)})
         return discovered
 
-    def _load_plugin_from_file(self, filepath: str) -> Optional[str]:
+    def _load_plugin_from_file(self, filepath: str) -> str | None:
         """Load a plugin from a Python file.
 
         Args:
@@ -336,7 +330,7 @@ class PluginManager:
 
         return None
 
-    def load_plugin(self, name: str, config: Optional[dict] = None) -> bool:
+    def load_plugin(self, name: str, config: dict | None = None) -> bool:
         """Load and initialize a plugin.
 
         Args:
@@ -417,7 +411,7 @@ class PluginManager:
             log.error("Failed to unload plugin", extra={"plugin_name": name, "error": str(exc)})
             return False
 
-    def get_plugin(self, name: str) -> Optional[Plugin]:
+    def get_plugin(self, name: str) -> Plugin | None:
         """Get a loaded plugin instance.
 
         Args:
@@ -507,7 +501,7 @@ class PluginManager:
             return True
         return False
 
-    def reload_plugin(self, name: str, config: Optional[dict] = None) -> bool:
+    def reload_plugin(self, name: str, config: dict | None = None) -> bool:
         """Reload a plugin.
 
         Args:
@@ -539,7 +533,7 @@ class PluginManager:
 
 
 # Global plugin manager instance
-_plugin_manager: Optional[PluginManager] = None
+_plugin_manager: PluginManager | None = None
 
 
 def get_plugin_manager() -> PluginManager:
@@ -550,7 +544,7 @@ def get_plugin_manager() -> PluginManager:
     return _plugin_manager
 
 
-def register_plugin(plugin_class: Type[Plugin]) -> Type[Plugin]:
+def register_plugin(plugin_class: type[Plugin]) -> type[Plugin]:
     """Decorator to register a plugin class.
 
     Usage:

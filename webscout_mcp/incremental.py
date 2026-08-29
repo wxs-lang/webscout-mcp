@@ -12,7 +12,6 @@ from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 from urllib.parse import urljoin, urlparse
 
 import httpx
@@ -62,12 +61,12 @@ class IncrementalCrawlResult:
 class IncrementalCrawler:
     """Crawler that only re-fetches changed pages using conditional requests."""
 
-    def __init__(self, config: Config, fetcher: Fetcher, state_dir: Optional[Path] = None) -> None:
+    def __init__(self, config: Config, fetcher: Fetcher, state_dir: Path | None = None) -> None:
         self.config = config
         self.fetcher = fetcher
         self.state_dir = state_dir or (config.cache_dir / "incremental")
         self.state_dir.mkdir(parents=True, exist_ok=True)
-        self._client: Optional[httpx.AsyncClient] = None
+        self._client: httpx.AsyncClient | None = None
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
@@ -113,7 +112,7 @@ class IncrementalCrawler:
         with open(state_file, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
 
-    async def _conditional_fetch(self, url: str, state: Optional[PageState]) -> tuple[FetchResult, PageState]:
+    async def _conditional_fetch(self, url: str, state: PageState | None) -> tuple[FetchResult, PageState]:
         url = normalize_url(url)
         headers: dict[str, str] = {}
         if state:
@@ -165,9 +164,7 @@ class IncrementalCrawler:
             new_state.changed = False
             return result, new_state
 
-    async def crawl(
-        self, seed_url: str, max_pages: Optional[int] = None, extract: bool = True
-    ) -> IncrementalCrawlResult:
+    async def crawl(self, seed_url: str, max_pages: int | None = None, extract: bool = True) -> IncrementalCrawlResult:
         seed_url = normalize_url(seed_url)
         page_limit = max_pages or self.config.crawler_max_pages
         state_file = self._state_file(seed_url)

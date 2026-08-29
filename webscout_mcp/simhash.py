@@ -19,8 +19,7 @@ from __future__ import annotations
 import hashlib
 import re
 from collections import defaultdict
-from dataclasses import dataclass, field
-from typing import Iterable, Optional
+from dataclasses import dataclass
 
 from .logging import get_logger
 
@@ -35,7 +34,7 @@ class SimHashResult:
     hamming_distance: int
     is_duplicate: bool
     similarity: float
-    matched_id: Optional[str] = None
+    matched_id: str | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -180,7 +179,7 @@ class SimHash:
         hash_bits: int = 64,
         n_grams: int = 1,
         use_stop_words: bool = True,
-        custom_stop_words: Optional[set[str]] = None,
+        custom_stop_words: set[str] | None = None,
         min_token_length: int = 2,
     ) -> None:
         if hash_bits not in (64, 128):
@@ -240,7 +239,7 @@ class SimHash:
         else:
             return int(hashlib.sha256(token.encode("utf-8")).hexdigest()[:32], 16)
 
-    def compute_fingerprint(self, text: str, weights: Optional[dict[str, float]] = None) -> int:
+    def compute_fingerprint(self, text: str, weights: dict[str, float] | None = None) -> int:
         """Compute SimHash fingerprint for text.
 
         Args:
@@ -366,7 +365,7 @@ class DuplicateDetector:
             keys.append(key)
         return keys
 
-    def add_document(self, doc_id: str, text: str, weights: Optional[dict[str, float]] = None) -> int:
+    def add_document(self, doc_id: str, text: str, weights: dict[str, float] | None = None) -> int:
         """Add a document to the detector.
 
         Args:
@@ -401,8 +400,8 @@ class DuplicateDetector:
     def check_duplicate(
         self,
         text: str,
-        weights: Optional[dict[str, float]] = None,
-        threshold: Optional[int] = None,
+        weights: dict[str, float] | None = None,
+        threshold: int | None = None,
     ) -> SimHashResult:
         """Check if text is a duplicate of any stored document.
 
@@ -420,7 +419,7 @@ class DuplicateDetector:
     def check_fingerprint(
         self,
         fingerprint: int,
-        threshold: Optional[int] = None,
+        threshold: int | None = None,
     ) -> SimHashResult:
         """Check if a fingerprint matches any stored document.
 
@@ -468,7 +467,7 @@ class DuplicateDetector:
     def find_duplicates(
         self,
         documents: dict[str, str],
-        threshold: Optional[int] = None,
+        threshold: int | None = None,
     ) -> list[tuple[str, str, int, float]]:
         """Find all duplicate pairs in a collection of documents.
 

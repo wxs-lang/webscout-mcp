@@ -1,7 +1,5 @@
 """Tests for broken link checker module."""
 
-import pytest
-
 from webscout_mcp.broken_link_checker import (
     BrokenLinkChecker,
     BrokenLinkReport,

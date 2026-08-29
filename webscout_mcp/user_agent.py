@@ -13,8 +13,7 @@ Enhanced features:
 from __future__ import annotations
 
 import random
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 _DESKTOP_USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -114,7 +113,7 @@ class UserAgentRotator:
     def __init__(
         self,
         mobile: bool = False,
-        seed: Optional[int] = None,
+        seed: int | None = None,
         persistent: bool = False,
     ) -> None:
         self._rng = random.Random(seed)
@@ -122,7 +121,7 @@ class UserAgentRotator:
         self._current_index = self._rng.randint(0, len(self._user_agents) - 1)
         self._mobile = mobile
         self._persistent = persistent
-        self._persistent_fingerprint: Optional[BrowserFingerprint] = None
+        self._persistent_fingerprint: BrowserFingerprint | None = None
 
     def get_user_agent(self) -> str:
         """Get a random User-Agent string."""

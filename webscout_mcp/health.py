@@ -18,9 +18,10 @@ import os
 import platform
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 from .logging import get_logger
 
@@ -32,7 +33,7 @@ class HealthStatus:
     """Health check result."""
 
     status: str = "healthy"  # healthy, degraded, unhealthy
-    checks: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    checks: dict[str, dict[str, Any]] = field(default_factory=dict)
     timestamp: str = ""
     version: str = ""
     uptime_seconds: float = 0.0
@@ -58,7 +59,7 @@ class SystemMetrics:
     disk_total_gb: float = 0.0
     disk_used_gb: float = 0.0
     disk_percent: float = 0.0
-    load_average: List[float] = field(default_factory=list)
+    load_average: list[float] = field(default_factory=list)
     process_count: int = 0
     thread_count: int = 0
     python_version: str = ""
@@ -89,16 +90,16 @@ class HealthChecker:
     def __init__(
         self,
         version: str = "0.1.0",
-        startup_time: Optional[float] = None,
+        startup_time: float | None = None,
     ) -> None:
         self.version = version
         self.startup_time = startup_time or time.time()
-        self._custom_checks: Dict[str, Callable[[], Dict[str, Any]]] = {}
-        self._dependencies: Dict[str, Callable[[], bool]] = {}
+        self._custom_checks: dict[str, Callable[[], dict[str, Any]]] = {}
+        self._dependencies: dict[str, Callable[[], bool]] = {}
         self._shutdown_requested = False
-        self._shutdown_time: Optional[float] = None
+        self._shutdown_time: float | None = None
 
-    def register_check(self, name: str, check_fn: Callable[[], Dict[str, Any]]) -> None:
+    def register_check(self, name: str, check_fn: Callable[[], dict[str, Any]]) -> None:
         """Register a custom health check.
 
         Args:
@@ -213,7 +214,7 @@ class SystemMonitor:
     """Monitor system resources (CPU, memory, disk)."""
 
     def __init__(self) -> None:
-        self._history: List[SystemMetrics] = []
+        self._history: list[SystemMetrics] = []
         self._max_history = 100
 
     def collect_metrics(self) -> SystemMetrics:
@@ -269,7 +270,7 @@ class SystemMonitor:
 
         return metrics
 
-    def get_history(self, limit: int = 10) -> List[SystemMetrics]:
+    def get_history(self, limit: int = 10) -> list[SystemMetrics]:
         """Get metrics history.
 
         Args:
@@ -280,7 +281,7 @@ class SystemMonitor:
         """
         return self._history[-limit:]
 
-    def get_average(self, limit: int = 10) -> Dict[str, float]:
+    def get_average(self, limit: int = 10) -> dict[str, float]:
         """Get average metrics over recent history.
 
         Args:
@@ -304,7 +305,7 @@ class DependencyChecker:
     """Check health of external dependencies."""
 
     def __init__(self) -> None:
-        self._checks: Dict[str, Callable[[], Tuple[bool, str]]] = {}
+        self._checks: dict[str, Callable[[], Tuple[bool, str]]] = {}
 
     def register(self, name: str, check_fn: Callable[[], Tuple[bool, str]]) -> None:
         """Register a dependency check.
@@ -375,7 +376,7 @@ class DependencyChecker:
         except Exception as exc:
             return False, f"HTTP endpoint check failed: {exc}"
 
-    def check_all(self) -> Dict[str, Dict[str, Any]]:
+    def check_all(self) -> dict[str, dict[str, Any]]:
         """Run all registered dependency checks.
 
         Returns:
@@ -407,7 +408,7 @@ class ServiceStatus:
         self._last_heartbeat = time.time()
         self._request_count = 0
         self._error_count = 0
-        self._last_error: Optional[str] = None
+        self._last_error: str | None = None
 
     def set_status(self, status: str) -> None:
         """Set service status.
@@ -436,7 +437,7 @@ class ServiceStatus:
         self._error_count += 1
         self._last_error = error
 
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> dict[str, Any]:
         """Get current service status.
 
         Returns:
@@ -466,7 +467,7 @@ dependency_checker = DependencyChecker()
 service_status = ServiceStatus()
 
 
-def get_health_report() -> Dict[str, Any]:
+def get_health_report() -> dict[str, Any]:
     """Get a comprehensive health report.
 
     Returns:

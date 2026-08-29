@@ -1,7 +1,5 @@
 """Tests for SEO analyzer module."""
 
-import pytest
-
 from webscout_mcp.seo_analyzer import SEOAnalyzer, SEOMetrics, analyze_seo
 
 

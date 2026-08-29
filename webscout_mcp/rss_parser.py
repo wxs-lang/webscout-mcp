@@ -8,8 +8,6 @@ Supports common fields: title, link, description, pubDate, author, categories.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Optional
 from urllib.parse import urljoin
 
 import httpx

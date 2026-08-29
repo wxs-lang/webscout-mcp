@@ -16,7 +16,7 @@ Features:
 from __future__ import annotations
 
 import os
-from typing import Literal, Optional
+from typing import Literal
 
 from .logging import get_logger
 
@@ -29,8 +29,6 @@ try:
 except ImportError:
     PYDANTIC_AVAILABLE = False
     # Fallback: simple dataclass-based config
-    from dataclasses import dataclass
-    from dataclasses import field as dc_field
 
     class BaseModel:  # type: ignore
         def __init__(self, **kwargs):
@@ -81,7 +79,7 @@ class CacheConfig(BaseModel):
     max_size: int = Field(default=1000, ge=0, description="Max number of cached items")
     backend: Literal["memory", "sqlite", "redis"] = Field(default="sqlite", description="Cache backend")
     sqlite_path: str = Field(default="~/.cache/webscout/cache.db", description="SQLite cache path")
-    redis_url: Optional[str] = Field(default=None, description="Redis connection URL")
+    redis_url: str | None = Field(default=None, description="Redis connection URL")
     eviction_policy: Literal["LRU", "LFU", "FIFO"] = Field(default="LRU", description="Cache eviction policy")
 
 
@@ -130,8 +128,8 @@ class AIConfig(BaseModel):
 
     backend: Literal["ollama", "openai", "doubao", "custom"] = Field(default="ollama", description="AI backend")
     model: str = Field(default="qwen2.5:7b", description="Model name")
-    api_key: Optional[str] = Field(default=None, description="API key (for OpenAI/Doubao)")
-    base_url: Optional[str] = Field(default=None, description="Custom API base URL")
+    api_key: str | None = Field(default=None, description="API key (for OpenAI/Doubao)")
+    base_url: str | None = Field(default=None, description="Custom API base URL")
     temperature: float = Field(default=0.7, ge=0, le=2, description="Sampling temperature")
     max_tokens: int = Field(default=2000, ge=1, le=32000, description="Max output tokens")
     top_p: float = Field(default=0.9, ge=0, le=1, description="Top-p sampling parameter")
@@ -177,10 +175,10 @@ class BrowserConfig(BaseModel):
         default="domcontentloaded", description="Wait until event for navigation"
     )
     stealth_mode: bool = Field(default=True, description="Enable anti-detection stealth mode")
-    user_agent: Optional[str] = Field(default=None, description="Custom User-Agent (None = random)")
+    user_agent: str | None = Field(default=None, description="Custom User-Agent (None = random)")
     viewport_width: int = Field(default=1920, ge=320, le=4096, description="Viewport width")
     viewport_height: int = Field(default=1080, ge=240, le=2160, description="Viewport height")
-    proxy: Optional[str] = Field(default=None, description="Proxy URL (http://user:pass@host:port)")
+    proxy: str | None = Field(default=None, description="Proxy URL (http://user:pass@host:port)")
     ignore_https_errors: bool = Field(default=False, description="Ignore HTTPS certificate errors")
     max_concurrent_pages: int = Field(default=3, ge=1, le=20, description="Max concurrent browser pages")
 
@@ -266,7 +264,7 @@ class WebScoutConfig(BaseModel):
         return self
 
     @classmethod
-    def from_env(cls) -> "WebScoutConfig":
+    def from_env(cls) -> WebScoutConfig:
         """Load configuration from environment variables.
 
         Environment variables format: WEBSCOUT_<SECTION>_<KEY>
@@ -322,11 +320,11 @@ class WebScoutConfig(BaseModel):
         return json.dumps(self.to_dict(), indent=indent, ensure_ascii=False)
 
     @classmethod
-    def from_dict(cls, data: dict) -> "WebScoutConfig":
+    def from_dict(cls, data: dict) -> WebScoutConfig:
         """Load configuration from dictionary."""
         return cls.model_validate(data)
 
-    def get_section(self, name: str) -> Optional[BaseModel]:
+    def get_section(self, name: str) -> BaseModel | None:
         """Get a configuration section by name."""
         return getattr(self, name, None)
 
@@ -335,7 +333,7 @@ class WebScoutConfig(BaseModel):
         return [f for f in type(self).model_fields.keys()]
 
 
-def load_config(config_path: Optional[str] = None) -> WebScoutConfig:
+def load_config(config_path: str | None = None) -> WebScoutConfig:
     """Load configuration from file and/or environment.
 
     Priority: environment variables > config file > defaults

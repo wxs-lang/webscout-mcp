@@ -1,7 +1,5 @@
 """Tests for content extraction enhancement."""
 
-import pytest
-
 from webscout_mcp.fetcher import Fetcher
 
 

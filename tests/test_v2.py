@@ -4,10 +4,9 @@ multi-backend search, config fields, and CLI parser.
 
 from __future__ import annotations
 
-import os
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -27,7 +26,6 @@ from webscout_mcp.exceptions import (
 from webscout_mcp.search import (
     BingBackend,
     DuckDuckGoHTMLBackend,
-    SearchResult,
 )
 
 # --- Exceptions ---
@@ -324,7 +322,6 @@ class TestCLIParser:
         assert args.port == 9000
 
     def test_version_flag(self):
-        from webscout_mcp import __version__
         from webscout_mcp.__main__ import build_parser
 
         parser = build_parser()

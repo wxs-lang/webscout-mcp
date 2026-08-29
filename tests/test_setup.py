@@ -1,7 +1,5 @@
 """Tests for setup module."""
 
-import pytest
-
 from webscout_mcp.setup import (
     SetupConfig,
     SetupManager,

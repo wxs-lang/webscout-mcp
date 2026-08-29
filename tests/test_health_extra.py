@@ -5,10 +5,11 @@ These tests supplement test_health.py with additional edge case coverage.
 Only tests actual existing APIs.
 """
 
-import pytest
-import sys
 import os
+import sys
 import time
+
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 

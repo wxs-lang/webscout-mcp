@@ -20,8 +20,9 @@ import hashlib
 import json
 import re
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any
 
 from .logging import get_logger
 
@@ -33,7 +34,7 @@ class AIResponse:
     """Enhanced AI response with metadata."""
 
     content: str = ""
-    parsed_content: Optional[Any] = None
+    parsed_content: Any | None = None
     model: str = ""
     prompt_tokens: int = 0
     completion_tokens: int = 0
@@ -42,9 +43,9 @@ class AIResponse:
     confidence: float = 0.0
     hallucination_score: float = 0.0
     is_valid: bool = True
-    validation_errors: List[str] = field(default_factory=list)
-    citations: List[Dict[str, Any]] = field(default_factory=list)
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    validation_errors: list[str] = field(default_factory=list)
+    citations: list[dict[str, Any]] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -70,15 +71,15 @@ class PromptTemplate:
 
     name: str = ""
     template: str = ""
-    variables: List[str] = field(default_factory=list)
+    variables: list[str] = field(default_factory=list)
     system_prompt: str = ""
-    few_shot_examples: List[Dict[str, str]] = field(default_factory=list)
+    few_shot_examples: list[dict[str, str]] = field(default_factory=list)
     temperature: float = 0.7
     max_tokens: int = 2000
     output_format: str = "text"  # text, json, markdown
     description: str = ""
 
-    def format(self, **kwargs) -> Tuple[str, str]:
+    def format(self, **kwargs) -> tuple[str, str]:
         """Format template with variables.
 
         Returns:
@@ -93,7 +94,7 @@ class PromptTemplate:
         if self.few_shot_examples:
             examples_text = "\n\nExamples:\n"
             for i, example in enumerate(self.few_shot_examples):
-                examples_text += f"\nExample {i+1}:\n"
+                examples_text += f"\nExample {i + 1}:\n"
                 examples_text += f"Input: {example.get('input', '')}\n"
                 examples_text += f"Output: {example.get('output', '')}\n"
             user_prompt += examples_text
@@ -168,9 +169,9 @@ class PromptEngineer:
     }
 
     def __init__(self) -> None:
-        self._custom_templates: Dict[str, PromptTemplate] = {}
+        self._custom_templates: dict[str, PromptTemplate] = {}
 
-    def get_template(self, name: str) -> Optional[PromptTemplate]:
+    def get_template(self, name: str) -> PromptTemplate | None:
         """Get a prompt template by name."""
         if name in self._custom_templates:
             return self._custom_templates[name]
@@ -180,11 +181,11 @@ class PromptEngineer:
         """Register a custom prompt template."""
         self._custom_templates[template.name] = template
 
-    def list_templates(self) -> List[str]:
+    def list_templates(self) -> list[str]:
         """List all available template names."""
         return list(set(list(self.TEMPLATES.keys()) + list(self._custom_templates.keys())))
 
-    def create_cot_prompt(self, question: str, context: str = "") -> Tuple[str, str]:
+    def create_cot_prompt(self, question: str, context: str = "") -> tuple[str, str]:
         """Create a Chain-of-Thought prompt.
 
         Args:
@@ -215,9 +216,9 @@ class PromptEngineer:
     def create_few_shot_prompt(
         self,
         task: str,
-        examples: List[Dict[str, str]],
+        examples: list[dict[str, str]],
         input_text: str,
-    ) -> Tuple[str, str]:
+    ) -> tuple[str, str]:
         """Create a few-shot learning prompt.
 
         Args:
@@ -233,7 +234,7 @@ class PromptEngineer:
         user = f"Task: {task}\n\n"
         user += "Examples:\n\n"
         for i, example in enumerate(examples):
-            user += f"Example {i+1}:\n"
+            user += f"Example {i + 1}:\n"
             user += f"Input: {example.get('input', '')}\n"
             user += f"Output: {example.get('output', '')}\n\n"
         user += f"Now process the following input:\nInput: {input_text}\nOutput:"
@@ -244,7 +245,7 @@ class PromptEngineer:
 class OutputValidator:
     """Validate and parse AI outputs."""
 
-    def validate_json(self, output: str) -> Tuple[bool, Optional[Any], List[str]]:
+    def validate_json(self, output: str) -> tuple[bool, Any | None, list[str]]:
         """Validate JSON output.
 
         Returns:
@@ -260,10 +261,10 @@ class OutputValidator:
             parsed = json.loads(output)
             return True, parsed, errors
         except json.JSONDecodeError as e:
-            errors.append(f"JSON parsing error: {str(e)}")
+            errors.append(f"JSON parsing error: {e!s}")
             return False, None, errors
 
-    def validate_classification(self, output: str, valid_categories: List[str]) -> Tuple[bool, str, List[str]]:
+    def validate_classification(self, output: str, valid_categories: list[str]) -> tuple[bool, str, list[str]]:
         """Validate classification output.
 
         Returns:
@@ -279,12 +280,12 @@ class OutputValidator:
         errors.append(f"Output does not match any valid category: {valid_categories}")
         return False, "", errors
 
-    def validate_sentiment(self, output: str) -> Tuple[bool, str, List[str]]:
+    def validate_sentiment(self, output: str) -> tuple[bool, str, list[str]]:
         """Validate sentiment output."""
         valid_sentiments = ["positive", "negative", "neutral"]
         return self.validate_classification(output, valid_sentiments)
 
-    def validate_length(self, output: str, min_length: int = 0, max_length: int = 10000) -> Tuple[bool, List[str]]:
+    def validate_length(self, output: str, min_length: int = 0, max_length: int = 10000) -> tuple[bool, list[str]]:
         """Validate output length."""
         errors = []
         length = len(output)
@@ -307,7 +308,7 @@ class HallucinationDetector:
         r"could be|might be",
     ]
 
-    def detect(self, output: str, context: str = "") -> Tuple[float, List[str]]:
+    def detect(self, output: str, context: str = "") -> tuple[float, list[str]]:
         """Detect potential hallucinations.
 
         Args:
@@ -375,8 +376,8 @@ class ModelOptimizer:
     }
 
     def __init__(self) -> None:
-        self._response_cache: Dict[str, AIResponse] = {}
-        self._token_usage: Dict[str, int] = {}
+        self._response_cache: dict[str, AIResponse] = {}
+        self._token_usage: dict[str, int] = {}
 
     def select_model(self, task: str, complexity: str = "medium") -> str:
         """Select appropriate model for task.
@@ -416,7 +417,7 @@ class ModelOptimizer:
         """Cache an AI response."""
         self._response_cache[key] = response
 
-    def get_cached_response(self, key: str) -> Optional[AIResponse]:
+    def get_cached_response(self, key: str) -> AIResponse | None:
         """Get a cached AI response."""
         return self._response_cache.get(key)
 
@@ -424,7 +425,7 @@ class ModelOptimizer:
         """Track token usage."""
         self._token_usage[model] = self._token_usage.get(model, 0) + tokens
 
-    def get_usage_stats(self) -> Dict[str, Any]:
+    def get_usage_stats(self) -> dict[str, Any]:
         """Get token usage statistics."""
         total = sum(self._token_usage.values())
         return {
@@ -461,7 +462,7 @@ class AIOptimizer:
         text: str,
         task: str = "summarize",
         context: str = "",
-        ai_fn: Optional[Callable] = None,
+        ai_fn: Callable | None = None,
         **kwargs,
     ) -> AIResponse:
         """Process text with optimized AI pipeline.
@@ -508,9 +509,9 @@ class AIOptimizer:
                 response.completion_tokens = self.model_optimizer.estimate_tokens(output)
                 response.total_tokens = response.prompt_tokens + response.completion_tokens
             except Exception as exc:
-                response.content = f"Error: {str(exc)}"
+                response.content = f"Error: {exc!s}"
                 response.is_valid = False
-                response.validation_errors.append(f"AI call failed: {str(exc)}")
+                response.validation_errors.append(f"AI call failed: {exc!s}")
                 return response
         else:
             # Fallback: simple processing without AI

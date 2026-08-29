@@ -6,10 +6,8 @@ incremental fetching with lastmod filtering.
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
 from urllib.parse import urljoin, urlparse
 from xml.etree import ElementTree as ET
 
@@ -29,9 +27,9 @@ _SITEMAP_NS = {
 @dataclass
 class SitemapEntry:
     url: str
-    lastmod: Optional[datetime] = None
-    changefreq: Optional[str] = None
-    priority: Optional[float] = None
+    lastmod: datetime | None = None
+    changefreq: str | None = None
+    priority: float | None = None
 
 
 @dataclass
@@ -52,7 +50,7 @@ class SitemapParser:
 
     def __init__(self, config: Config) -> None:
         self.config = config
-        self._client: Optional[httpx.AsyncClient] = None
+        self._client: httpx.AsyncClient | None = None
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
@@ -113,7 +111,7 @@ class SitemapParser:
         return result
 
     @staticmethod
-    def _parse_url_entry(url_elem: ET.Element) -> Optional[SitemapEntry]:
+    def _parse_url_entry(url_elem: ET.Element) -> SitemapEntry | None:
         loc_elem = url_elem.find("sm:loc", _SITEMAP_NS)
         if loc_elem is None or not loc_elem.text:
             return None

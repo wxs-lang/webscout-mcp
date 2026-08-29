@@ -20,7 +20,6 @@ import json
 import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
-from typing import Optional
 
 from .logging import get_logger
 
@@ -85,7 +84,7 @@ class KnowledgeGraph:
     def num_relationships(self) -> int:
         return len(self.relationships)
 
-    def get_entity(self, entity_id: str) -> Optional[Entity]:
+    def get_entity(self, entity_id: str) -> Entity | None:
         return self.entities.get(entity_id)
 
     def get_neighbors(self, entity_id: str) -> list[tuple[Entity, Relationship]]:
@@ -130,8 +129,7 @@ class KnowledgeGraph:
         lines.append("</nodes><edges>")
         for i, rel in enumerate(self.relationships):
             lines.append(
-                f'<edge id="{i}" source="{rel.source}" target="{rel.target}" '
-                f'weight="{rel.weight}" label="{rel.type}"/>'
+                f'<edge id="{i}" source="{rel.source}" target="{rel.target}" weight="{rel.weight}" label="{rel.type}"/>'
             )
         lines.append("</edges></graph></gexf>")
         return "\n".join(lines)

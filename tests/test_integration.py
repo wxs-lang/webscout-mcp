@@ -4,21 +4,16 @@ Tests module interactions and end-to-end workflows.
 These tests verify that multiple modules work together correctly.
 """
 
-import json
-import os
 import time
-
-import pytest
 
 from webscout_mcp.ai_optimizer import AIOptimizer
 from webscout_mcp.architecture import DIContainer, EventBus
 from webscout_mcp.async_utils import ConcurrencyLimiter, PerformanceMonitor
-from webscout_mcp.browser_optimizer import BrowserOptimizer
 from webscout_mcp.content_extractor import ContentExtractor, ExtractedContent
-from webscout_mcp.errors import ValidationError, WebScoutError
+from webscout_mcp.errors import ValidationError
 from webscout_mcp.health import HealthChecker, SystemMonitor
 from webscout_mcp.rag_optimizer import Chunk, RAGOptimizer
-from webscout_mcp.search_optimizer import SearchOptimizer, SearchResultItem
+from webscout_mcp.search_optimizer import SearchOptimizer
 from webscout_mcp.security import SecurityManager, SSRFProtector
 
 # ============ Search + Content Extraction Integration ============
@@ -305,7 +300,7 @@ class TestErrorHandlingIntegration:
 
     def test_error_propagation_in_pipeline(self):
         """Test that errors propagate correctly through pipeline."""
-        from webscout_mcp.errors import WebScoutError, safe_execute
+        from webscout_mcp.errors import safe_execute
 
         # Test safe execution with error
         def failing_operation():
@@ -316,7 +311,7 @@ class TestErrorHandlingIntegration:
 
     def test_error_context_extraction(self):
         """Test extracting context from errors."""
-        from webscout_mcp.errors import ValidationError, get_error_context
+        from webscout_mcp.errors import get_error_context
 
         error = ValidationError(field="url", message="Invalid URL", value="bad-url")
         context = get_error_context(error)

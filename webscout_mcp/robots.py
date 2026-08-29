@@ -13,8 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 from urllib.parse import urlparse
 from urllib.robotparser import RobotFileParser
 
@@ -28,7 +27,7 @@ log = get_logger(__name__)
 
 @dataclass
 class _RobotsEntry:
-    parser: Optional[RobotFileParser] = None
+    parser: RobotFileParser | None = None
     fetched_at: float = 0.0
     failed: bool = False
     crawl_delay: float = 0.0
@@ -47,7 +46,7 @@ class RobotsChecker:
         self.cache_ttl = cache_ttl
         self.respect_robots = respect_robots
         self._cache: dict[str, _RobotsEntry] = {}
-        self._client: Optional[httpx.AsyncClient] = None
+        self._client: httpx.AsyncClient | None = None
         self._locks: dict[str, asyncio.Lock] = {}
 
     async def _get_client(self) -> httpx.AsyncClient:
@@ -117,7 +116,7 @@ class RobotsChecker:
             self._cache[domain] = entry
             return entry
 
-    async def is_allowed(self, url: str, user_agent: Optional[str] = None) -> bool:
+    async def is_allowed(self, url: str, user_agent: str | None = None) -> bool:
         if not self.respect_robots:
             return True
         domain = self._domain(url)

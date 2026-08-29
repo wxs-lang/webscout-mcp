@@ -1,7 +1,5 @@
 """Tests for AI optimizer module."""
 
-import pytest
-
 from webscout_mcp.ai_optimizer import (
     AIOptimizer,
     AIResponse,

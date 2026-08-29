@@ -14,7 +14,6 @@ from typing import Any
 from .plugin_system import (
     AlertChannelPlugin,
     ExtractorPlugin,
-    Plugin,
     PostProcessorPlugin,
     SearchBackendPlugin,
     register_plugin,

@@ -1,8 +1,6 @@
 """Tests for Brave HTML search backend."""
 
-import pytest
-
-from webscout_mcp.search import BraveHTMLBackend, SearchResult
+from webscout_mcp.search import BraveHTMLBackend
 
 
 class TestBraveHTMLBackend:

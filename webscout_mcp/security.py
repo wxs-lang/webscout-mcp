@@ -14,13 +14,11 @@ Features:
 
 from __future__ import annotations
 
-import hashlib
 import ipaddress
 import re
 import socket
 import time
-from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import Any
 from urllib.parse import urlparse
 
 from .errors import InputValidationError, RateLimitError, SensitiveDataError, SSRFError
@@ -73,12 +71,12 @@ class SSRFProtector:
 
     def __init__(
         self,
-        allowed_protocols: Optional[Set[str]] = None,
+        allowed_protocols: set[str] | None = None,
         block_private_ips: bool = True,
         block_localhost: bool = True,
         dns_resolution: bool = True,
-        allowlist: Optional[Set[str]] = None,
-        denylist: Optional[Set[str]] = None,
+        allowlist: set[str] | None = None,
+        denylist: set[str] | None = None,
     ) -> None:
         self.allowed_protocols = allowed_protocols or self.ALLOWED_PROTOCOLS
         self.block_private_ips = block_private_ips
@@ -87,7 +85,7 @@ class SSRFProtector:
         self.allowlist = allowlist or set()
         self.denylist = denylist or set()
 
-    def validate_url(self, url: str) -> Tuple[bool, str]:
+    def validate_url(self, url: str) -> tuple[bool, str]:
         """Validate a URL for SSRF safety.
 
         Args:
@@ -202,14 +200,14 @@ class InputValidator:
         max_url_length: int = 2048,
         max_content_length: int = 50 * 1024 * 1024,  # 50MB
         max_filename_length: int = 255,
-        allowed_file_extensions: Optional[Set[str]] = None,
+        allowed_file_extensions: set[str] | None = None,
     ) -> None:
         self.max_url_length = max_url_length
         self.max_content_length = max_content_length
         self.max_filename_length = max_filename_length
         self.allowed_file_extensions = allowed_file_extensions
 
-    def validate_url(self, url: str) -> Tuple[bool, str]:
+    def validate_url(self, url: str) -> tuple[bool, str]:
         """Validate a URL format.
 
         Args:
@@ -229,7 +227,7 @@ class InputValidator:
 
         return True, "URL is valid"
 
-    def validate_file_path(self, path: str, base_dir: str = "") -> Tuple[bool, str]:
+    def validate_file_path(self, path: str, base_dir: str = "") -> tuple[bool, str]:
         """Validate a file path for safety.
 
         Args:
@@ -268,7 +266,7 @@ class InputValidator:
 
         return True, "File path is valid"
 
-    def validate_content_size(self, content: bytes, max_size: Optional[int] = None) -> Tuple[bool, str]:
+    def validate_content_size(self, content: bytes, max_size: int | None = None) -> tuple[bool, str]:
         """Validate content size.
 
         Args:
@@ -383,12 +381,12 @@ class RateLimiter:
         self,
         default_rate: float = 10.0,
         default_capacity: int = 10,
-        key_limits: Optional[Dict[str, Tuple[float, int]]] = None,
+        key_limits: dict[str, tuple[float, int]] | None = None,
     ) -> None:
         self.default_rate = default_rate
         self.default_capacity = default_capacity
         self.key_limits = key_limits or {}
-        self._buckets: Dict[str, TokenBucket] = {}
+        self._buckets: dict[str, TokenBucket] = {}
 
     def _get_bucket(self, key: str) -> TokenBucket:
         """Get or create a token bucket for a key."""
@@ -429,7 +427,7 @@ class RateLimiter:
                 retry_after=bucket.wait_time(tokens),
             )
 
-    def get_stats(self, key: str = "default") -> Dict[str, Any]:
+    def get_stats(self, key: str = "default") -> dict[str, Any]:
         """Get rate limit stats for a key."""
         bucket = self._get_bucket(key)
         return {
@@ -439,7 +437,7 @@ class RateLimiter:
             "wait_time": bucket.wait_time(),
         }
 
-    def reset(self, key: Optional[str] = None) -> None:
+    def reset(self, key: str | None = None) -> None:
         """Reset rate limiter for a key or all keys."""
         if key:
             if key in self._buckets:
@@ -479,7 +477,7 @@ class SensitiveDataFilter:
         self,
         mask_char: str = "*",
         mask_length: int = 8,
-        enabled_patterns: Optional[Set[str]] = None,
+        enabled_patterns: set[str] | None = None,
     ) -> None:
         self.mask_char = mask_char
         self.mask_length = mask_length
@@ -516,7 +514,7 @@ class SensitiveDataFilter:
             # Mask the entire match
             return self.mask_char * self.mask_length
 
-    def detect(self, text: str) -> List[Dict[str, Any]]:
+    def detect(self, text: str) -> list[dict[str, Any]]:
         """Detect sensitive data in text.
 
         Args:
@@ -578,7 +576,7 @@ class SecurityHeaders:
     }
 
     @classmethod
-    def get_headers(cls, custom_headers: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+    def get_headers(cls, custom_headers: dict[str, str] | None = None) -> dict[str, str]:
         """Get security headers, optionally merged with custom headers.
 
         Args:
@@ -605,10 +603,10 @@ class SecurityManager:
 
     def __init__(
         self,
-        ssrf_protector: Optional[SSRFProtector] = None,
-        input_validator: Optional[InputValidator] = None,
-        rate_limiter: Optional[RateLimiter] = None,
-        sensitive_filter: Optional[SensitiveDataFilter] = None,
+        ssrf_protector: SSRFProtector | None = None,
+        input_validator: InputValidator | None = None,
+        rate_limiter: RateLimiter | None = None,
+        sensitive_filter: SensitiveDataFilter | None = None,
     ) -> None:
         self.ssrf_protector = ssrf_protector or SSRFProtector()
         self.input_validator = input_validator or InputValidator()
@@ -647,11 +645,11 @@ class SecurityManager:
         """
         return self.sensitive_filter.mask(text)
 
-    def get_security_headers(self) -> Dict[str, str]:
+    def get_security_headers(self) -> dict[str, str]:
         """Get security headers for HTTP responses."""
         return SecurityHeaders.get_headers()
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Get security statistics."""
         return {
             "ssrf_protection_enabled": True,

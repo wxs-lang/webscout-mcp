@@ -9,16 +9,10 @@ Tests for enhanced features:
 - Error classification
 """
 
-import asyncio
-
-import pytest
-
 from webscout_mcp import Config
 from webscout_mcp.crawler import Crawler, CrawlResult
 from webscout_mcp.fetcher import Fetcher
 from webscout_mcp.search import (
-    BingBackend,
-    DuckDuckGoHTMLBackend,
     SearchBackend,
     SearchEngine,
     SearchResult,

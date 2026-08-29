@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from typing import Optional
 
 from .logging import get_logger
 
@@ -161,11 +160,11 @@ class PDFProcessor:
                     log.warning("No PDF backend available. Install PyMuPDF, pdfplumber, or PyPDF2")
 
     @property
-    def backend(self) -> Optional[str]:
+    def backend(self) -> str | None:
         """Get the detected backend."""
         return self._backend
 
-    def process(self, file_path: str, password: Optional[str] = None) -> PDFResult:
+    def process(self, file_path: str, password: str | None = None) -> PDFResult:
         """Process a PDF file.
 
         Args:
@@ -210,7 +209,7 @@ class PDFProcessor:
 
         return result
 
-    def _process_pymupdf(self, file_path: str, result: PDFResult, password: Optional[str]) -> None:
+    def _process_pymupdf(self, file_path: str, result: PDFResult, password: str | None) -> None:
         """Process PDF using PyMuPDF."""
         import fitz
 
@@ -287,7 +286,7 @@ class PDFProcessor:
 
         doc.close()
 
-    def _process_pdfplumber(self, file_path: str, result: PDFResult, password: Optional[str]) -> None:
+    def _process_pdfplumber(self, file_path: str, result: PDFResult, password: str | None) -> None:
         """Process PDF using pdfplumber."""
         import pdfplumber
 
@@ -336,7 +335,7 @@ class PDFProcessor:
 
                 result.pages.append(pdf_page)
 
-    def _process_pypdf2(self, file_path: str, result: PDFResult, password: Optional[str]) -> None:
+    def _process_pypdf2(self, file_path: str, result: PDFResult, password: str | None) -> None:
         """Process PDF using PyPDF2 (basic text extraction only)."""
         try:
             from PyPDF2 import PdfReader
@@ -370,7 +369,7 @@ class PDFProcessor:
                 pdf_page.text = ""
             result.pages.append(pdf_page)
 
-    def extract_text(self, file_path: str, password: Optional[str] = None) -> str:
+    def extract_text(self, file_path: str, password: str | None = None) -> str:
         """Extract only text from a PDF.
 
         Args:
@@ -383,7 +382,7 @@ class PDFProcessor:
         result = self.process(file_path, password)
         return result.full_text
 
-    def extract_tables(self, file_path: str, password: Optional[str] = None) -> list[list[list[str]]]:
+    def extract_tables(self, file_path: str, password: str | None = None) -> list[list[list[str]]]:
         """Extract only tables from a PDF.
 
         Args:
@@ -399,7 +398,7 @@ class PDFProcessor:
             all_tables.extend(page.tables)
         return all_tables
 
-    def get_page_count(self, file_path: str, password: Optional[str] = None) -> int:
+    def get_page_count(self, file_path: str, password: str | None = None) -> int:
         """Get the number of pages in a PDF.
 
         Args:
@@ -412,7 +411,7 @@ class PDFProcessor:
         result = self.process(file_path, password)
         return result.num_pages
 
-    def to_markdown(self, file_path: str, password: Optional[str] = None) -> str:
+    def to_markdown(self, file_path: str, password: str | None = None) -> str:
         """Convert PDF to Markdown format.
 
         Args:
@@ -458,7 +457,7 @@ def process_pdf(
     file_path: str,
     extract_tables: bool = True,
     extract_images: bool = False,
-    password: Optional[str] = None,
+    password: str | None = None,
 ) -> PDFResult:
     """Convenience function to process a PDF file.
 

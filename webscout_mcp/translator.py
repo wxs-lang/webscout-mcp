@@ -18,8 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import re
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from dataclasses import dataclass
 
 from .logging import get_logger
 
@@ -73,7 +72,7 @@ class Translator:
     def __init__(
         self,
         backend: str = "google",
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
         source_language: str = "auto",
         target_language: str = "en",
         enable_cache: bool = True,
@@ -85,7 +84,7 @@ class Translator:
         self.target_language = target_language
         self.enable_cache = enable_cache
         self.max_cache_size = max_cache_size
-        self._cache: Dict[str, TranslationResult] = {}
+        self._cache: dict[str, TranslationResult] = {}
         self._engine = None
         self._init_backend()
 
@@ -141,7 +140,7 @@ class Translator:
         key_str = f"{self.backend}:{source}:{target}:{text}"
         return hashlib.md5(key_str.encode()).hexdigest()
 
-    def detect_language(self, text: str) -> Tuple[str, float]:
+    def detect_language(self, text: str) -> tuple[str, float]:
         """Detect the language of text.
 
         Args:
@@ -185,7 +184,7 @@ class Translator:
 
         return "unknown", 0.0
 
-    def _chunk_text(self, text: str, max_size: int = MAX_CHUNK_SIZE) -> List[str]:
+    def _chunk_text(self, text: str, max_size: int = MAX_CHUNK_SIZE) -> list[str]:
         """Split long text into chunks for translation.
 
         Args:
@@ -237,8 +236,8 @@ class Translator:
     def translate(
         self,
         text: str,
-        source_language: Optional[str] = None,
-        target_language: Optional[str] = None,
+        source_language: str | None = None,
+        target_language: str | None = None,
     ) -> TranslationResult:
         """Translate text.
 
@@ -369,10 +368,10 @@ class Translator:
 
     def translate_batch(
         self,
-        texts: List[str],
-        source_language: Optional[str] = None,
-        target_language: Optional[str] = None,
-    ) -> List[TranslationResult]:
+        texts: list[str],
+        source_language: str | None = None,
+        target_language: str | None = None,
+    ) -> list[TranslationResult]:
         """Translate multiple texts.
 
         Args:
@@ -404,7 +403,7 @@ def translate_text(
     target_language: str = "en",
     source_language: str = "auto",
     backend: str = "google",
-    api_key: Optional[str] = None,
+    api_key: str | None = None,
 ) -> TranslationResult:
     """Convenience function to translate text.
 

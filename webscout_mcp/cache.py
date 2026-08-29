@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import sqlite3
 import time
 from collections import OrderedDict
 from pathlib import Path
-from typing import Optional
 
 
 class LRUCache:
@@ -26,7 +24,7 @@ class LRUCache:
         self.hits = 0
         self.misses = 0
 
-    def get(self, key: str) -> Optional[tuple[str, str, float, float]]:
+    def get(self, key: str) -> tuple[str, str, float, float] | None:
         """Retrieve an entry.  Returns None if missing or expired."""
         if key not in self._cache:
             self.misses += 1
@@ -119,7 +117,7 @@ class Cache:
     def _make_key(url: str) -> str:
         return hashlib.sha256(url.encode("utf-8")).hexdigest()
 
-    def get(self, url: str) -> Optional[dict]:
+    def get(self, url: str) -> dict | None:
         """Retrieve a cached entry.  Returns None if missing or expired."""
         key = self._make_key(url)
         now = time.time()
@@ -167,7 +165,7 @@ class Cache:
         url: str,
         value: str,
         content_type: str = "text/plain",
-        ttl: Optional[int] = None,
+        ttl: int | None = None,
     ) -> None:
         """Store a value in both memory and disk cache."""
         key = self._make_key(url)

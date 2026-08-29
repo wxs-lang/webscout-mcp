@@ -8,16 +8,12 @@ from webscout_mcp.browser_fingerprint import (
     generate_fingerprint,
 )
 from webscout_mcp.competitor_analyzer import (
-    ComparisonResult,
     CompetitorAnalyzer,
-    SiteMetrics,
     compare_sites,
 )
 from webscout_mcp.knowledge_graph import (
-    Entity,
     KnowledgeGraph,
     KnowledgeGraphBuilder,
-    Relationship,
     build_knowledge_graph,
 )
 from webscout_mcp.metrics import (

@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
 
 from .logging import get_logger
 
@@ -31,13 +30,13 @@ class OCRResult:
 
     text: str = ""
     confidence: float = 0.0
-    lines: List[dict] = field(default_factory=list)
-    words: List[dict] = field(default_factory=list)
+    lines: list[dict] = field(default_factory=list)
+    words: list[dict] = field(default_factory=list)
     image_width: int = 0
     image_height: int = 0
     processing_time_ms: float = 0.0
     backend: str = ""
-    languages: List[str] = field(default_factory=list)
+    languages: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -70,9 +69,9 @@ class OCREngine:
     def __init__(
         self,
         backend: str = "tesseract",
-        languages: Optional[List[str]] = None,
+        languages: list[str] | None = None,
         preprocess: bool = True,
-        tesseract_cmd: Optional[str] = None,
+        tesseract_cmd: str | None = None,
     ) -> None:
         self.backend = backend.lower()
         self.languages = languages or ["eng"]
@@ -313,7 +312,7 @@ class OCREngine:
         result.confidence = round(sum(confidences) / len(confidences), 2) if confidences else 0.0
         result.lines = [{"text": t} for t in texts]
 
-    def recognize_batch(self, image_paths: List[str]) -> List[OCRResult]:
+    def recognize_batch(self, image_paths: list[str]) -> list[OCRResult]:
         """Recognize text in multiple images.
 
         Args:
@@ -328,7 +327,7 @@ class OCREngine:
             results.append(result)
         return results
 
-    def extract_table(self, image_path: str) -> List[List[str]]:
+    def extract_table(self, image_path: str) -> list[list[str]]:
         """Extract table structure from image (basic).
 
         Args:
@@ -374,7 +373,7 @@ class OCREngine:
 def ocr_image(
     image_path: str,
     backend: str = "tesseract",
-    languages: Optional[List[str]] = None,
+    languages: list[str] | None = None,
 ) -> OCRResult:
     """Convenience function to perform OCR on an image.
 

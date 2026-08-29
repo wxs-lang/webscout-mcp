@@ -19,13 +19,11 @@ import asyncio
 import random
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Optional
 from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
 
 from .config import Config
-from .exceptions import DisallowedByRobotsError
 from .fetcher import Fetcher, FetchResult
 from .logging import get_logger
 from .robots import RobotsChecker
@@ -67,7 +65,7 @@ class Crawler:
         self,
         config: Config,
         fetcher: Fetcher,
-        robots_checker: Optional[RobotsChecker] = None,
+        robots_checker: RobotsChecker | None = None,
     ) -> None:
         self.config = config
         self.fetcher = fetcher
@@ -78,13 +76,13 @@ class Crawler:
     async def crawl(
         self,
         seed_url: str,
-        max_depth: Optional[int] = None,
-        max_pages: Optional[int] = None,
-        same_domain_only: Optional[bool] = None,
+        max_depth: int | None = None,
+        max_pages: int | None = None,
+        same_domain_only: bool | None = None,
         extract: bool = True,
-        concurrency: Optional[int] = None,
-        delay: Optional[float] = None,
-        max_retries: Optional[int] = None,
+        concurrency: int | None = None,
+        delay: float | None = None,
+        max_retries: int | None = None,
     ) -> CrawlResult:
         """Crawl a website starting from seed_url.
 
@@ -200,7 +198,7 @@ class Crawler:
         result: CrawlResult,
         base_delay: float,
         max_retries: int,
-    ) -> Optional[tuple[FetchResult, list[str]]]:
+    ) -> tuple[FetchResult, list[str]] | None:
         """Crawl a single page with retry support."""
         if self.config.respect_robots:
             try:

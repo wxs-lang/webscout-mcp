@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 from .logging import get_logger
 
@@ -47,7 +47,7 @@ class VectorStoreConfig:
     similarity_threshold: float = 0.5
 
     @classmethod
-    def from_env(cls) -> "VectorStoreConfig":
+    def from_env(cls) -> VectorStoreConfig:
         """Load configuration from environment variables."""
         import os
 
@@ -75,7 +75,7 @@ class Document:
     source: str = ""
 
     @classmethod
-    def from_text(cls, text: str, source: str = "", metadata: Optional[dict] = None) -> "Document":
+    def from_text(cls, text: str, source: str = "", metadata: dict | None = None) -> Document:
         """Create a document from text."""
         doc_id = hashlib.md5(f"{source}:{text[:100]}".encode()).hexdigest()
         return cls(
@@ -113,7 +113,7 @@ class VectorStore:
     Uses Chroma as the vector database and supports multiple embedding backends.
     """
 
-    def __init__(self, config: Optional[VectorStoreConfig] = None) -> None:
+    def __init__(self, config: VectorStoreConfig | None = None) -> None:
         self.config = config or VectorStoreConfig.from_env()
         self._client = None
         self._collection = None
@@ -174,8 +174,7 @@ class VectorStore:
             )
         except ImportError:
             raise ImportError(
-                "sentence-transformers is required for local embedding. "
-                "Install with: pip install sentence-transformers"
+                "sentence-transformers is required for local embedding. Install with: pip install sentence-transformers"
             )
 
     def _create_api_embedding_function(self):
@@ -258,7 +257,7 @@ class VectorStore:
         self,
         texts: list[str],
         source: str = "",
-        metadata: Optional[dict] = None,
+        metadata: dict | None = None,
     ) -> int:
         """Add multiple texts to the vector store.
 
@@ -276,7 +275,7 @@ class VectorStore:
             total_chunks += self.add_document(doc)
         return total_chunks
 
-    def search(self, query: str, n_results: Optional[int] = None) -> list[SearchResult]:
+    def search(self, query: str, n_results: int | None = None) -> list[SearchResult]:
         """Search for documents similar to query.
 
         Args:
@@ -381,7 +380,7 @@ class RAGEngine:
 
     def __init__(
         self,
-        vector_store: Optional[VectorStore] = None,
+        vector_store: VectorStore | None = None,
         ai_processor=None,
     ) -> None:
         self.vector_store = vector_store or VectorStore()

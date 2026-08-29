@@ -18,18 +18,11 @@ from __future__ import annotations
 import asyncio
 import inspect
 from collections import defaultdict
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import (
     Any,
-    Awaitable,
-    Callable,
-    Dict,
-    List,
-    Optional,
-    Tuple,
-    Type,
     TypeVar,
-    Union,
 )
 
 from .logging import get_logger
@@ -47,7 +40,7 @@ class Event:
     """Base event class."""
 
     name: str = ""
-    data: Dict[str, Any] = field(default_factory=dict)
+    data: dict[str, Any] = field(default_factory=dict)
     timestamp: float = 0.0
     source: str = ""
     event_id: str = ""
@@ -78,9 +71,9 @@ class EventBus:
     """
 
     def __init__(self) -> None:
-        self._handlers: Dict[str, List[Callable]] = defaultdict(list)
-        self._async_handlers: Dict[str, List[Callable]] = defaultdict(list)
-        self._event_history: List[Event] = []
+        self._handlers: dict[str, list[Callable]] = defaultdict(list)
+        self._async_handlers: dict[str, list[Callable]] = defaultdict(list)
+        self._event_history: list[Event] = []
         self._max_history: int = 1000
 
     def subscribe(self, event_name: str, handler: Callable) -> None:
@@ -105,7 +98,7 @@ class EventBus:
         if handler in self._async_handlers.get(event_name, []):
             self._async_handlers[event_name].remove(handler)
 
-    def publish(self, event: Union[Event, str], data: Optional[Dict[str, Any]] = None, source: str = "") -> Event:
+    def publish(self, event: Event | str, data: dict[str, Any] | None = None, source: str = "") -> Event:
         """Publish an event synchronously.
 
         Args:
@@ -136,9 +129,7 @@ class EventBus:
 
         return event
 
-    async def publish_async(
-        self, event: Union[Event, str], data: Optional[Dict[str, Any]] = None, source: str = ""
-    ) -> Event:
+    async def publish_async(self, event: Event | str, data: dict[str, Any] | None = None, source: str = "") -> Event:
         """Publish an event asynchronously.
 
         Calls both sync and async handlers.
@@ -188,7 +179,7 @@ class EventBus:
 
         return decorator
 
-    def get_event_history(self, event_name: Optional[str] = None, limit: int = 100) -> List[Event]:
+    def get_event_history(self, event_name: str | None = None, limit: int = 100) -> list[Event]:
         """Get event history.
 
         Args:
@@ -208,7 +199,7 @@ class EventBus:
         """Clear event history."""
         self._event_history.clear()
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Get event bus statistics."""
         return {
             "total_events_published": len(self._event_history),
@@ -232,11 +223,11 @@ class DIContainer:
     """
 
     def __init__(self) -> None:
-        self._singletons: Dict[Type, Any] = {}
-        self._factories: Dict[Type, Callable] = {}
-        self._instances: Dict[Type, Any] = {}
+        self._singletons: dict[type, Any] = {}
+        self._factories: dict[type, Callable] = {}
+        self._instances: dict[type, Any] = {}
 
-    def register_singleton(self, interface: Type, implementation: Any) -> None:
+    def register_singleton(self, interface: type, implementation: Any) -> None:
         """Register a singleton service.
 
         Args:
@@ -250,7 +241,7 @@ class DIContainer:
             self._singletons[interface] = implementation
         log.debug(f"Registered singleton: {interface.__name__}")
 
-    def register_transient(self, interface: Type, factory: Callable) -> None:
+    def register_transient(self, interface: type, factory: Callable) -> None:
         """Register a transient service (new instance each time).
 
         Args:
@@ -269,7 +260,7 @@ class DIContainer:
         """
         self._instances[name] = instance
 
-    def resolve(self, interface: Type) -> Any:
+    def resolve(self, interface: type) -> Any:
         """Resolve a service by interface.
 
         Args:
@@ -310,11 +301,11 @@ class DIContainer:
             raise KeyError(f"Instance not registered: {name}")
         return self._instances[name]
 
-    def is_registered(self, interface: Type) -> bool:
+    def is_registered(self, interface: type) -> bool:
         """Check if a service is registered."""
         return interface in self._singletons or interface in self._factories
 
-    def inject(self, *interfaces: Type) -> Callable:
+    def inject(self, *interfaces: type) -> Callable:
         """Decorator to inject dependencies into a function.
 
         Usage:
@@ -332,7 +323,7 @@ class DIContainer:
 
         return decorator
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Get container statistics."""
         return {
             "singletons": len(self._singletons),
@@ -356,7 +347,7 @@ class MiddlewarePipeline:
     """
 
     def __init__(self) -> None:
-        self._middlewares: List[Callable] = []
+        self._middlewares: list[Callable] = []
 
     def use(self, middleware: Callable) -> None:
         """Add a middleware to the pipeline.
@@ -386,7 +377,7 @@ class MiddlewarePipeline:
 
         return create_next(0)(request)
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Get pipeline statistics."""
         return {
             "middleware_count": len(self._middlewares),
@@ -406,17 +397,16 @@ class Command:
 
     def undo(self) -> None:
         """Undo the command (optional)."""
-        pass
 
 
 class CommandBus:
     """Command bus for executing and tracking commands."""
 
     def __init__(self) -> None:
-        self._handlers: Dict[Type[Command], Callable] = {}
-        self._history: List[Tuple[Command, Any]] = []
+        self._handlers: dict[type[Command], Callable] = {}
+        self._history: list[tuple[Command, Any]] = []
 
-    def register_handler(self, command_type: Type[Command], handler: Callable) -> None:
+    def register_handler(self, command_type: type[Command], handler: Callable) -> None:
         """Register a handler for a command type."""
         self._handlers[command_type] = handler
 
@@ -438,7 +428,7 @@ class CommandBus:
         self._history.append((command, result))
         return result
 
-    def get_history(self, limit: int = 100) -> List[Tuple[Command, Any]]:
+    def get_history(self, limit: int = 100) -> list[tuple[Command, Any]]:
         """Get command execution history."""
         return self._history[-limit:]
 
@@ -456,7 +446,7 @@ class ServiceLocator:
     Provides a global access point for services.
     """
 
-    _services: Dict[str, Any] = {}
+    _services: dict[str, Any] = {}
 
     @classmethod
     def register(cls, name: str, service: Any) -> None:
@@ -476,7 +466,7 @@ class ServiceLocator:
         return name in cls._services
 
     @classmethod
-    def list_services(cls) -> List[str]:
+    def list_services(cls) -> list[str]:
         """List all registered services."""
         return list(cls._services.keys())
 
@@ -484,7 +474,7 @@ class ServiceLocator:
 # ============ Convenience Functions ============
 
 
-def publish_event(event_name: str, data: Optional[Dict[str, Any]] = None, source: str = "") -> Event:
+def publish_event(event_name: str, data: dict[str, Any] | None = None, source: str = "") -> Event:
     """Publish an event using the global event bus."""
     return event_bus.publish(event_name, data=data, source=source)
 

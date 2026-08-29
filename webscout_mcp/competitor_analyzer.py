@@ -18,7 +18,6 @@ Features:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
 
 from .logging import get_logger
 
@@ -101,7 +100,7 @@ class ComparisonResult:
 
     sites: list[SiteMetrics] = field(default_factory=list)
     comparison_matrix: dict[str, list] = field(default_factory=dict)
-    winner: Optional[str] = None
+    winner: str | None = None
     recommendations: list[str] = field(default_factory=list)
     summary: str = ""
 
@@ -142,10 +141,10 @@ class CompetitorAnalyzer:
         self,
         url: str,
         name: str = "",
-        seo_metrics: Optional[dict] = None,
-        performance_metrics: Optional[dict] = None,
-        content_metrics: Optional[dict] = None,
-        link_metrics: Optional[dict] = None,
+        seo_metrics: dict | None = None,
+        performance_metrics: dict | None = None,
+        content_metrics: dict | None = None,
+        link_metrics: dict | None = None,
     ) -> SiteMetrics:
         """Add a site to compare.
 
@@ -408,7 +407,7 @@ class CompetitorAnalyzer:
 
         for i, site in enumerate(ranked):
             lines.append(
-                f"{i+1}. {site.name} - Overall: {site.overall_score:.1f} "
+                f"{i + 1}. {site.name} - Overall: {site.overall_score:.1f} "
                 f"(SEO: {site.seo_score:.0f}, Perf: {site.performance_score:.0f}, "
                 f"Content: {site.content_score:.0f})"
             )

@@ -11,7 +11,6 @@ import pytest
 
 from webscout_mcp.ai_optimizer import AIOptimizer
 from webscout_mcp.architecture import EventBus
-from webscout_mcp.async_utils import PerformanceMonitor
 from webscout_mcp.content_extractor import ContentExtractor
 from webscout_mcp.errors import safe_execute
 from webscout_mcp.health import SystemMonitor
@@ -73,9 +72,9 @@ def assert_performance(stats, threshold_ms=PERF_THRESHOLD_MS):
         stats: Benchmark statistics dictionary.
         threshold_ms: Maximum acceptable mean duration in ms.
     """
-    assert (
-        stats["mean_ms"] < threshold_ms
-    ), f"Performance regression: mean {stats['mean_ms']:.2f}ms > {threshold_ms}ms threshold"
+    assert stats["mean_ms"] < threshold_ms, (
+        f"Performance regression: mean {stats['mean_ms']:.2f}ms > {threshold_ms}ms threshold"
+    )
     assert stats["p99_ms"] < threshold_ms * 3, f"P99 too high: {stats['p99_ms']:.2f}ms"
 
 
@@ -123,9 +122,9 @@ class TestSearchPerformance:
         second_duration = (time.perf_counter() - start) * 1000
 
         # Cache hit should be significantly faster
-        assert (
-            second_duration < first_duration * 0.5
-        ), f"Cache not effective: first={first_duration:.2f}ms, second={second_duration:.2f}ms"
+        assert second_duration < first_duration * 0.5, (
+            f"Cache not effective: first={first_duration:.2f}ms, second={second_duration:.2f}ms"
+        )
 
 
 # ============ Content Extraction Performance Tests ============
@@ -278,7 +277,7 @@ class TestEventBusPerformance:
         """Benchmark event with multiple handlers."""
         bus = EventBus()
         for i in range(10):
-            bus.subscribe(f"test.event", lambda e, i=i: None)
+            bus.subscribe("test.event", lambda e, i=i: None)
 
         def operation():
             bus.publish("test.event")

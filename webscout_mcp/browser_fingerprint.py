@@ -23,7 +23,6 @@ import hashlib
 import json
 import random
 from dataclasses import dataclass, field
-from typing import Optional
 
 from .logging import get_logger
 
@@ -68,7 +67,7 @@ class BrowserFingerprint:
     # Misc
     webdriver: bool = False
     cookies_enabled: bool = True
-    do_not_track: Optional[str] = None
+    do_not_track: str | None = None
     # Fingerprint hash
     fingerprint_hash: str = ""
 
@@ -128,10 +127,10 @@ class FingerprintGenerator:
 
     # Browser user agent templates
     UA_TEMPLATES = {
-        "chrome": ("Mozilla/5.0 ({platform}) AppleWebKit/537.36 (KHTML, like Gecko) " "Chrome/{version} Safari/537.36"),
+        "chrome": ("Mozilla/5.0 ({platform}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{version} Safari/537.36"),
         "firefox": ("Mozilla/5.0 ({platform}; rv:{version}) Gecko/20100101 Firefox/{version}"),
         "safari": (
-            "Mozilla/5.0 ({platform}) AppleWebKit/605.1.15 (KHTML, like Gecko) " "Version/{version} Safari/605.1.15"
+            "Mozilla/5.0 ({platform}) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/{version} Safari/605.1.15"
         ),
         "edge": (
             "Mozilla/5.0 ({platform}) AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -251,14 +250,14 @@ class FingerprintGenerator:
         {"name": "Native Client", "description": "", "mimeTypes": ["application/x-nacl", "application/x-pnacl"]},
     ]
 
-    def __init__(self, seed: Optional[int] = None) -> None:
+    def __init__(self, seed: int | None = None) -> None:
         self.seed = seed
         self._random = random.Random(seed) if seed is not None else random.Random()
 
     def generate(
         self,
-        browser_type: Optional[str] = None,
-        platform: Optional[str] = None,
+        browser_type: str | None = None,
+        platform: str | None = None,
     ) -> BrowserFingerprint:
         """Generate a realistic browser fingerprint.
 
@@ -379,7 +378,7 @@ class FingerprintGenerator:
         random_data = str(self._random.random()) + str(self._random.random())
         return hashlib.md5(random_data.encode()).hexdigest()
 
-    def generate_consistent_set(self, count: int, browser_type: Optional[str] = None) -> list[BrowserFingerprint]:
+    def generate_consistent_set(self, count: int, browser_type: str | None = None) -> list[BrowserFingerprint]:
         """Generate a set of consistent but distinct fingerprints.
 
         Args:
@@ -458,7 +457,7 @@ class FingerprintGenerator:
         return scripts
 
 
-def generate_fingerprint(browser_type: Optional[str] = None, **kwargs) -> BrowserFingerprint:
+def generate_fingerprint(browser_type: str | None = None, **kwargs) -> BrowserFingerprint:
     """Convenience function to generate a browser fingerprint.
 
     Args:

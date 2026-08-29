@@ -12,8 +12,6 @@ Supported browser impersonations:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
-from urllib.parse import urljoin
 
 try:
     from curl_cffi import requests as curl_requests
@@ -34,7 +32,7 @@ class TLSFetchResult:
     content: str = ""
     content_type: str = ""
     headers: dict = field(default_factory=dict)
-    error: Optional[str] = None
+    error: str | None = None
     impersonated_browser: str = ""
 
     def to_dict(self) -> dict:
@@ -102,7 +100,7 @@ class TLSFetcher:
         if not HAS_CURL_CFFI:
             raise ImportError("curl_cffi is not installed. Install it with: pip install curl_cffi")
         if impersonate not in self.SUPPORTED_BROWSERS:
-            raise ValueError(f"Unsupported browser: {impersonate}. " f"Supported: {', '.join(self.SUPPORTED_BROWSERS)}")
+            raise ValueError(f"Unsupported browser: {impersonate}. Supported: {', '.join(self.SUPPORTED_BROWSERS)}")
         self.impersonate = impersonate
         self.timeout = timeout
         self.max_redirects = max_redirects
@@ -117,9 +115,9 @@ class TLSFetcher:
     def fetch(
         self,
         url: str,
-        headers: Optional[dict] = None,
-        params: Optional[dict] = None,
-        data: Optional[dict] = None,
+        headers: dict | None = None,
+        params: dict | None = None,
+        data: dict | None = None,
         method: str = "GET",
     ) -> TLSFetchResult:
         """Fetch a URL with TLS fingerprint impersonation.
@@ -165,7 +163,7 @@ class TLSFetcher:
         if self._session:
             self._session.close()
 
-    def __enter__(self) -> "TLSFetcher":
+    def __enter__(self) -> TLSFetcher:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:

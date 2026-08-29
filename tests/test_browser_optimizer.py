@@ -2,8 +2,6 @@
 
 import time
 
-import pytest
-
 from webscout_mcp.browser_optimizer import (
     BrowserInstancePool,
     BrowserMetrics,

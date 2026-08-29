@@ -15,11 +15,11 @@ Features:
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 from urllib.parse import urlparse
 
 from .logging import get_logger
@@ -41,7 +41,7 @@ class SearchResultItem:
     freshness_score: float = 0.0  # Content freshness
     final_score: float = 0.0  # Combined final score
     confidence: float = 0.0  # Result confidence
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -64,11 +64,11 @@ class SearchResponse:
 
     query: str = ""
     original_query: str = ""
-    results: List[SearchResultItem] = field(default_factory=list)
+    results: list[SearchResultItem] = field(default_factory=list)
     total_results: int = 0
-    backends_queried: List[str] = field(default_factory=list)
-    backends_succeeded: List[str] = field(default_factory=list)
-    backends_failed: List[str] = field(default_factory=list)
+    backends_queried: list[str] = field(default_factory=list)
+    backends_succeeded: list[str] = field(default_factory=list)
+    backends_failed: list[str] = field(default_factory=list)
     response_time_ms: float = 0.0
     cache_hit: bool = False
     query_rewritten: bool = False
@@ -201,7 +201,7 @@ class QueryUnderstanding:
 
         return rewritten, changed
 
-    def extract_keywords(self, query: str) -> List[str]:
+    def extract_keywords(self, query: str) -> list[str]:
         """Extract important keywords from query.
 
         Args:
@@ -283,14 +283,14 @@ class SearchCache:
     def __init__(self, ttl: int = 300, max_size: int = 1000) -> None:
         self.ttl = ttl
         self.max_size = max_size
-        self._cache: Dict[str, tuple] = {}  # key -> (timestamp, response)
+        self._cache: dict[str, tuple] = {}  # key -> (timestamp, response)
 
-    def _make_key(self, query: str, max_results: int, backends: List[str]) -> str:
+    def _make_key(self, query: str, max_results: int, backends: list[str]) -> str:
         """Make cache key."""
         key_str = f"{query.lower().strip()}:{max_results}:{','.join(sorted(backends))}"
         return hashlib.md5(key_str.encode()).hexdigest()
 
-    def get(self, query: str, max_results: int, backends: List[str]) -> Optional[SearchResponse]:
+    def get(self, query: str, max_results: int, backends: list[str]) -> SearchResponse | None:
         """Get cached response.
 
         Returns:
@@ -308,7 +308,7 @@ class SearchCache:
         response.cache_hit = True
         return response
 
-    def set(self, query: str, max_results: int, backends: List[str], response: SearchResponse) -> None:
+    def set(self, query: str, max_results: int, backends: list[str], response: SearchResponse) -> None:
         """Cache response."""
         if len(self._cache) >= self.max_size:
             # Remove oldest entry
@@ -459,7 +459,7 @@ class SearchRanker:
 
         return score
 
-    def rank_results(self, results: List[SearchResultItem], query: str) -> List[SearchResultItem]:
+    def rank_results(self, results: list[SearchResultItem], query: str) -> list[SearchResultItem]:
         """Rank search results with combined scoring.
 
         Args:
@@ -486,7 +486,7 @@ class SearchRanker:
         results.sort(key=lambda r: r.final_score, reverse=True)
         return results
 
-    def ensure_diversity(self, results: List[SearchResultItem], max_per_domain: int = 2) -> List[SearchResultItem]:
+    def ensure_diversity(self, results: list[SearchResultItem], max_per_domain: int = 2) -> list[SearchResultItem]:
         """Ensure result diversity by limiting results per domain.
 
         Args:
@@ -518,7 +518,7 @@ class SearchOptimizer:
 
     def __init__(
         self,
-        backends: Optional[List[str]] = None,
+        backends: list[str] | None = None,
         cache_ttl: int = 300,
         max_cache_size: int = 1000,
         max_results: int = 10,
@@ -541,9 +541,9 @@ class SearchOptimizer:
     def search(
         self,
         query: str,
-        max_results: Optional[int] = None,
-        backends: Optional[List[str]] = None,
-        search_fn: Optional[Callable] = None,
+        max_results: int | None = None,
+        backends: list[str] | None = None,
+        search_fn: Callable | None = None,
     ) -> SearchResponse:
         """Perform optimized search.
 
@@ -655,7 +655,7 @@ class SearchOptimizer:
 
         return response
 
-    def _merge_results(self, backend_results: Dict[str, List[dict]]) -> List[dict]:
+    def _merge_results(self, backend_results: dict[str, list[dict]]) -> list[dict]:
         """Merge results from multiple backends with deduplication.
 
         Args:
@@ -721,8 +721,8 @@ class SearchOptimizer:
 def optimized_search(
     query: str,
     max_results: int = 10,
-    backends: Optional[List[str]] = None,
-    search_fn: Optional[Callable] = None,
+    backends: list[str] | None = None,
+    search_fn: Callable | None = None,
     **kwargs,
 ) -> SearchResponse:
     """Convenience function for optimized search.

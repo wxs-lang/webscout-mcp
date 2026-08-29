@@ -28,7 +28,7 @@ Exception Categories:
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 class WebScoutError(Exception):
@@ -48,9 +48,9 @@ class WebScoutError(Exception):
     def __init__(
         self,
         message: str = "",
-        code: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
-        retryable: Optional[bool] = None,
+        code: str | None = None,
+        details: dict[str, Any] | None = None,
+        retryable: bool | None = None,
     ) -> None:
         self.message = message or self.__class__.__doc__ or "An error occurred"
         if code:
@@ -61,7 +61,7 @@ class WebScoutError(Exception):
         self.timestamp = datetime.utcnow().isoformat()
         super().__init__(self.message)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert error to dictionary for serialization."""
         return {
             "error": self.__class__.__name__,
@@ -287,7 +287,7 @@ class ValidationError(WebScoutError):
         field: str = "",
         message: str = "",
         value: Any = None,
-        errors: Optional[List[str]] = None,
+        errors: list[str] | None = None,
         **kwargs: Any,
     ) -> None:
         self.field = field
@@ -496,7 +496,7 @@ class OutputValidationError(AIServiceError):
 class ErrorRegistry:
     """Registry for looking up error classes by code."""
 
-    _registry: Dict[str, type] = {}
+    _registry: dict[str, type] = {}
 
     @classmethod
     def register(cls, error_class: type) -> type:
@@ -506,12 +506,12 @@ class ErrorRegistry:
         return error_class
 
     @classmethod
-    def get_by_code(cls, code: str) -> Optional[type]:
+    def get_by_code(cls, code: str) -> type | None:
         """Get error class by code."""
         return cls._registry.get(code)
 
     @classmethod
-    def list_all(cls) -> Dict[str, str]:
+    def list_all(cls) -> dict[str, str]:
         """List all registered error codes and names."""
         return {code: klass.__name__ for code, klass in cls._registry.items()}
 
@@ -534,7 +534,7 @@ def safe_execute(
     *args: Any,
     default: Any = None,
     catch: tuple = (Exception,),
-    on_error: Optional[callable] = None,
+    on_error: callable | None = None,
     **kwargs: Any,
 ) -> Any:
     """Safely execute a function, returning default on error.
@@ -563,7 +563,7 @@ async def async_safe_execute(
     *args: Any,
     default: Any = None,
     catch: tuple = (Exception,),
-    on_error: Optional[callable] = None,
+    on_error: callable | None = None,
     **kwargs: Any,
 ) -> Any:
     """Safely execute an async function, returning default on error."""
@@ -588,10 +588,10 @@ def format_error(error: Exception, include_traceback: bool = False) -> str:
     if isinstance(error, WebScoutError):
         return str(error)
 
-    return f"{type(error).__name__}: {str(error)}"
+    return f"{type(error).__name__}: {error!s}"
 
 
-def get_error_context(error: Exception) -> Dict[str, Any]:
+def get_error_context(error: Exception) -> dict[str, Any]:
     """Extract context from an exception.
 
     Args:

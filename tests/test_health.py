@@ -2,8 +2,6 @@
 
 import time
 
-import pytest
-
 from webscout_mcp.health import (
     DependencyChecker,
     HealthChecker,

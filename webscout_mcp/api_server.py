@@ -20,8 +20,7 @@ Features:
 from __future__ import annotations
 
 import json
-import os
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .logging import get_logger
 
@@ -50,7 +49,7 @@ except ImportError:
 class SearchRequest(BaseModel):
     query: str = Field(..., description="Search query")
     max_results: int = Field(default=10, ge=1, le=50, description="Max results")
-    backend: Optional[str] = Field(default=None, description="Search backend (bing, duckduckgo, google, brave)")
+    backend: str | None = Field(default=None, description="Search backend (bing, duckduckgo, google, brave)")
 
 
 class FetchRequest(BaseModel):
@@ -68,19 +67,19 @@ class CrawlRequest(BaseModel):
 
 
 class SEORequest(BaseModel):
-    url: Optional[str] = Field(default=None, description="URL to analyze")
-    html: Optional[str] = Field(default=None, description="HTML content to analyze")
+    url: str | None = Field(default=None, description="URL to analyze")
+    html: str | None = Field(default=None, description="HTML content to analyze")
 
 
 class BrokenLinkRequest(BaseModel):
-    url: Optional[str] = Field(default=None, description="URL to check")
-    html: Optional[str] = Field(default=None, description="HTML content to check")
-    base_url: Optional[str] = Field(default=None, description="Base URL for relative links")
+    url: str | None = Field(default=None, description="URL to check")
+    html: str | None = Field(default=None, description="HTML content to check")
+    base_url: str | None = Field(default=None, description="Base URL for relative links")
 
 
 class PerformanceRequest(BaseModel):
-    url: Optional[str] = Field(default=None, description="URL to analyze")
-    html: Optional[str] = Field(default=None, description="HTML content to analyze")
+    url: str | None = Field(default=None, description="URL to analyze")
+    html: str | None = Field(default=None, description="HTML content to analyze")
 
 
 class VectorSearchRequest(BaseModel):
@@ -103,23 +102,23 @@ class MonitorRequest(BaseModel):
 
 
 class ExportRequest(BaseModel):
-    data: List[Dict[str, Any]] = Field(..., description="Data to export")
+    data: list[dict[str, Any]] = Field(..., description="Data to export")
     format: str = Field(default="json", description="Export format (json, csv, excel, markdown, html)")
-    fields: Optional[List[str]] = Field(default=None, description="Fields to export")
+    fields: list[str] | None = Field(default=None, description="Fields to export")
 
 
 class APIResponse(BaseModel):
     success: bool = True
     data: Any = None
-    error: Optional[str] = None
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    error: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 def create_app(
     title: str = "WebScout MCP API",
     version: str = "1.0.0",
-    api_key: Optional[str] = None,
-    cors_origins: Optional[List[str]] = None,
+    api_key: str | None = None,
+    cors_origins: list[str] | None = None,
 ) -> Any:
     """Create and configure FastAPI application.
 
@@ -155,7 +154,7 @@ def create_app(
     )
 
     # API key authentication dependency
-    async def verify_api_key(x_api_key: Optional[str] = Header(None)):
+    async def verify_api_key(x_api_key: str | None = Header(None)):
         if api_key and x_api_key != api_key:
             raise HTTPException(status_code=401, detail="Invalid API key")
         return x_api_key
@@ -410,8 +409,8 @@ def create_app(
 def run_server(
     host: str = "0.0.0.0",
     port: int = 8000,
-    api_key: Optional[str] = None,
-    cors_origins: Optional[List[str]] = None,
+    api_key: str | None = None,
+    cors_origins: list[str] | None = None,
     reload: bool = False,
 ) -> None:
     """Run the REST API server.

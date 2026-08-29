@@ -17,9 +17,7 @@ Features:
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
-from typing import Optional
 from urllib.parse import urljoin, urlparse
 
 from .logging import get_logger
@@ -402,7 +400,7 @@ class BrokenLinkChecker:
         """
         lines = [
             f"Broken Link Check Report for: {report.base_url}",
-            f"=" * 60,
+            "=" * 60,
             f"Total links checked: {report.total_links}",
             f"OK: {report.ok_links}",
             f"Broken: {report.broken_links}",
@@ -410,11 +408,11 @@ class BrokenLinkChecker:
             f"Timeouts: {report.timeout_links}",
             f"Errors: {report.error_links}",
             f"Invalid: {report.invalid_links}",
-            f"",
+            "",
             f"Internal links: {report.internal_links}",
             f"External links: {report.external_links}",
             f"Mixed content: {report.mixed_content_links}",
-            f"",
+            "",
             f"Broken link percentage: {report.broken_link_percentage}%",
             f"Check duration: {report.check_duration_ms}ms",
         ]

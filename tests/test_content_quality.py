@@ -1,7 +1,5 @@
 """Tests for content quality assessment module."""
 
-import pytest
-
 from webscout_mcp.content_quality import (
     ContentQualityAnalyzer,
     ContentQualityMetrics,

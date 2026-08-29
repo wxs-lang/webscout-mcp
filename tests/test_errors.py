@@ -5,56 +5,57 @@ Tests exception inheritance, message handling, attributes, serialization,
 error registry functionality, and safe execution utility.
 """
 
-import pytest
-import sys
 import os
+import sys
+
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from webscout_mcp.errors import (
-    WebScoutError,
-    ConfigurationError,
-    MissingConfigError,
-    InvalidConfigError,
-    NetworkError,
-    ConnectionError,
-    TimeoutError,
-    SSLError,
-    DNSResolutionError,
-    HTTPError,
-    SearchError,
-    SearchBackendError,
-    NoResultsError,
-    FetchError,
-    ContentExtractionError,
-    PageLoadError,
-    ParseError,
-    HTMLParseError,
-    JSONParseError,
-    PDFParseError,
-    ValidationError,
-    InvalidURLError,
+    AIServiceError,
     AuthenticationError,
-    InvalidTokenError,
-    PermissionDeniedError,
-    RateLimitError,
-    SecurityError,
-    SSRFError,
-    InputValidationError,
-    SensitiveDataError,
-    PluginError,
-    PluginNotFoundError,
-    PluginLoadError,
     CacheError,
     CacheMissError,
-    StorageError,
+    ConfigurationError,
+    ConnectionError,
+    ContentExtractionError,
     DatabaseError,
-    FileStorageError,
-    AIServiceError,
-    ModelNotFoundError,
-    HallucinationDetectedError,
-    OutputValidationError,
+    DNSResolutionError,
     ErrorRegistry,
+    FetchError,
+    FileStorageError,
+    HallucinationDetectedError,
+    HTMLParseError,
+    HTTPError,
+    InputValidationError,
+    InvalidConfigError,
+    InvalidTokenError,
+    InvalidURLError,
+    JSONParseError,
+    MissingConfigError,
+    ModelNotFoundError,
+    NetworkError,
+    NoResultsError,
+    OutputValidationError,
+    PageLoadError,
+    ParseError,
+    PDFParseError,
+    PermissionDeniedError,
+    PluginError,
+    PluginLoadError,
+    PluginNotFoundError,
+    RateLimitError,
+    SearchBackendError,
+    SearchError,
+    SecurityError,
+    SensitiveDataError,
+    SSLError,
+    SSRFError,
+    StorageError,
+    TimeoutError,
+    ValidationError,
+    WebScoutError,
     safe_execute,
 )
 
@@ -543,6 +544,7 @@ class TestSafeExecute:
 
     def test_safe_execute_with_default(self):
         """Test safe_execute returns default on error."""
+
         def failing_func():
             raise ValueError("Test error")
 
@@ -551,6 +553,7 @@ class TestSafeExecute:
 
     def test_safe_execute_with_args(self):
         """Test safe_execute with positional arguments."""
+
         def add(a, b):
             return a + b
 
@@ -559,6 +562,7 @@ class TestSafeExecute:
 
     def test_safe_execute_with_kwargs(self):
         """Test safe_execute with keyword arguments."""
+
         def greet(name, greeting="Hello"):
             return f"{greeting}, {name}!"
 
@@ -581,6 +585,7 @@ class TestSafeExecute:
 
     def test_safe_execute_catch_specific_exception(self):
         """Test safe_execute catches only specified exceptions."""
+
         def value_error_func():
             raise ValueError("Value error")
 
@@ -590,6 +595,7 @@ class TestSafeExecute:
 
     def test_safe_execute_propagates_uncatched_exception(self):
         """Test safe_execute propagates exceptions not in catch tuple."""
+
         def type_error_func():
             raise TypeError("Type error")
 

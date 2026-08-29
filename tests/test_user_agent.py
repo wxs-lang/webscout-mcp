@@ -4,18 +4,19 @@ Tests for user_agent module - User-Agent rotation and browser fingerprints.
 Tests BrowserFingerprint, UserAgentRotator, and utility functions.
 """
 
-import pytest
-import sys
 import os
+import sys
+
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from webscout_mcp.user_agent import (
     BrowserFingerprint,
     UserAgentRotator,
-    random_user_agent,
-    random_headers,
     random_ajax_headers,
+    random_headers,
+    random_user_agent,
 )
 
 
@@ -294,7 +295,9 @@ class TestUserAgentRotator:
         original_get = rotator.get_user_agent
 
         def mock_get():
-            return "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            return (
+                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            )
 
         rotator.get_user_agent = mock_get
         fp = rotator.get_fingerprint()

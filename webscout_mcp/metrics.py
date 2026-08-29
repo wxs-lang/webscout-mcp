@@ -17,10 +17,7 @@ Features:
 from __future__ import annotations
 
 import threading
-import time
-from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Callable, Optional
 
 from .logging import get_logger
 
@@ -48,7 +45,7 @@ class Metric:
 class Counter:
     """Counter metric - monotonically increasing value."""
 
-    def __init__(self, name: str, help: str = "", labels: Optional[dict] = None) -> None:
+    def __init__(self, name: str, help: str = "", labels: dict | None = None) -> None:
         self.name = name
         self.help = help
         self.labels = labels or {}
@@ -75,7 +72,7 @@ class Counter:
 class Gauge:
     """Gauge metric - can go up and down."""
 
-    def __init__(self, name: str, help: str = "", labels: Optional[dict] = None) -> None:
+    def __init__(self, name: str, help: str = "", labels: dict | None = None) -> None:
         self.name = name
         self.help = help
         self.labels = labels or {}
@@ -112,8 +109,8 @@ class Histogram:
         self,
         name: str,
         help: str = "",
-        buckets: Optional[list[float]] = None,
-        labels: Optional[dict] = None,
+        buckets: list[float] | None = None,
+        labels: dict | None = None,
     ) -> None:
         self.name = name
         self.help = help
@@ -158,7 +155,7 @@ class Histogram:
 class Summary:
     """Summary metric - tracks quantiles."""
 
-    def __init__(self, name: str, help: str = "", labels: Optional[dict] = None) -> None:
+    def __init__(self, name: str, help: str = "", labels: dict | None = None) -> None:
         self.name = name
         self.help = help
         self.labels = labels or {}
@@ -213,14 +210,14 @@ class MetricsRegistry:
         self._summaries: dict[str, Summary] = {}
         self._lock = threading.Lock()
 
-    def register_counter(self, name: str, help: str = "", labels: Optional[dict] = None) -> Counter:
+    def register_counter(self, name: str, help: str = "", labels: dict | None = None) -> Counter:
         """Register a counter metric."""
         with self._lock:
             if name not in self._counters:
                 self._counters[name] = Counter(name, help, labels)
             return self._counters[name]
 
-    def register_gauge(self, name: str, help: str = "", labels: Optional[dict] = None) -> Gauge:
+    def register_gauge(self, name: str, help: str = "", labels: dict | None = None) -> Gauge:
         """Register a gauge metric."""
         with self._lock:
             if name not in self._gauges:
@@ -231,8 +228,8 @@ class MetricsRegistry:
         self,
         name: str,
         help: str = "",
-        buckets: Optional[list[float]] = None,
-        labels: Optional[dict] = None,
+        buckets: list[float] | None = None,
+        labels: dict | None = None,
     ) -> Histogram:
         """Register a histogram metric."""
         with self._lock:
@@ -240,23 +237,23 @@ class MetricsRegistry:
                 self._histograms[name] = Histogram(name, help, buckets, labels)
             return self._histograms[name]
 
-    def register_summary(self, name: str, help: str = "", labels: Optional[dict] = None) -> Summary:
+    def register_summary(self, name: str, help: str = "", labels: dict | None = None) -> Summary:
         """Register a summary metric."""
         with self._lock:
             if name not in self._summaries:
                 self._summaries[name] = Summary(name, help, labels)
             return self._summaries[name]
 
-    def get_counter(self, name: str) -> Optional[Counter]:
+    def get_counter(self, name: str) -> Counter | None:
         return self._counters.get(name)
 
-    def get_gauge(self, name: str) -> Optional[Gauge]:
+    def get_gauge(self, name: str) -> Gauge | None:
         return self._gauges.get(name)
 
-    def get_histogram(self, name: str) -> Optional[Histogram]:
+    def get_histogram(self, name: str) -> Histogram | None:
         return self._histograms.get(name)
 
-    def get_summary(self, name: str) -> Optional[Summary]:
+    def get_summary(self, name: str) -> Summary | None:
         return self._summaries.get(name)
 
     def generate_prometheus_format(self) -> str:
@@ -344,7 +341,7 @@ def get_default_registry() -> MetricsRegistry:
 class WebScoutMetrics:
     """Pre-defined metrics for webscout-mcp."""
 
-    def __init__(self, registry: Optional[MetricsRegistry] = None) -> None:
+    def __init__(self, registry: MetricsRegistry | None = None) -> None:
         self.registry = registry or get_default_registry()
         self._init_metrics()
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 from bs4 import BeautifulSoup
 
@@ -34,9 +34,9 @@ class ExtractionRule:
 
     name: str
     selector: str
-    attribute: Optional[str] = None
+    attribute: str | None = None
     multiple: bool = False
-    regex: Optional[str] = None
+    regex: str | None = None
     default: Any = None
 
 
@@ -118,7 +118,7 @@ class DataExtractor:
         val = self._extract_element_value(elements[0], rule)
         return val if val is not None else rule.default
 
-    def _extract_element_value(self, element, rule: ExtractionRule) -> Optional[str]:
+    def _extract_element_value(self, element, rule: ExtractionRule) -> str | None:
         """Extract the value from a single element."""
         if rule.attribute:
             val = element.get(rule.attribute)

@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 
 def _default_cache_dir() -> Path:
@@ -47,7 +47,7 @@ class Config:
     request_timeout: float = 15.0
     max_retries: int = 3
     retry_backoff: float = 0.5  # seconds, exponential
-    user_agent: str = "Mozilla/5.0 (compatible; webscout-mcp/0.3; " "+https://github.com/wxs-lang/webscout-mcp)"
+    user_agent: str = "Mozilla/5.0 (compatible; webscout-mcp/0.3; +https://github.com/wxs-lang/webscout-mcp)"
     max_content_length: int = 5 * 1024 * 1024  # 5 MB
 
     # --- Proxy ---
@@ -81,7 +81,7 @@ class Config:
     log_json: bool = False
 
     @classmethod
-    def load(cls, config_path: Optional[Path] = None) -> "Config":
+    def load(cls, config_path: Path | None = None) -> Config:
         """Load configuration from file, then override with environment variables.
 
         Args:
@@ -107,7 +107,7 @@ class Config:
         return cls(**kwargs)
 
     @classmethod
-    def from_env(cls) -> "Config":
+    def from_env(cls) -> Config:
         """Build a Config instance, overriding defaults from environment.
 
         Also loads config file if it exists (env vars take priority).
@@ -230,7 +230,7 @@ class Config:
         """Create cache directory if it doesn't exist."""
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
-    def reload(self, config_path: Optional[Path] = None) -> "Config":
+    def reload(self, config_path: Path | None = None) -> Config:
         """Reload configuration from file and environment variables.
 
         This method updates the current Config instance in-place with new

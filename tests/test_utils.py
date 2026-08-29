@@ -5,20 +5,20 @@ Tests URL normalization, validation, text truncation, URL safety,
 domain extraction, and TokenBucket basics.
 """
 
-import pytest
-import sys
 import os
-import asyncio
+import sys
+
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from webscout_mcp.utils import (
     TokenBucket,
-    normalize_url,
-    is_valid_url,
-    truncate_text,
-    is_safe_url,
     extract_domain,
+    is_safe_url,
+    is_valid_url,
+    normalize_url,
+    truncate_text,
 )
 
 

@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Optional
 
 from .logging import get_logger
 
@@ -125,7 +124,7 @@ class PerformanceAnalyzer:
     def __init__(self) -> None:
         pass
 
-    def analyze(self, html: str, url: str = "", response_headers: Optional[dict] = None) -> PerformanceMetrics:
+    def analyze(self, html: str, url: str = "", response_headers: dict | None = None) -> PerformanceMetrics:
         """Analyze a web page for performance.
 
         Args:
@@ -210,7 +209,7 @@ class PerformanceAnalyzer:
             metrics.image_count = len(soup.find_all("img"))
 
             # Count fonts
-            metrics.font_count = len(soup.find_all("link", rel=re.compile(r"font", re.I)))
+            metrics.font_count = len(soup.find_all("link", rel=re.compile(r"font", re.IGNORECASE)))
 
             # Total estimated requests
             metrics.request_count = (
@@ -378,7 +377,7 @@ class PerformanceAnalyzer:
             )
 
 
-def analyze_performance(html: str, url: str = "", response_headers: Optional[dict] = None) -> PerformanceMetrics:
+def analyze_performance(html: str, url: str = "", response_headers: dict | None = None) -> PerformanceMetrics:
     """Convenience function to analyze page performance.
 
     Args:

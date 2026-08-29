@@ -15,9 +15,7 @@ Supports multiple LLM backends:
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
-from typing import Any, Optional
 
 from .logging import get_logger
 
@@ -46,7 +44,7 @@ class AIConfig:
     stream: bool = False
 
     @classmethod
-    def from_env(cls) -> "AIConfig":
+    def from_env(cls) -> AIConfig:
         """Load configuration from environment variables."""
         import os
 
@@ -69,7 +67,7 @@ class AIResponse:
     model: str = ""
     backend: str = ""
     usage: dict = field(default_factory=dict)
-    error: Optional[str] = None
+    error: str | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -92,7 +90,7 @@ class AIProcessor:
     - Multi-document comparison
     """
 
-    def __init__(self, config: Optional[AIConfig] = None) -> None:
+    def __init__(self, config: AIConfig | None = None) -> None:
         self.config = config or AIConfig.from_env()
         self._client = None
 

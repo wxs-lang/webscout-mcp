@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from .logging import get_logger
 
@@ -35,7 +35,7 @@ class Chunk:
     end_index: int = 0
     word_count: int = 0
     token_count: int = 0
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
     score: float = 0.0
 
     def to_dict(self) -> dict:
@@ -58,10 +58,10 @@ class RAGResponse:
 
     query: str = ""
     rewritten_query: str = ""
-    chunks: List[Chunk] = field(default_factory=list)
+    chunks: list[Chunk] = field(default_factory=list)
     compressed_context: str = ""
     answer: str = ""
-    citations: List[Dict[str, Any]] = field(default_factory=list)
+    citations: list[dict[str, Any]] = field(default_factory=list)
     retrieval_score: float = 0.0
     confidence: float = 0.0
     processing_time_ms: float = 0.0
@@ -99,7 +99,7 @@ class SemanticChunker:
         self.overlap = overlap
         self.enable_parent_child = enable_parent_child
 
-    def chunk(self, text: str, metadata: Optional[Dict[str, Any]] = None) -> List[Chunk]:
+    def chunk(self, text: str, metadata: dict[str, Any] | None = None) -> list[Chunk]:
         """Chunk text semantically.
 
         Args:
@@ -124,7 +124,7 @@ class SemanticChunker:
 
         return chunks
 
-    def _split_paragraphs(self, text: str) -> List[Tuple[str, int, int]]:
+    def _split_paragraphs(self, text: str) -> list[tuple[str, int, int]]:
         """Split text into paragraphs with positions.
 
         Returns:
@@ -167,10 +167,10 @@ class SemanticChunker:
 
     def _group_paragraphs(
         self,
-        paragraphs: List[Tuple[str, int, int]],
+        paragraphs: list[tuple[str, int, int]],
         full_text: str,
-        metadata: Dict[str, Any],
-    ) -> List[Chunk]:
+        metadata: dict[str, Any],
+    ) -> list[Chunk]:
         """Group paragraphs into chunks based on size.
 
         Args:
@@ -233,7 +233,7 @@ class SemanticChunker:
         start: int,
         end: int,
         index: int,
-        metadata: Dict[str, Any],
+        metadata: dict[str, Any],
     ) -> Chunk:
         """Create a Chunk object."""
         return Chunk(
@@ -246,7 +246,7 @@ class SemanticChunker:
             metadata=dict(metadata),
         )
 
-    def _create_parent_child_structure(self, chunks: List[Chunk]) -> List[Chunk]:
+    def _create_parent_child_structure(self, chunks: list[Chunk]) -> list[Chunk]:
         """Create parent-child chunk structure.
 
         Small chunks for retrieval, larger parent chunks for context.
@@ -274,7 +274,7 @@ class ContextCompressor:
         self.compression_ratio = compression_ratio
         self.enable_key_sentence_extraction = enable_key_sentence_extraction
 
-    def compress(self, chunks: List[Chunk], query: str = "") -> Tuple[str, List[Chunk]]:
+    def compress(self, chunks: list[Chunk], query: str = "") -> tuple[str, list[Chunk]]:
         """Compress retrieved chunks into concise context.
 
         Args:
@@ -313,7 +313,7 @@ class ContextCompressor:
 
         return compressed_context, selected_chunks
 
-    def _score_chunks(self, chunks: List[Chunk], query: str) -> List[Chunk]:
+    def _score_chunks(self, chunks: list[Chunk], query: str) -> list[Chunk]:
         """Score chunks by relevance to query."""
         if not query:
             return chunks
@@ -327,7 +327,7 @@ class ContextCompressor:
 
         return sorted(chunks, key=lambda c: c.score, reverse=True)
 
-    def _extract_key_sentences(self, text: str, query: str, max_sentences: int = 3) -> List[str]:
+    def _extract_key_sentences(self, text: str, query: str, max_sentences: int = 3) -> list[str]:
         """Extract key sentences from text based on query relevance."""
         # Split into sentences
         sentences = re.split(r"(?<=[.!?。！？])\s+", text)
@@ -371,7 +371,7 @@ class QueryRewriter:
         "vs": ["vs", "versus", "compared to", "difference between"],
     }
 
-    def rewrite(self, query: str) -> Tuple[str, bool]:
+    def rewrite(self, query: str) -> tuple[str, bool]:
         """Rewrite query for better retrieval.
 
         Args:
@@ -407,7 +407,7 @@ class QueryRewriter:
 
         return rewritten, changed
 
-    def expand(self, query: str) -> List[str]:
+    def expand(self, query: str) -> list[str]:
         """Generate multiple query variations.
 
         Args:
@@ -446,7 +446,7 @@ class RAGOptimizer:
         self.enable_query_rewrite = enable_query_rewrite
         self.enable_compression = enable_compression
 
-    def prepare_documents(self, documents: List[str], metadata: Optional[Dict[str, Any]] = None) -> List[Chunk]:
+    def prepare_documents(self, documents: list[str], metadata: dict[str, Any] | None = None) -> list[Chunk]:
         """Prepare documents for RAG by chunking.
 
         Args:
@@ -467,7 +467,7 @@ class RAGOptimizer:
     def retrieve(
         self,
         query: str,
-        chunks: List[Chunk],
+        chunks: list[Chunk],
         top_k: int = 5,
     ) -> RAGResponse:
         """Retrieve and compress context for query.
@@ -533,7 +533,7 @@ class RAGOptimizer:
 
 def optimize_rag(
     query: str,
-    documents: List[str],
+    documents: list[str],
     top_k: int = 5,
     **kwargs,
 ) -> RAGResponse:

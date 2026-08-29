@@ -15,10 +15,8 @@ Features:
 
 from __future__ import annotations
 
-import math
 import re
 from dataclasses import dataclass, field
-from typing import Optional
 
 from .logging import get_logger
 
@@ -185,7 +183,6 @@ class ContentQualityAnalyzer:
         "any",
         "because",
         "before",
-        "being",
         "below",
         "between",
         "both",
@@ -251,7 +248,7 @@ class ContentQualityAnalyzer:
     def __init__(self) -> None:
         pass
 
-    def analyze(self, text: str, html: str = "", metadata: Optional[dict] = None) -> ContentQualityMetrics:
+    def analyze(self, text: str, html: str = "", metadata: dict | None = None) -> ContentQualityMetrics:
         """Analyze content quality.
 
         Args:
@@ -530,7 +527,7 @@ class ContentQualityAnalyzer:
             metrics.suggestions.append("Content quality is good! Keep up the good work")
 
 
-def analyze_content_quality(text: str, html: str = "", metadata: Optional[dict] = None) -> ContentQualityMetrics:
+def analyze_content_quality(text: str, html: str = "", metadata: dict | None = None) -> ContentQualityMetrics:
     """Convenience function to analyze content quality.
 
     Args:

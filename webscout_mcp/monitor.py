@@ -18,7 +18,6 @@ import json
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Callable, Optional
 
 from .logging import get_logger
 
@@ -59,7 +58,7 @@ class MonitorConfig:
     max_diff_length: int = 2000
 
     @classmethod
-    def from_env(cls) -> "MonitorConfig":
+    def from_env(cls) -> MonitorConfig:
         """Load configuration from environment variables."""
         import os
 
@@ -139,7 +138,7 @@ class AlertChannel:
 class WebhookAlert(AlertChannel):
     """Webhook alert channel."""
 
-    def __init__(self, webhook_url: str, headers: Optional[dict] = None) -> None:
+    def __init__(self, webhook_url: str, headers: dict | None = None) -> None:
         self.webhook_url = webhook_url
         self.headers = headers or {"Content-Type": "application/json"}
 
@@ -303,7 +302,7 @@ class WebMonitor:
 
     def __init__(
         self,
-        config: Optional[MonitorConfig] = None,
+        config: MonitorConfig | None = None,
         fetcher=None,
     ) -> None:
         self.config = config or MonitorConfig.from_env()
@@ -548,7 +547,7 @@ class WebMonitor:
         """Get all change history."""
         return self._history
 
-    def clear_history(self, url: Optional[str] = None) -> None:
+    def clear_history(self, url: str | None = None) -> None:
         """Clear change history.
 
         Args:

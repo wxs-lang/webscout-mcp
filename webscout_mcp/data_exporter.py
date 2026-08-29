@@ -18,7 +18,6 @@ import csv
 import json
 import os
 from dataclasses import dataclass, field
-from typing import Any, Optional, Union
 
 from .logging import get_logger
 
@@ -55,7 +54,7 @@ class ExportConfig:
     max_file_size: int = 0
 
     @classmethod
-    def from_env(cls) -> "ExportConfig":
+    def from_env(cls) -> ExportConfig:
         """Load configuration from environment variables."""
         return cls(
             format=os.environ.get("WEBSCOUT_EXPORT_FORMAT", "json"),
@@ -108,7 +107,7 @@ class DataExporter:
 
     SUPPORTED_FORMATS = {"json", "csv", "excel", "parquet", "sqlite", "markdown", "html"}
 
-    def __init__(self, config: Optional[ExportConfig] = None) -> None:
+    def __init__(self, config: ExportConfig | None = None) -> None:
         self.config = config or ExportConfig()
 
     def export(self, data: list[dict], output_path: str = "", export_format: str = "") -> ExportResult:
@@ -387,7 +386,7 @@ def export_data(
     data: list[dict],
     output_path: str,
     export_format: str = "json",
-    fields: Optional[list[str]] = None,
+    fields: list[str] | None = None,
     **kwargs,
 ) -> ExportResult:
     """Convenience function to export data.
