@@ -162,3 +162,13 @@ ignore = [
 "webscout_mcp/tls_fetcher.py" = ["F401"]
 "webscout_mcp/setup.py" = ["F401", "F841"]
 "webscout_mcp/server.py" = ["F841"]
+
+[tool.bandit]
+# Bandit security scanning configuration
+exclude_dirs = ["tests", "venv", "build", "dist", ".github"]
+# Skip rules that are false positives for this project:
+# B324: MD5 used for non-security purposes (ID generation, caching)
+# B101: assert used in tests (excluded anyway)
+# B404: subprocess import (legitimate for browser automation)
+# B603/B607: subprocess calls (legitimate for browser automation)
+skips = ["B324", "B101", "B404", "B603", "B607"]
