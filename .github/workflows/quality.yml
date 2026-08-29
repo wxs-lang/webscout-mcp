@@ -115,27 +115,14 @@ jobs:
           bandit --version
           echo ""
           echo "=== Running bandit ==="
-          bandit -r webscout_mcp/ \
-            -f json \
-            -o bandit-results.json \
-            -ll \
-            2>&1 | tee bandit_output.txt
-          BANDIT_EXIT=$?
+          bandit -r webscout_mcp/ -f json -o bandit-results.json -ll 2>&1 | tee bandit_output.txt
+          BANDIT_EXIT=${PIPESTATUS[0]}
           echo ""
           echo "=== Bandit exit code: $BANDIT_EXIT ==="
           echo ""
           echo "=== Bandit results summary ==="
           if [ -f bandit-results.json ]; then
-            python3 -c "
-          import json
-          with open('bandit-results.json') as f:
-              data = json.load(f)
-          results = data.get('results', [])
-          print(f'Total issues: {len(results)}')
-          for r in results:
-              print(f'  [{r[\"issue_severity\"]}] {r[\"test_id\"]}: {r[\"issue_text\"][:100]}')
-              print(f'    Location: {r[\"filename\"]}:{r[\"line_number\"]}')
-          "
+            python3 -c "import json; data=json.load(open('bandit-results.json')); results=data.get('results',[]); print(f'Total issues: {len(results)}'); [print(f'  [{r[\"issue_severity\"]}] {r[\"test_id\"]}: {r[\"issue_text\"][:80]}') or print(f'    Location: {r[\"filename\"]}:{r[\"line_number\"]}') for r in results]"
           fi
           exit $BANDIT_EXIT
 
