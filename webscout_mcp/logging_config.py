@@ -3,7 +3,6 @@
 Usage::
 
     from webscout_mcp.logging_config import get_logger, setup_logging
-
     setup_logging(level="INFO")
     log = get_logger(__name__)
     log.info("fetching url", url="https://example.com", status=200)
@@ -22,6 +21,62 @@ from typing import Any
 
 _LOGGER_NAME = "webscout"
 _initialised = False
+
+
+class StructuredLogger(logging.Logger):
+    """Logger that supports structured logging with arbitrary keyword arguments.
+
+    Standard Python logging only accepts specific kwargs (exc_info, extra, etc.).
+    This logger automatically wraps arbitrary kwargs into the ``extra`` dict,
+    allowing calls like:
+        log.info("fetching url", url="https://example.com", status=200)
+
+    The extra fields are then picked up by the custom formatters.
+    """
+
+    def _log_with_extra(self, level: int, msg: Any, args: tuple, kwargs: dict) -> None:
+        """Extract arbitrary kwargs and merge them into extra."""
+        # Standard logging kwargs that should be passed through directly
+        standard_kwargs = {"exc_info", "stack_info", "stacklevel", "extra"}
+        extra = dict(kwargs.pop("extra", {}) or {})
+
+        # All other kwargs become structured log fields
+        for key, value in list(kwargs.items()):
+            if key not in standard_kwargs:
+                extra[key] = kwargs.pop(key)
+
+        if extra:
+            kwargs["extra"] = extra
+
+        super().log(level, msg, *args, **kwargs)
+
+    def debug(self, msg: Any, *args: Any, **kwargs: Any) -> None:
+        if self.isEnabledFor(logging.DEBUG):
+            self._log_with_extra(logging.DEBUG, msg, args, kwargs)
+
+    def info(self, msg: Any, *args: Any, **kwargs: Any) -> None:
+        if self.isEnabledFor(logging.INFO):
+            self._log_with_extra(logging.INFO, msg, args, kwargs)
+
+    def warning(self, msg: Any, *args: Any, **kwargs: Any) -> None:
+        if self.isEnabledFor(logging.WARNING):
+            self._log_with_extra(logging.WARNING, msg, args, kwargs)
+
+    def error(self, msg: Any, *args: Any, **kwargs: Any) -> None:
+        if self.isEnabledFor(logging.ERROR):
+            self._log_with_extra(logging.ERROR, msg, args, kwargs)
+
+    def critical(self, msg: Any, *args: Any, **kwargs: Any) -> None:
+        if self.isEnabledFor(logging.CRITICAL):
+            self._log_with_extra(logging.CRITICAL, msg, args, kwargs)
+
+    def exception(self, msg: Any, *args: Any, **kwargs: Any) -> None:
+        kwargs["exc_info"] = True
+        self.error(msg, *args, **kwargs)
+
+
+# Register our custom logger class
+logging.setLoggerClass(StructuredLogger)
 
 
 class _ContextFilter(logging.Filter):

@@ -32,13 +32,11 @@ jobs:
       - name: Run ruff lint
         run: |
           ruff check webscout_mcp/ tests/ \
-            --output-format=github \
-            --exit-zero
+            --output-format=github
 
       - name: Run ruff format check
         run: |
           ruff format --check webscout_mcp/ tests/
-        continue-on-error: true
 
       - name: Upload ruff results
         if: always()
@@ -48,7 +46,6 @@ jobs:
           path: |
             ruff-results.sarif
           retention-days: 14
-        continue-on-error: true
 
   type-check:
     name: Type Check (mypy)
@@ -76,7 +73,6 @@ jobs:
             --warn-unused-ignores \
             --warn-redundant-casts \
             --no-strict-optional \
-            --exit-zero \
             --xml-report mypy-results \
             2>&1 | tee mypy_output.txt
 
@@ -94,7 +90,6 @@ jobs:
     name: Security Scan (bandit)
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    continue-on-error: true
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -113,10 +108,8 @@ jobs:
           bandit -r webscout_mcp/ \
             -f json \
             -o bandit-results.json \
-            --exit-zero \
-            2>&1 | tee bandit_output.txt || true
-        continue-on-error: true
-        timeout-minutes: 5
+            -ll \
+            2>&1 | tee bandit_output.txt
 
       - name: Upload bandit results
         if: always()
@@ -127,7 +120,6 @@ jobs:
             bandit-results.json
             bandit_output.txt
           retention-days: 14
-        continue-on-error: true
 
       - name: Security summary
         if: always()
@@ -156,12 +148,10 @@ jobs:
       actions: read
       contents: read
       security-events: write
-
     strategy:
       fail-fast: false
       matrix:
         language: ["python"]
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -183,7 +173,7 @@ jobs:
   quality-summary:
     name: Quality Summary
     runs-on: ubuntu-latest
-    needs: [lint, type-check, security-scan]
+    needs: [lint, type-check, security-scan, codeql]
     if: always()
     steps:
       - name: Quality check summary

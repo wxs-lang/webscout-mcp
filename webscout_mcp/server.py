@@ -25,7 +25,7 @@ from .fetcher import Fetcher
 from .logging_config import get_logger, setup_logging
 from .metadata_extractor import MetadataExtractor
 from .robots import RobotsChecker
-from .rss_parser import RSSParser, fetch_and_parse_feed
+from .rss_parser import fetch_and_parse_feed
 from .search import SearchEngine
 
 log = get_logger(__name__)
@@ -48,7 +48,6 @@ def create_server(config: Config | None = None) -> MCPServer:
     crawler = Crawler(cfg, fetcher, robots_checker)
     extractor = DataExtractor(cfg, fetcher)
     metadata_extractor = MetadataExtractor()
-    rss_parser = RSSParser()
     content_quality_analyzer = ContentQualityAnalyzer()
 
     mcp = MCPServer(
@@ -197,7 +196,7 @@ def create_server(config: Config | None = None) -> MCPServer:
         """
         try:
             result = await fetcher.fetch(url=url, extract=False, output_format="html", max_chars=200000)
-            html = result.content if hasattr(result, 'content') else result.raw_html
+            html = result.content if hasattr(result, "content") else result.raw_html
             if not html:
                 return json.dumps({"error": "Failed to fetch page content", "url": url}, ensure_ascii=False)
             metadata = metadata_extractor.extract(html, base_url=url)
@@ -233,9 +232,9 @@ def create_server(config: Config | None = None) -> MCPServer:
         try:
             # Fetch page content
             result = await fetcher.fetch(url=url, extract=True, output_format="text", max_chars=50000)
-            text = result.content if hasattr(result, 'content') else result.text
+            text = result.content if hasattr(result, "content") else result.text
             html_result = await fetcher.fetch(url=url, extract=False, output_format="html", max_chars=200000)
-            html = html_result.content if hasattr(html_result, 'content') else html_result.raw_html
+            html = html_result.content if hasattr(html_result, "content") else html_result.raw_html
 
             if not text:
                 return json.dumps({"error": "Failed to fetch page content", "url": url}, ensure_ascii=False)
@@ -259,7 +258,7 @@ def create_server(config: Config | None = None) -> MCPServer:
 
             # Fetch page HTML
             result = await fetcher.fetch(url=url, extract=False, output_format="html", max_chars=200000)
-            html = result.content if hasattr(result, 'content') else result.raw_html
+            html = result.content if hasattr(result, "content") else result.raw_html
 
             if not html:
                 return json.dumps({"error": "Failed to fetch page content", "url": url}, ensure_ascii=False)
