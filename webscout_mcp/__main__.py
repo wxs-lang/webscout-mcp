@@ -53,9 +53,13 @@ async def _cmd_serve(args: argparse.Namespace) -> None:
         log.error("Failed to create MCP server")
         sys.exit(1)
     if args.transport == "sse":
-        await mcp.run(transport="sse", host=args.host, port=args.port)
+        await mcp.run_sse_async(host=args.host, port=args.port)
     else:
-        await mcp.run(transport="stdio")
+        # Use async run_stdio_async() instead of synchronous run()
+        # because run() internally calls anyio.run(), which would fail
+        # with "Already running asyncio in this thread" since we're
+        # already inside an asyncio.run() event loop.
+        await mcp.run_stdio_async()
 
 
 async def _cmd_search(args: argparse.Namespace) -> None:
