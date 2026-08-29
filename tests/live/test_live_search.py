@@ -12,6 +12,7 @@ Metrics collected:
 - P50/P95 latency
 - Error types (403, 429, timeout, etc.)
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -27,7 +28,6 @@ from webscout_mcp.config import Config
 from webscout_mcp.search import SearchEngine
 from webscout_mcp.search_provider import SearchRequest
 from webscout_mcp.search_service import create_search_service_from_config
-
 
 # ============================================================
 # Test queries - fixed set for consistent measurement
@@ -66,9 +66,11 @@ FETCH_URLS = [
 # Metrics collection
 # ============================================================
 
+
 @dataclass
 class TestResult:
     """Result of a single test."""
+
     name: str
     success: bool
     latency_ms: float
@@ -80,6 +82,7 @@ class TestResult:
 @dataclass
 class LiveTestReport:
     """Report of all live tests."""
+
     timestamp: float = field(default_factory=time.time)
     search_results: list[TestResult] = field(default_factory=list)
     fetch_results: list[TestResult] = field(default_factory=list)
@@ -142,10 +145,8 @@ class LiveTestReport:
 # Live tests
 # ============================================================
 
-pytestmark = pytest.mark.skipif(
-    not pytest.config.getoption("--run-live", False),  # type: ignore
-    reason="Live tests require --run-live flag",
-)
+# Live tests are excluded from normal CI via --ignore=tests/live
+# Run them manually with: pytest tests/live/ --run-live
 
 
 @pytest.fixture(scope="session")

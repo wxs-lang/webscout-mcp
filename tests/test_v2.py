@@ -239,7 +239,7 @@ class TestRobotsChecker:
 
 class TestLogging:
     def test_setup_logging(self):
-        from webscout_mcp.logging import get_logger, setup_logging
+        from webscout_mcp.logging_config import get_logger, setup_logging
 
         setup_logging(level="DEBUG")
         log = get_logger("test")
@@ -247,7 +247,7 @@ class TestLogging:
         assert log.name == "webscout.test"
 
     def test_get_logger_auto_init(self):
-        from webscout_mcp.logging import get_logger
+        from webscout_mcp.logging_config import get_logger
 
         # Should not raise even if setup_logging wasn't called
         log = get_logger("auto")
@@ -256,7 +256,7 @@ class TestLogging:
     def test_json_formatter(self):
         import logging
 
-        from webscout_mcp.logging import _JsonFormatter
+        from webscout_mcp.logging_config import _JsonFormatter
 
         formatter = _JsonFormatter()
         record = logging.LogRecord(
