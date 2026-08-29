@@ -22,7 +22,9 @@ from .crawler import Crawler
 from .extractor import DataExtractor, ExtractionRule
 from .fetcher import Fetcher
 from .logging_config import get_logger, setup_logging
+from .metadata_extractor import MetadataExtractor
 from .robots import RobotsChecker
+from .rss_parser import RSSParser, fetch_and_parse_feed
 from .search import SearchEngine
 
 log = get_logger(__name__)
@@ -44,6 +46,8 @@ def create_server(config: Config | None = None) -> MCPServer:
     robots_checker = RobotsChecker(cfg, respect_robots=cfg.respect_robots)
     crawler = Crawler(cfg, fetcher, robots_checker)
     extractor = DataExtractor(cfg, fetcher)
+    metadata_extractor = MetadataExtractor()
+    rss_parser = RSSParser()
 
     mcp = MCPServer(
         name="webscout",
@@ -171,5 +175,49 @@ def create_server(config: Config | None = None) -> MCPServer:
         deleted = cache.clear()
         log.info("cache cleared", entries=deleted)
         return json.dumps({"cleared": deleted, "status": "ok"}, ensure_ascii=False)
+
+    @mcp.tool()
+    def search_health() -> str:
+        """Get health report for all search backends.
+
+        Returns overall health score, per-backend status (healthy/degraded/open/half-open),
+        circuit breaker state, and request statistics. Use this to diagnose search failures.
+        """
+        report = search_engine.get_health_report()
+        return json.dumps(report, ensure_ascii=False, indent=2, default=str)
+
+    @mcp.tool()
+    async def metadata_extract(url: str) -> str:
+        """Extract metadata from a web page.
+
+        Extracts JSON-LD, OpenGraph, Twitter Cards, article metadata,
+        images, links, and other structured metadata from the page.
+        """
+        try:
+            result = await fetcher.fetch(url=url, extract=False, output_format="html", max_chars=200000)
+            html = result.content if hasattr(result, 'content') else result.raw_html
+            if not html:
+                return json.dumps({"error": "Failed to fetch page content", "url": url}, ensure_ascii=False)
+            metadata = metadata_extractor.extract(html, base_url=url)
+            return json.dumps(metadata.to_dict(), ensure_ascii=False, indent=2, default=str)
+        except Exception as exc:
+            log.error("metadata_extract failed", extra={"url": url, "error": str(exc)})
+            return json.dumps({"error": f"Metadata extraction failed: {exc}", "url": url}, ensure_ascii=False)
+
+    @mcp.tool()
+    async def rss_parse(url: str, max_entries: int = 20) -> str:
+        """Parse an RSS or Atom feed and return its entries.
+
+        Fetches and parses RSS 2.0, RSS 1.0, and Atom feeds. Returns feed title,
+        description, link, and a list of entries with title, link, description,
+        publication date, and author.
+        """
+        max_entries = max(1, min(max_entries, 100))
+        try:
+            feed = await fetch_and_parse_feed(url, max_entries=max_entries)
+            return json.dumps(feed.to_dict(), ensure_ascii=False, indent=2, default=str)
+        except Exception as exc:
+            log.error("rss_parse failed", extra={"url": url, "error": str(exc)})
+            return json.dumps({"error": f"RSS parsing failed: {exc}", "url": url}, ensure_ascii=False)
 
     return mcp
