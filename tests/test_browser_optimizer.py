@@ -115,7 +115,9 @@ class TestHumanBehaviorSimulator:
         avg_normal = sum(normal_delays) / len(normal_delays)
         avg_period = sum(period_delays) / len(period_delays)
         # Period should have longer average delay (with small tolerance for randomness)
-        assert avg_period > avg_normal * 0.9, f"Expected avg period delay ({avg_period:.4f}) > avg normal delay ({avg_normal:.4f}) * 0.9"
+        assert avg_period > avg_normal * 0.9, (
+            f"Expected avg period delay ({avg_period:.4f}) > avg normal delay ({avg_normal:.4f}) * 0.9"
+        )
 
     def test_simulate_reading_pause(self):
         simulator = HumanBehaviorSimulator()
