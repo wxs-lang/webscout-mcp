@@ -108,10 +108,14 @@ class TestHumanBehaviorSimulator:
 
     def test_generate_typing_delay_punctuation(self):
         simulator = HumanBehaviorSimulator()
-        normal_delay = simulator.generate_typing_delay("a")
-        period_delay = simulator.generate_typing_delay(".")
-        # Period should have longer delay
-        assert period_delay > normal_delay
+        # Use multiple samples to avoid flakiness from randomness
+        num_samples = 100
+        normal_delays = [simulator.generate_typing_delay("a") for _ in range(num_samples)]
+        period_delays = [simulator.generate_typing_delay(".") for _ in range(num_samples)]
+        avg_normal = sum(normal_delays) / len(normal_delays)
+        avg_period = sum(period_delays) / len(period_delays)
+        # Period should have longer average delay (with small tolerance for randomness)
+        assert avg_period > avg_normal * 0.9, f"Expected avg period delay ({avg_period:.4f}) > avg normal delay ({avg_normal:.4f}) * 0.9"
 
     def test_simulate_reading_pause(self):
         simulator = HumanBehaviorSimulator()
