@@ -1,5 +1,5 @@
 """
-Live network tests for search functionality.
+Live network tests for search and fetch functionality.
 
 These tests run against real search engines and websites to verify
 that the system works in real-world conditions. They are NOT run
@@ -11,17 +11,19 @@ Metrics collected:
 - Fallback rate
 - P50/P95 latency
 - Error types (403, 429, timeout, etc.)
+- Provider distribution
 """
 
 from __future__ import annotations
 
-import asyncio
 import json
+import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 
 from webscout_mcp.config import Config
@@ -32,9 +34,8 @@ from webscout_mcp.search_service import create_search_service_from_config
 # ============================================================
 # Test queries - fixed set for consistent measurement
 # ============================================================
-
 SEARCH_QUERIES = [
-    # English queries
+    # English queries (10)
     "python asyncio documentation",
     "github actions workflow syntax",
     "postgresql create index best practices",
@@ -45,7 +46,7 @@ SEARCH_QUERIES = [
     "elasticsearch query DSL",
     "nginx reverse proxy configuration",
     "linux systemd service example",
-    # Chinese queries
+    # Chinese queries (5)
     "Python 异步编程教程",
     "GitHub Actions 工作流配置",
     "PostgreSQL 索引优化",
@@ -61,12 +62,13 @@ FETCH_URLS = [
     "https://docs.docker.com/compose/networking/",
 ]
 
+# Results directory - can be overridden via env var for CI
+RESULTS_DIR = Path(os.environ.get("LIVE_TEST_RESULTS_DIR", "live-test-results"))
+
 
 # ============================================================
 # Metrics collection
 # ============================================================
-
-
 @dataclass
 class TestResult:
     """Result of a single test."""
@@ -144,7 +146,6 @@ class LiveTestReport:
 # ============================================================
 # Live tests
 # ============================================================
-
 # Live tests are excluded from normal CI via --ignore=tests/live
 # Run them manually with: pytest tests/live/
 
@@ -172,10 +173,10 @@ def live_report():
 
 
 class TestLiveSearch:
-    """Test search against real search engines."""
+    """Test search against real search engines - all 15 queries (10 English + 5 Chinese)."""
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("query", SEARCH_QUERIES[:5])  # Run subset for speed
+    @pytest.mark.parametrize("query", SEARCH_QUERIES)
     async def test_search_engine_live(self, search_engine, live_report, query):
         """Test old SearchEngine against real search engines."""
         start_time = time.time()
@@ -209,7 +210,7 @@ class TestLiveSearch:
             pytest.fail(f"Search failed for '{query}': {e}")
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("query", SEARCH_QUERIES[:5])
+    @pytest.mark.parametrize("query", SEARCH_QUERIES)
     async def test_search_service_live(self, search_service, live_report, query):
         """Test new SearchService against real search engines."""
         start_time = time.time()
@@ -239,13 +240,69 @@ class TestLiveSearch:
             pytest.fail(f"Search failed for '{query}': {e}")
 
 
-def test_save_live_report(live_report, tmp_path):
-    """Save the live test report."""
-    report_path = tmp_path / "live_report.json"
+class TestLiveFetch:
+    """Test fetch against real websites - all 5 URLs."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("url", FETCH_URLS)
+    async def test_fetch_url_live(self, live_report, url):
+        """Test fetching a real URL with httpx."""
+        start_time = time.time()
+        try:
+            async with httpx.AsyncClient(
+                timeout=30.0,
+                follow_redirects=True,
+                headers={
+                    "User-Agent": (
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/120.0.0.0 Safari/537.36"
+                    )
+                },
+            ) as client:
+                response = await client.get(url)
+                latency_ms = (time.time() - start_time) * 1000
+                success = response.status_code == 200 and len(response.text) > 100
+                result = TestResult(
+                    name=f"Fetch: {url}",
+                    success=success,
+                    latency_ms=latency_ms,
+                    result_count=len(response.text),
+                    provider=f"HTTP {response.status_code}",
+                    error=None if success else f"Status {response.status_code} or content too short",
+                )
+                live_report.add_fetch_result(result)
+                assert success, (
+                    f"Failed to fetch {url}: status {response.status_code}, content length {len(response.text)}"
+                )
+        except Exception as e:
+            latency_ms = (time.time() - start_time) * 1000
+            result = TestResult(
+                name=f"Fetch: {url}",
+                success=False,
+                latency_ms=latency_ms,
+                error=str(e)[:100],
+            )
+            live_report.add_fetch_result(result)
+            pytest.fail(f"Fetch failed for '{url}': {e}")
+
+
+def test_save_live_report(live_report):
+    """Save the live test report to the results directory for artifact upload."""
+    # Save to the results directory that the workflow uploads as artifact
+    report_path = RESULTS_DIR / "live_report.json"
     live_report.save(report_path)
-    assert report_path.exists()
+
+    assert report_path.exists(), f"Report not saved to {report_path}"
+
     data = json.loads(report_path.read_text())
-    assert "search" in data
-    assert "fetch" in data
-    print(f"\nLive Test Report saved to: {report_path}")
+    assert "search" in data, "Report missing 'search' key"
+    assert "fetch" in data, "Report missing 'fetch' key"
+
+    print(f"\n✅ Live Test Report saved to: {report_path}")
+    print(f"   Search tests: {data['search'].get('count', 0)}")
+    print(f"   Fetch tests: {data['fetch'].get('count', 0)}")
+    print(f"   Search success rate: {data['search'].get('success_rate', 'N/A')}%")
+    print(f"   Fetch success rate: {data['fetch'].get('success_rate', 'N/A')}%")
+    print("\nFull report:")
     print(json.dumps(data, indent=2, ensure_ascii=False))
