@@ -146,7 +146,7 @@ class LiveTestReport:
 # ============================================================
 
 # Live tests are excluded from normal CI via --ignore=tests/live
-# Run them manually with: pytest tests/live/ --run-live
+# Run them manually with: pytest tests/live/
 
 
 @pytest.fixture(scope="session")
