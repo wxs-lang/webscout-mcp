@@ -44,7 +44,6 @@ jobs:
           python -m pytest tests/live/test_live_search.py \
             -v \
             --tb=short \
-            --run-live \
             --junitxml=live-test-results/live-search-results.xml \
             2>&1 | tee live-test-results/live-search-output.txt
           exit ${PIPESTATUS[0]}
