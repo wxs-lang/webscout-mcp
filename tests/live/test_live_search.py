@@ -12,6 +12,11 @@ Metrics collected:
 - P50/P95 latency
 - Error types (403, 429, timeout, etc.)
 - Provider distribution
+
+Test categories:
+1. TestLiveSearch - 15 queries (10 English + 5 Chinese) x 2 search paths
+2. TestLiveFetch - 5 real URLs using WebScout's own Fetcher (not raw httpx)
+3. TestLiveFallback - Force Bing failure -> verify DuckDuckGo real network fallback
 """
 
 from __future__ import annotations
@@ -23,13 +28,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import httpx
 import pytest
 
 from webscout_mcp.config import Config
+from webscout_mcp.fetcher import Fetcher
 from webscout_mcp.search import SearchEngine
-from webscout_mcp.search_provider import SearchRequest
-from webscout_mcp.search_service import create_search_service_from_config
+from webscout_mcp.search_provider import SearchProvider, SearchRequest, SearchResponse
+from webscout_mcp.search_service import SearchService, SearchServiceConfig
 
 # ============================================================
 # Test queries - fixed set for consistent measurement
@@ -88,12 +93,16 @@ class LiveTestReport:
     timestamp: float = field(default_factory=time.time)
     search_results: list[TestResult] = field(default_factory=list)
     fetch_results: list[TestResult] = field(default_factory=list)
+    fallback_results: list[TestResult] = field(default_factory=list)
 
     def add_search_result(self, result: TestResult) -> None:
         self.search_results.append(result)
 
     def add_fetch_result(self, result: TestResult) -> None:
         self.fetch_results.append(result)
+
+    def add_fallback_result(self, result: TestResult) -> None:
+        self.fallback_results.append(result)
 
     def _calculate_stats(self, results: list[TestResult]) -> dict[str, Any]:
         if not results:
@@ -134,6 +143,7 @@ class LiveTestReport:
             "datetime": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self.timestamp)),
             "search": self._calculate_stats(self.search_results),
             "fetch": self._calculate_stats(self.fetch_results),
+            "fallback": self._calculate_stats(self.fallback_results),
         }
 
     def save(self, path: str | Path) -> None:
@@ -141,6 +151,35 @@ class LiveTestReport:
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w") as f:
             json.dump(self.to_dict(), f, indent=2, ensure_ascii=False)
+
+
+# ============================================================
+# Mock provider for forced failure testing
+# ============================================================
+class AlwaysFailingProvider(SearchProvider):
+    """A SearchProvider that always fails - used to test fallback to real providers."""
+
+    def __init__(self, name: str = "failing-mock"):
+        self._name = name
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    async def search(self, request: SearchRequest) -> SearchResponse:
+        return SearchResponse(
+            query=request.query,
+            results=[],
+            provider=self._name,
+            is_success=False,
+            error_message=f"Forced failure for fallback testing (provider={self._name})",
+            error_code="FORCED_FAILURE",
+            retryable=False,
+            latency_ms=0.0,
+        )
+
+    async def health(self) -> dict[str, Any]:
+        return {"status": "unhealthy", "reason": "Always failing mock provider"}
 
 
 # ============================================================
@@ -163,7 +202,52 @@ def search_service():
     """Create a SearchService instance for live tests."""
     config = Config.from_env()
     config.ensure_dirs()
+    from webscout_mcp.search_service import create_search_service_from_config
+
     return create_search_service_from_config(config, None)
+
+
+@pytest.fixture(scope="session")
+def fetcher():
+    """Create a WebScout Fetcher instance for live fetch tests.
+
+    This uses the project's OWN Fetcher class, not raw httpx,
+    to test the real product path: Fetcher -> cache/security/extraction.
+    """
+    config = Config.from_env()
+    config.ensure_dirs()
+    return Fetcher(config, None)
+
+
+@pytest.fixture(scope="session")
+def fallback_search_service():
+    """Create a SearchService with forced Bing failure -> real DuckDuckGo fallback.
+
+    This tests the REAL fallback path: when Bing is unavailable,
+    does SearchService successfully fall back to DuckDuckGo and
+    return real network results?
+    """
+    from webscout_mcp.search import DuckDuckGoHTMLBackend
+    from webscout_mcp.search_provider_adapter import SearchBackendAdapter
+
+    config = Config.from_env()
+    config.ensure_dirs()
+
+    # First provider: always-failing mock (simulates Bing being down)
+    failing_bing = AlwaysFailingProvider(name="bing-forced-down")
+
+    # Second provider: REAL DuckDuckGo backend
+    ddg_backend = DuckDuckGoHTMLBackend(config)
+    real_ddg = SearchBackendAdapter(ddg_backend, name="duckduckgo")
+
+    service_config = SearchServiceConfig(
+        max_retries=1,
+        circuit_failure_threshold=3,
+        circuit_recovery_time=30,
+        request_timeout=30.0,
+    )
+
+    return SearchService(providers=[failing_bing, real_ddg], config=service_config)
 
 
 @pytest.fixture(scope="session")
@@ -241,50 +325,105 @@ class TestLiveSearch:
 
 
 class TestLiveFetch:
-    """Test fetch against real websites - all 5 URLs."""
+    """Test fetch against real websites using WebScout's own Fetcher (not raw httpx).
+
+    This tests the REAL product path:
+    MCP client -> web_fetch tool -> Fetcher.fetch() -> cache/security/extraction -> result
+    """
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("url", FETCH_URLS)
-    async def test_fetch_url_live(self, live_report, url):
-        """Test fetching a real URL with httpx."""
+    async def test_fetch_url_live(self, fetcher, live_report, url):
+        """Test fetching a real URL with WebScout's Fetcher."""
         start_time = time.time()
         try:
-            async with httpx.AsyncClient(
-                timeout=30.0,
-                follow_redirects=True,
-                headers={
-                    "User-Agent": (
-                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                        "AppleWebKit/537.36 (KHTML, like Gecko) "
-                        "Chrome/120.0.0.0 Safari/537.36"
-                    )
-                },
-            ) as client:
-                response = await client.get(url)
-                latency_ms = (time.time() - start_time) * 1000
-                success = response.status_code == 200 and len(response.text) > 100
-                result = TestResult(
-                    name=f"Fetch: {url}",
-                    success=success,
-                    latency_ms=latency_ms,
-                    result_count=len(response.text),
-                    provider=f"HTTP {response.status_code}",
-                    error=None if success else f"Status {response.status_code} or content too short",
-                )
-                live_report.add_fetch_result(result)
-                assert success, (
-                    f"Failed to fetch {url}: status {response.status_code}, content length {len(response.text)}"
-                )
+            result = await fetcher.fetch(
+                url=url,
+                extract=True,
+                output_format="markdown",
+                max_chars=5000,
+                bypass_cache=True,
+            )
+            latency_ms = (time.time() - start_time) * 1000
+
+            # Check if fetch was successful and returned meaningful content
+            result_dict = result.to_dict() if hasattr(result, "to_dict") else {}
+            content = result_dict.get("content", "") or result_dict.get("raw_html", "") or ""
+            status = result_dict.get("status_code", 0) or result_dict.get("status", 0)
+
+            success = len(content) > 100 and (status == 200 or status == 0)
+
+            test_result = TestResult(
+                name=f"Fetch: {url}",
+                success=success,
+                latency_ms=latency_ms,
+                result_count=len(content),
+                provider=f"WebScout Fetcher (status={status})",
+                error=None if success else f"Status {status} or content too short ({len(content)} chars)",
+            )
+            live_report.add_fetch_result(test_result)
+            assert success, f"Failed to fetch {url}: status={status}, content length={len(content)}"
         except Exception as e:
             latency_ms = (time.time() - start_time) * 1000
-            result = TestResult(
+            test_result = TestResult(
                 name=f"Fetch: {url}",
                 success=False,
                 latency_ms=latency_ms,
                 error=str(e)[:100],
             )
-            live_report.add_fetch_result(result)
+            live_report.add_fetch_result(test_result)
             pytest.fail(f"Fetch failed for '{url}': {e}")
+
+
+class TestLiveFallback:
+    """Test real network fallback when primary provider is forced to fail.
+
+    This is the most valuable live test: it proves that when Bing is down,
+    SearchService can actually fall back to DuckDuckGo and return REAL
+    network results, not just mock data.
+    """
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("query", SEARCH_QUERIES[:5])  # Use 5 queries for speed
+    async def test_bing_failure_ddg_fallback_live(self, fallback_search_service, live_report, query):
+        """Test that forced Bing failure -> DuckDuckGo fallback returns real results."""
+        start_time = time.time()
+        try:
+            request = SearchRequest(query=query, max_results=5)
+            response = await fallback_search_service.search(request)
+            latency_ms = (time.time() - start_time) * 1000
+
+            # The key assertions:
+            # 1. Search should succeed (via DuckDuckGo fallback)
+            # 2. Provider should be duckduckgo (not the failing bing mock)
+            # 3. Should have real results
+            success = response.is_success and response.provider == "duckduckgo" and len(response.results) > 0
+
+            test_result = TestResult(
+                name=f"Fallback (Bing down -> DDG): {query}",
+                success=success,
+                latency_ms=latency_ms,
+                result_count=len(response.results),
+                provider=response.provider,
+                error=response.error_message if not response.is_success else None,
+            )
+            live_report.add_fallback_result(test_result)
+
+            assert response.is_success, f"Fallback search failed for '{query}': {response.error_message}"
+            assert response.provider == "duckduckgo", (
+                f"Expected provider='duckduckgo' after Bing failure, got '{response.provider}'"
+            )
+            assert len(response.results) > 0, f"No results from DuckDuckGo fallback for '{query}'"
+        except Exception as e:
+            latency_ms = (time.time() - start_time) * 1000
+            test_result = TestResult(
+                name=f"Fallback (Bing down -> DDG): {query}",
+                success=False,
+                latency_ms=latency_ms,
+                error=str(e)[:100],
+            )
+            live_report.add_fallback_result(test_result)
+            pytest.fail(f"Fallback test failed for '{query}': {e}")
 
 
 def test_save_live_report(live_report):
@@ -298,11 +437,14 @@ def test_save_live_report(live_report):
     data = json.loads(report_path.read_text())
     assert "search" in data, "Report missing 'search' key"
     assert "fetch" in data, "Report missing 'fetch' key"
+    assert "fallback" in data, "Report missing 'fallback' key"
 
     print(f"\n✅ Live Test Report saved to: {report_path}")
     print(f"   Search tests: {data['search'].get('count', 0)}")
     print(f"   Fetch tests: {data['fetch'].get('count', 0)}")
+    print(f"   Fallback tests: {data['fallback'].get('count', 0)}")
     print(f"   Search success rate: {data['search'].get('success_rate', 'N/A')}%")
     print(f"   Fetch success rate: {data['fetch'].get('success_rate', 'N/A')}%")
+    print(f"   Fallback success rate: {data['fallback'].get('success_rate', 'N/A')}%")
     print("\nFull report:")
     print(json.dumps(data, indent=2, ensure_ascii=False))
