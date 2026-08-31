@@ -44,6 +44,7 @@ jobs:
         run: |
           python -m pytest tests/ \
             --ignore=tests/test_mcp_e2e.py \
+            --ignore=tests/test_mcp_live_e2e.py \
             --ignore=tests/test_fault_injection.py \
             --ignore=tests/test_integration.py \
             --ignore=tests/live \
@@ -226,6 +227,7 @@ jobs:
         run: |
           python -m pytest tests/ \
             --ignore=tests/test_mcp_e2e.py \
+            --ignore=tests/test_mcp_live_e2e.py \
             --ignore=tests/test_fault_injection.py \
             --ignore=tests/test_system_fault_injection.py \
             --ignore=tests/test_integration.py \
