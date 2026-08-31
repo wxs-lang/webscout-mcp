@@ -88,12 +88,25 @@ class TestResult:
 
 @dataclass
 class LiveTestReport:
-    """Report of all live tests."""
+    """Report of all live tests.
+
+    Tracks detailed metrics for DuckDuckGo fallback reliability,
+    including attempts, successes, success rate, latency percentiles,
+    and error type breakdown. This enables long-term tracking of
+    fallback stability (e.g., "DDG fallback success rate over last 7 days").
+    """
 
     timestamp: float = field(default_factory=time.time)
     search_results: list[TestResult] = field(default_factory=list)
     fetch_results: list[TestResult] = field(default_factory=list)
     fallback_results: list[TestResult] = field(default_factory=list)
+
+    # Detailed DuckDuckGo fallback metrics
+    ddg_fallback_attempts: int = 0
+    ddg_fallback_successes: int = 0
+    ddg_fallback_failures: int = 0
+    ddg_fallback_latencies: list[float] = field(default_factory=list)
+    ddg_fallback_error_types: dict[str, int] = field(default_factory=dict)
 
     def add_search_result(self, result: TestResult) -> None:
         self.search_results.append(result)
@@ -103,6 +116,63 @@ class LiveTestReport:
 
     def add_fallback_result(self, result: TestResult) -> None:
         self.fallback_results.append(result)
+        # Track detailed DDG fallback metrics
+        self.ddg_fallback_attempts += 1
+        if result.success:
+            self.ddg_fallback_successes += 1
+        else:
+            self.ddg_fallback_failures += 1
+            error_type = result.error or "unknown"
+            # Categorize error type
+            if "429" in error_type or "rate" in error_type.lower():
+                category = "rate_limited_429"
+            elif "403" in error_type or "forbidden" in error_type.lower():
+                category = "forbidden_403"
+            elif "timeout" in error_type.lower():
+                category = "timeout"
+            elif "dns" in error_type.lower():
+                category = "dns_failure"
+            elif "ssl" in error_type.lower():
+                category = "ssl_failure"
+            elif "connection" in error_type.lower():
+                category = "connection_error"
+            else:
+                category = "other"
+            self.ddg_fallback_error_types[category] = self.ddg_fallback_error_types.get(category, 0) + 1
+        self.ddg_fallback_latencies.append(result.latency_ms)
+
+    def get_ddg_fallback_stats(self) -> dict[str, Any]:
+        """Get detailed DuckDuckGo fallback statistics.
+
+        Returns:
+            Dictionary with attempts, successes, failures, success rate,
+            latency percentiles (P50, P95), and error type breakdown.
+        """
+        if self.ddg_fallback_attempts == 0:
+            return {
+                "attempts": 0,
+                "successes": 0,
+                "failures": 0,
+                "success_rate": None,
+                "p50_latency_ms": None,
+                "p95_latency_ms": None,
+                "error_types": {},
+            }
+
+        latencies = sorted(self.ddg_fallback_latencies)
+        p50 = latencies[len(latencies) // 2] if latencies else 0
+        p95 = latencies[int(len(latencies) * 0.95)] if latencies else 0
+
+        return {
+            "attempts": self.ddg_fallback_attempts,
+            "successes": self.ddg_fallback_successes,
+            "failures": self.ddg_fallback_failures,
+            "success_rate": round(self.ddg_fallback_successes / self.ddg_fallback_attempts * 100, 1),
+            "p50_latency_ms": round(p50, 1),
+            "p95_latency_ms": round(p95, 1),
+            "avg_latency_ms": round(sum(latencies) / len(latencies), 1),
+            "error_types": self.ddg_fallback_error_types,
+        }
 
     def _calculate_stats(self, results: list[TestResult]) -> dict[str, Any]:
         if not results:
@@ -144,6 +214,7 @@ class LiveTestReport:
             "search": self._calculate_stats(self.search_results),
             "fetch": self._calculate_stats(self.fetch_results),
             "fallback": self._calculate_stats(self.fallback_results),
+            "ddg_fallback_detail": self.get_ddg_fallback_stats(),
         }
 
     def save(self, path: str | Path) -> None:
@@ -472,5 +543,12 @@ def test_save_live_report(live_report):
     print(f"   Search success rate: {data['search'].get('success_rate', 'N/A')}%")
     print(f"   Fetch success rate: {data['fetch'].get('success_rate', 'N/A')}%")
     print(f"   Fallback success rate: {data['fallback'].get('success_rate', 'N/A')}%")
+    ddg = data.get("ddg_fallback_detail", {})
+    print(f"   DDG fallback attempts: {ddg.get('attempts', 0)}")
+    print(f"   DDG fallback successes: {ddg.get('successes', 0)}")
+    print(f"   DDG fallback success rate: {ddg.get('success_rate', 'N/A')}%")
+    print(f"   DDG fallback P50 latency: {ddg.get('p50_latency_ms', 'N/A')}ms")
+    print(f"   DDG fallback P95 latency: {ddg.get('p95_latency_ms', 'N/A')}ms")
+    print(f"   DDG fallback error types: {ddg.get('error_types', {})}")
     print("\nFull report:")
     print(json.dumps(data, indent=2, ensure_ascii=False))
