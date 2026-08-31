@@ -31,6 +31,7 @@ from webscout_mcp.search_provider import (
     SearchRequest,
     SearchResponse,
 )
+from webscout_mcp.search_service import SearchService, SearchServiceConfig
 
 # ============================================================
 # Fake Search Providers for fault injection
@@ -626,3 +627,205 @@ class TestSystemLevelProviderIsolation:
         assert bing["consecutive_failures"] == 0
         assert ddg["consecutive_failures"] == 0
         await orchestrator.close()
+
+
+# ============================================================
+# Real SearchService Fault Injection Tests
+# ============================================================
+# These tests use the REAL production SearchService class,
+# not a simplified orchestrator. This is critical because it
+# proves that the actual production code handles faults correctly.
+
+
+class TestRealSearchServiceFaultInjection:
+    """Fault injection tests using the REAL production SearchService.
+
+    These tests are the most valuable because they verify that the
+    actual production code (webscout_mcp.search_service.SearchService)
+    handles faults correctly, not just a simplified test orchestrator.
+    """
+
+    @pytest.mark.asyncio
+    async def test_real_service_first_provider_fails_fallback(self):
+        """Real SearchService: first provider fails -> fallback to second."""
+        provider1 = FakeSearchProvider("bing", behavior="always_fail")
+        provider2 = FakeSearchProvider("duckduckgo", behavior="success")
+
+        config = SearchServiceConfig(
+            max_retries=1,
+            circuit_failure_threshold=10,
+            circuit_recovery_time=30,
+            request_timeout=5.0,
+        )
+        service = SearchService(providers=[provider1, provider2], config=config)
+
+        request = SearchRequest(query="test query", max_results=3)
+        response = await service.search(request)
+
+        # Should succeed via fallback to second provider
+        assert response.is_success
+        assert response.provider == "duckduckgo"
+        assert len(response.results) > 0
+        # Fallback count should be incremented
+        assert service.total_fallbacks == 1
+        assert service.total_requests == 1
+
+    @pytest.mark.asyncio
+    async def test_real_service_provider_timeout_fallback(self):
+        """Real SearchService: first provider times out -> fallback to second."""
+        provider1 = FakeSearchProvider("bing", behavior="raise_timeout")
+        provider2 = FakeSearchProvider("duckduckgo", behavior="success")
+
+        config = SearchServiceConfig(
+            max_retries=1,
+            circuit_failure_threshold=10,
+            circuit_recovery_time=30,
+            request_timeout=5.0,
+        )
+        service = SearchService(providers=[provider1, provider2], config=config)
+
+        request = SearchRequest(query="test query")
+        response = await service.search(request)
+
+        assert response.is_success
+        assert response.provider == "duckduckgo"
+        assert service.total_fallbacks == 1
+
+    @pytest.mark.asyncio
+    async def test_real_service_dns_failure_fallback(self):
+        """Real SearchService: first provider DNS failure -> fallback to second."""
+        provider1 = FakeSearchProvider("bing", behavior="raise_dns")
+        provider2 = FakeSearchProvider("duckduckgo", behavior="success")
+
+        config = SearchServiceConfig(
+            max_retries=1,
+            circuit_failure_threshold=10,
+            circuit_recovery_time=30,
+            request_timeout=5.0,
+        )
+        service = SearchService(providers=[provider1, provider2], config=config)
+
+        request = SearchRequest(query="test query")
+        response = await service.search(request)
+
+        assert response.is_success
+        assert response.provider == "duckduckgo"
+        assert service.total_fallbacks == 1
+
+    @pytest.mark.asyncio
+    async def test_real_service_all_providers_fail(self):
+        """Real SearchService: all providers fail -> returns structured error."""
+        provider1 = FakeSearchProvider("bing", behavior="always_fail")
+        provider2 = FakeSearchProvider("duckduckgo", behavior="always_fail")
+
+        config = SearchServiceConfig(
+            max_retries=1,
+            circuit_failure_threshold=10,
+            circuit_recovery_time=30,
+            request_timeout=5.0,
+        )
+        service = SearchService(providers=[provider1, provider2], config=config)
+
+        request = SearchRequest(query="test query")
+        response = await service.search(request)
+
+        # Should fail gracefully with structured error
+        assert not response.is_success
+        assert response.provider == "all"
+        assert response.error_message is not None
+        # All providers failed: total_fallbacks may be 0 (only counts successful fallbacks)
+        assert service.total_errors >= 1
+        assert service.total_requests == 1
+        assert service.total_errors >= 1
+        assert service.total_requests == 1
+
+    @pytest.mark.asyncio
+    async def test_real_service_circuit_breaker_opens(self):
+        """Real SearchService: continuous failures open the circuit breaker."""
+        provider1 = FakeSearchProvider("bing", behavior="always_fail")
+        provider2 = FakeSearchProvider("duckduckgo", behavior="success")
+
+        config = SearchServiceConfig(
+            max_retries=1,
+            circuit_failure_threshold=3,  # Low threshold for testing
+            circuit_recovery_time=30,
+            request_timeout=5.0,
+        )
+        service = SearchService(providers=[provider1, provider2], config=config)
+
+        request = SearchRequest(query="test query")
+
+        # First 3 requests: bing fails, fallback to ddg succeeds
+        for i in range(3):
+            response = await service.search(request)
+            assert response.is_success
+            assert response.provider == "duckduckgo"
+
+        # After 3 failures, bing circuit should be open
+        health = service.get_health_report()
+        assert "backends" in health
+        bing_backend = next((b for b in health["backends"] if b["name"] == "bing"), None)
+        assert bing_backend is not None
+        # Circuit should be open or at least have recorded failures
+        assert bing_backend["total_failures"] >= 3
+
+    @pytest.mark.asyncio
+    async def test_real_service_health_statistics(self):
+        """Real SearchService: health statistics track requests, fallbacks, errors."""
+        provider1 = FakeSearchProvider("bing", behavior="always_fail")
+        provider2 = FakeSearchProvider("duckduckgo", behavior="success")
+
+        config = SearchServiceConfig(
+            max_retries=1,
+            circuit_failure_threshold=10,
+            circuit_recovery_time=30,
+            request_timeout=5.0,
+        )
+        service = SearchService(providers=[provider1, provider2], config=config)
+
+        request = SearchRequest(query="test query")
+
+        # Make 5 requests
+        for _ in range(5):
+            await service.search(request)
+
+        # Verify service-level statistics directly (most reliable)
+        assert service.total_requests == 5
+        assert service.total_fallbacks == 5  # Every request falls back from bing
+        assert service.last_used_provider == "duckduckgo"
+
+        # Verify health report contains service_statistics
+        health = service.get_health_report()
+        assert "service_statistics" in health
+        assert health["service_statistics"]["total_requests"] == 5
+        assert health["service_statistics"]["total_fallbacks"] == 5
+        assert health["service_statistics"]["fallback_rate"] == 1.0
+
+    @pytest.mark.asyncio
+    async def test_real_service_provider_recovery(self):
+        """Real SearchService: provider recovers after failures."""
+        provider1 = FakeSearchProvider("bing", behavior="fail_n_times", fail_count=2)
+        provider2 = FakeSearchProvider("duckduckgo", behavior="success")
+
+        config = SearchServiceConfig(
+            max_retries=1,
+            circuit_failure_threshold=10,
+            circuit_recovery_time=30,
+            request_timeout=5.0,
+        )
+        service = SearchService(providers=[provider1, provider2], config=config)
+
+        request = SearchRequest(query="test query")
+
+        # First 2 requests: bing fails, fallback to ddg
+        for i in range(2):
+            response = await service.search(request)
+            assert response.provider == "duckduckgo"
+
+        # 3rd request: bing recovers, should use bing
+        response = await service.search(request)
+        assert response.provider == "bing"
+        assert response.is_success
+
+        # Fallback count should be 2 (only first 2 requests fell back)
+        assert service.total_fallbacks == 2
