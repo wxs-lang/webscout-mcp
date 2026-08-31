@@ -187,7 +187,12 @@ class TestServer:
             pytest.skip("mcp library not installed")
 
     def test_create_server_if_mcp_available(self):
-        """Create server only if mcp is available and compatible."""
+        """Create server only if mcp is available and compatible.
+
+        Also verifies that the server has registered tools, not just
+        that the server object can be created. This catches the case
+        where server creation succeeds but tool registration fails silently.
+        """
         mcp = pytest.importorskip("mcp")
         try:
             with tempfile.TemporaryDirectory() as tmpdir:
@@ -196,6 +201,16 @@ class TestServer:
 
                 server = create_server(cfg)
                 assert server is not None
+
+                # Verify the server has registered tools (not just created)
+                # The server should have at least the core tools registered
+                if hasattr(server, "tool_manager") and hasattr(server.tool_manager, "tools"):
+                    tools = server.tool_manager.tools
+                    assert len(tools) > 0, "Server created but no tools registered"
+                    # Verify core tools are present
+                    tool_names = [t.name for t in tools] if hasattr(tools[0], "name") else list(tools.keys())
+                    assert "web_search" in tool_names, "Core tool web_search not registered"
+                    assert "web_fetch" in tool_names, "Core tool web_fetch not registered"
         except Exception as exc:
             pytest.skip(f"Server creation failed (mcp version incompatibility): {exc}")
 
