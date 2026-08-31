@@ -1,0 +1,73 @@
+name: MCP Live E2E Tests
+
+on:
+  schedule:
+    # Run daily at 00:00 UTC
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Reason for manual trigger"
+        required: false
+        default: "Manual verification"
+
+concurrency:
+  group: mcp-live-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mcp-live-e2e:
+    name: MCP Live E2E Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          pip install pytest pytest-asyncio anyio mcp
+
+      - name: Run live MCP E2E tests
+        run: |
+          set -o pipefail
+          python -m pytest tests/test_mcp_live_e2e.py \
+            -v \
+            --tb=short \
+            --junitxml=mcp-live-e2e-results.xml \
+            2>&1 | tee mcp_live_e2e_output.txt
+          exit ${PIPESTATUS[0]}
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcp-live-e2e-results
+          path: |
+            mcp-live-e2e-results.xml
+            mcp_live_e2e_output.txt
+          retention-days: 90
+
+      - name: Add summary
+        if: always()
+        run: |
+          echo "## MCP Live E2E Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "These tests verify the full MCP product path with REAL network access." >> $GITHUB_STEP_SUMMARY
+          echo "They are NOT required for PR merges - external network instability should not block development." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f mcp_live_e2e_output.txt ]; then
+            echo "### Test Output" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            tail -30 mcp_live_e2e_output.txt >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi

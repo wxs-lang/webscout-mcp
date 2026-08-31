@@ -200,64 +200,6 @@ class TestMCPToolCalls:
                 # Either is_error is True, or an exception was raised
                 assert hasattr(result, "is_error")
 
-    @pytest.mark.asyncio
-    async def test_web_search_real_call(self) -> None:
-        """Test that web_search with a real query returns actual results.
-
-        This is the most important E2E test: it proves that the MCP server
-        can actually perform a real search via the MCP protocol, not just
-        that the server starts and lists tools.
-        """
-        server_params = get_server_params()
-        async with stdio_client(server_params) as (read_stream, write_stream):
-            async with ClientSession(read_stream, write_stream) as session:
-                await session.initialize()
-                # Real search query - should return actual results
-                result = await session.call_tool(
-                    "web_search",
-                    {"query": "python asyncio documentation", "max_results": 3},
-                )
-                assert result is not None
-                assert hasattr(result, "content")
-                assert result.content is not None
-                # Content should be a list of content blocks
-                assert isinstance(result.content, list)
-                assert len(result.content) > 0
-                # The first content block should have text
-                first_block = result.content[0]
-                assert hasattr(first_block, "text")
-                assert len(first_block.text) > 50  # Should have meaningful content
-                # Should not be an error
-                if hasattr(result, "is_error"):
-                    assert not result.is_error, f"web_search returned error: {first_block.text[:200]}"
-
-    @pytest.mark.asyncio
-    async def test_web_fetch_real_call(self) -> None:
-        """Test that web_fetch with a real URL returns actual content.
-
-        This proves that the MCP server can actually fetch and extract
-        content from a real webpage via the MCP protocol.
-        """
-        server_params = get_server_params()
-        async with stdio_client(server_params) as (read_stream, write_stream):
-            async with ClientSession(read_stream, write_stream) as session:
-                await session.initialize()
-                # Real URL - should return actual content
-                result = await session.call_tool(
-                    "web_fetch",
-                    {"url": "https://docs.python.org/3/library/asyncio.html", "extract": True},
-                )
-                assert result is not None
-                assert hasattr(result, "content")
-                assert result.content is not None
-                assert isinstance(result.content, list)
-                assert len(result.content) > 0
-                first_block = result.content[0]
-                assert hasattr(first_block, "text")
-                assert len(first_block.text) > 100  # Should have meaningful extracted content
-                if hasattr(result, "is_error"):
-                    assert not result.is_error, f"web_fetch returned error: {first_block.text[:200]}"
-
 
 class TestMCPMultipleSequentialCalls:
     """Test multiple sequential tool calls work correctly."""
