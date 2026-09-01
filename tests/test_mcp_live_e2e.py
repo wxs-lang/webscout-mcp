@@ -27,7 +27,7 @@ def get_server_params() -> StdioServerParameters:
     """Get server parameters for the MCP server."""
     return StdioServerParameters(
         command=sys.executable,
-        args=["-m", "webscout_mcp.server"],
+        args=["-m", "webscout_mcp", "serve"],
         env={**os.environ, "PYTHONUNBUFFERED": "1"},
     )
 
