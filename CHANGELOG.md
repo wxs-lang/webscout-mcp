@@ -5,6 +5,94 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-09-02
+
+### ⚠️ BREAKING CHANGES
+- MCP server startup command changed from `python -m webscout_mcp.server` to `python -m webscout_mcp serve`
+- Experimental features (RAG, Knowledge Graph, AI Optimizer, SEO, OCR, PDF, Monitor, etc.) moved to `extras/` directory
+
+### ✨ Added
+- **5 new MCP tools** (total 11):
+  - `search_health` - Get health report for all search backends (circuit breaker status)
+  - `metadata_extract` - Extract page metadata (JSON-LD, OpenGraph, Twitter Cards)
+  - `rss_parse` - Parse RSS/Atom feeds and return entries
+  - `content_quality` - Analyze content quality (readability, keyword density, structure)
+  - `broken_links` - Check for broken links on a web page
+
+- **New Search Architecture**:
+  - `SearchService` + `SearchProvider` standardized interface
+  - Search backends: Bing HTML, DuckDuckGo HTML, SerpAPI (optional)
+  - Automatic failover between search backends
+  - Circuit breaker per backend (OPEN/HALF_OPEN/CLOSED states)
+  - Provider health monitoring and statistics
+
+- **Comprehensive Test Suite**:
+  - Unit tests (100+ tests)
+  - Integration tests
+  - MCP protocol-level E2E tests (deterministic, required CI)
+  - MCP Live E2E tests (real network, scheduled)
+  - System-level fault injection tests
+  - Live Network Tests (scheduled daily, 15 searches + 5 fetches)
+  - Coverage reporting
+
+- **CI/CD Infrastructure**:
+  - Python 3.10 / 3.11 / 3.12 test matrix
+  - Ruff linting (enforced)
+  - Mypy type checking (enforced)
+  - Bandit security scanning (enforced for medium/high severity)
+  - CodeQL security analysis
+  - Docker image build and publish
+  - Automated Release Gate (waits for all required checks)
+  - Main branch protection with required status checks
+
+- **Error Handling**:
+  - Standardized error hierarchy (30+ error classes)
+  - Structured error responses: `{code, provider, retryable, message}`
+  - Error codes: FETCH_TIMEOUT, FETCH_FORBIDDEN, FETCH_RATE_LIMITED, SEARCH_BACKEND_FAILED, etc.
+
+- **Observability**:
+  - Project-owned structured logger (no global logging pollution)
+  - Search health reporting with fallback rate, error rate, provider circuit status
+  - Live test metrics: success rate, P50/P95 latency, fallback rate, error type breakdown
+  - DDG fallback detailed metrics tracking
+
+- **Security**:
+  - SSRF protection
+  - URL validation
+  - Sensitive data filtering
+  - robots.txt respect
+  - SECURITY.md policy document
+
+### 🔧 Changed
+- `web_search` now uses new `SearchService` by default, falls back to old `SearchEngine`
+- `search_health` now reports active `SearchService` status instead of old `SearchEngine`
+- MCP E2E tests split into deterministic (required CI) and live (scheduled) layers
+- Experimental features moved to `extras/` directory for physical isolation
+- Documentation auto-generated from MCP tool registry (single source of truth)
+- Coverage threshold management with baseline ratchet approach
+
+### 🐛 Fixed
+- MCP Live E2E server startup command (was `python -m webscout_mcp.server`, now `python -m webscout_mcp serve`)
+- Global `logging.setLoggerClass()` pollution of host Python process
+- F821 undefined-name lint exemptions removed
+- `cache_clear()` logging TypeError with standard Python logger
+- AsyncClient event loop lifecycle issue (recreate client on loop change)
+- ConcurrencyLimiter semaphore/event loop deadlock causing 10-minute CI timeout
+- Live Test pytest exit code being swallowed by `tee` (added `set -o pipefail`)
+- Live Report direct push to protected main branch (now uses artifacts only)
+- Circuit breaker half-open failure not resetting recovery timer
+- SerpAPI region/locale handling (wt-wt → proper language/country codes)
+- MODULE_STATUS.md tool count drift (now auto-generated)
+
+### 📚 Documentation
+- README.md with badges, quick start, tool reference, configuration
+- MODULE_STATUS.md (auto-generated from tool registry)
+- SECURITY.md with vulnerability reporting policy
+- CODE_OF_CONDUCT.md
+- Issue templates (Bug Report, Feature Request)
+- PR template
+- CONTRIBUTING.md
+
 ## [Unreleased]
 
 ### Added
