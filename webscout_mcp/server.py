@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import json
 
-from mcp.server.mcpserver import MCPServer
+from mcp.server.fastmcp import FastMCP as MCPServer
 
 from .cache import Cache
 from .config import Config
