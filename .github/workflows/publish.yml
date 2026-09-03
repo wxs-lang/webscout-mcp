@@ -41,7 +41,9 @@ jobs:
             --tb=short \
             --cov=webscout_mcp \
             --cov-report=term-missing \
-            --cov-fail-under=60
+            --cov-fail-under=60 \
+            --ignore=tests/live \
+            --ignore=tests/test_mcp_live_e2e.py
 
       - name: Verify package can be imported
         run: |
