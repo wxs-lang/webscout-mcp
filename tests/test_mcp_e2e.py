@@ -65,7 +65,7 @@ class TestMCPServerStartup:
             async with ClientSession(read_stream, write_stream) as session:
                 result = await session.initialize()
                 assert result is not None
-                assert result.protocol_version is not None
+                assert result.protocolVersion is not None
                 assert result.capabilities is not None
                 assert result.server_info is not None
                 assert result.server_info.name == "webscout"
@@ -134,7 +134,7 @@ class TestMCPToolsList:
                 for tool in result.tools:
                     assert tool.name, "Tool missing name"
                     assert tool.description, f"Tool {tool.name} missing description"
-                    assert tool.input_schema is not None, f"Tool {tool.name} missing input_schema"
+                    assert tool.inputSchema is not None, f"Tool {tool.name} missing input_schema"
 
 
 class TestMCPToolCalls:
@@ -184,8 +184,8 @@ class TestMCPToolCalls:
                 result = await session.call_tool("nonexistent_tool_12345", {})
                 assert result is not None
                 # MCP returns error response, not exception
-                assert hasattr(result, "is_error")
-                assert result.is_error is True
+                assert hasattr(result, "isError")
+                assert result.isError is True
 
     @pytest.mark.asyncio
     async def test_web_search_missing_query(self) -> None:
@@ -198,7 +198,7 @@ class TestMCPToolCalls:
                 result = await session.call_tool("web_search", {})
                 assert result is not None
                 # Either is_error is True, or an exception was raised
-                assert hasattr(result, "is_error")
+                assert hasattr(result, "isError")
 
 
 class TestMCPMultipleSequentialCalls:
