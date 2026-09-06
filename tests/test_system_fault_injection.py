@@ -753,10 +753,10 @@ class TestRealSearchServiceFaultInjection:
         )
         service = SearchService(providers=[provider1, provider2], config=config)
 
-        request = SearchRequest(query="test query")
-
         # First 3 requests: bing fails, fallback to ddg succeeds
+        # Use different queries to avoid cache interference
         for i in range(3):
+            request = SearchRequest(query=f"test query {i}")
             response = await service.search(request)
             assert response.is_success
             assert response.provider == "duckduckgo"
@@ -783,10 +783,9 @@ class TestRealSearchServiceFaultInjection:
         )
         service = SearchService(providers=[provider1, provider2], config=config)
 
-        request = SearchRequest(query="test query")
-
-        # Make 5 requests
-        for _ in range(5):
+        # Make 5 requests with different queries to avoid cache interference
+        for i in range(5):
+            request = SearchRequest(query=f"health test query {i}")
             await service.search(request)
 
         # Verify service-level statistics directly (most reliable)
@@ -815,14 +814,15 @@ class TestRealSearchServiceFaultInjection:
         )
         service = SearchService(providers=[provider1, provider2], config=config)
 
-        request = SearchRequest(query="test query")
-
         # First 2 requests: bing fails, fallback to ddg
+        # Use different queries to avoid cache interference
         for i in range(2):
+            request = SearchRequest(query=f"recovery test {i}")
             response = await service.search(request)
             assert response.provider == "duckduckgo"
 
         # 3rd request: bing recovers, should use bing
+        request = SearchRequest(query="recovery test 2")
         response = await service.search(request)
         assert response.provider == "bing"
         assert response.is_success
