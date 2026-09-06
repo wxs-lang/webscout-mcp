@@ -239,6 +239,18 @@ def create_search_service_from_config(
     except Exception as e:
         print(f"Warning: Could not initialize DuckDuckGo backend: {e}")
 
+    # Tavily API backend (stable fallback, requires TAVILY_API_KEY)
+    try:
+        from .tavily_provider import TavilySearchProvider
+        tavily = TavilySearchProvider(config)
+        if tavily.is_configured:
+            providers.append(tavily)
+            print("Tavily API backend initialized (stable fallback)")
+        else:
+            print("Tavily API key not configured, skipping Tavily backend")
+    except Exception as e:
+        print(f"Warning: Could not initialize Tavily backend: {e}")
+
     if not providers:
         raise RuntimeError("No search providers could be initialized")
 

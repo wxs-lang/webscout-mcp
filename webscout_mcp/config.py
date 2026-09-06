@@ -73,6 +73,10 @@ class Config:
     serpapi_engine: str = "google"  # Search engine: google, bing, duckduckgo, etc.
     serpapi_timeout: float = 30.0  # Request timeout in seconds
 
+    # --- Tavily (optional stable backend for AI agents) ---
+    tavily_api_key: str = ""  # Tavily API key (optional, stable AI-focused search)
+    tavily_timeout: float = 15.0  # Request timeout in seconds
+
     # --- Crawler ---
     crawler_max_depth: int = 2
     crawler_max_pages: int = 20
@@ -221,6 +225,8 @@ class Config:
             "SERPAPI_API_KEY": ("serpapi_api_key", str),
             "SERPAPI_ENGINE": ("serpapi_engine", str),
             "SERPAPI_TIMEOUT": ("serpapi_timeout", float),
+            "TAVILY_API_KEY": ("tavily_api_key", str),
+            "TAVILY_TIMEOUT": ("tavily_timeout", float),
             "WEBSCOUT_CRAWLER_MAX_DEPTH": ("crawler_max_depth", int),
             "WEBSCOUT_CRAWLER_MAX_PAGES": ("crawler_max_pages", int),
             "WEBSCOUT_CRAWLER_CONCURRENCY": ("crawler_concurrency", int),

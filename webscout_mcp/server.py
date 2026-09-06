@@ -40,8 +40,12 @@ from .robots import RobotsChecker
 from .rss_parser import fetch_and_parse_feed
 from .search import SearchEngine
 from .search_service import create_search_service_from_config
+from .startup_check import StartupSelfCheck
 
 log = get_logger(__name__)
+
+# Global startup check instance (initialized in create_server)
+_startup_check: StartupSelfCheck | None = None
 
 
 def create_server(config: Config | None = None) -> MCPServer:
@@ -68,6 +72,18 @@ def create_server(config: Config | None = None) -> MCPServer:
     extractor = DataExtractor(cfg, fetcher)
     metadata_extractor = MetadataExtractor()
     content_quality_analyzer = ContentQualityAnalyzer()
+
+    # Initialize startup self-check
+    global _startup_check
+    _startup_check = StartupSelfCheck(
+        search_engine=search_engine,
+        search_service=search_service,
+        fetcher=fetcher,
+        cache=cache,
+    )
+    # Run startup check in background (non-blocking)
+    import asyncio
+    asyncio.ensure_future(_startup_check.run_all())
 
     mcp = MCPServer(
         name="webscout",
@@ -256,6 +272,12 @@ def create_server(config: Config | None = None) -> MCPServer:
             unified_report["legacy_engine"] = engine_report
         except Exception as exc:
             unified_report["legacy_engine"] = {"error": f"Failed to get engine health: {exc}"}
+
+        # Include startup self-check report if available
+        if _startup_check is not None and _startup_check.report is not None:
+            unified_report["startup_check"] = _startup_check.report.to_dict()
+        else:
+            unified_report["startup_check"] = {"status": "not_run_yet", "message": "Startup check still running or not initialized"}
 
         return json.dumps(unified_report, ensure_ascii=False, indent=2, default=str)
 
