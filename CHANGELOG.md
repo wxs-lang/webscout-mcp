@@ -5,6 +5,168 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] - 2026-09-06
+
+### 🎉 First Stable Release
+
+After extensive development, testing, and real-world validation, webscout-mcp reaches v1.0.0 stable.
+
+### ✨ Key Features
+- **11 stable MCP tools** for web research
+- **Dynamic provider routing** with health-based scoring
+- **Multi-backend search** with automatic failover (Bing → DuckDuckGo → Tavily)
+- **Circuit breaker** per provider with automatic recovery
+- **Startup self-check** for reliability verification
+- **Comprehensive test suite** (unit, integration, MCP E2E, fault injection, live)
+- **Full CI/CD** with quality gates and automated releases
+- **Cross-platform support** (Linux, macOS, Windows)
+- **Stability contract** with frozen APIs and error codes
+
+### 📦 Installation
+```bash
+pip install webscout-mcp==1.0.0
+```
+
+### 🚀 Quick Start
+```bash
+# Start MCP server
+python -m webscout_mcp serve
+
+# Verify installation
+python scripts/verify_installation.py
+```
+
+### 🔧 MCP Tools (11)
+- `web_search` - Search with automatic fallback
+- `web_fetch` - Fetch and extract page content
+- `web_crawl` - Crawl websites with depth limits
+- `web_extract` - Extract structured data via CSS selectors
+- `cache_stats` - View cache statistics
+- `cache_clear` - Clear cache
+- `search_health` - Provider health and dynamic routing status
+- `metadata_extract` - Extract page metadata
+- `rss_parse` - Parse RSS/Atom feeds
+- `content_quality` - Analyze content quality
+- `broken_links` - Check for broken links
+
+### 📚 Documentation
+- [README.md](README.md) - Full documentation
+- [COMPATIBILITY.md](COMPATIBILITY.md) - Stability contract and frozen APIs
+- [SECURITY.md](SECURITY.md) - Security policy
+- [CONTRIBUTING.md](CONTRIBUTING.md) - Contributing guide
+
+---
+
+## [0.9.0] - 2026-09-06
+
+### ✨ Added
+- **COMPATIBILITY.md** - Formal stability contract documenting frozen APIs
+  - 11 MCP tools with frozen names, schemas, and return structures
+  - 40+ standard error codes
+  - 30+ environment variables with stable names
+  - Deprecation policy (2 minor version warning period)
+  - Semantic versioning commitment
+- **Cross-platform verification script** (`scripts/verify_installation.py`)
+  - 12 checks covering imports, server creation, SearchService, config, errors
+  - Platform detection (Linux/macOS/Windows)
+  - Exit code 0 for all pass, 1 for failures
+- **Platform support matrix**: Linux (Ubuntu/Debian/CentOS), macOS 11+ (Intel/Apple Silicon), Windows 10+
+- **Python support**: 3.10, 3.11, 3.12
+
+### 🔧 Changed
+- API/configuration freeze point for v1.0.0 stability
+- All interfaces documented and frozen for backwards compatibility
+
+---
+
+## [0.8.1] - 2026-09-06
+
+### ✨ Added
+- **Expanded live E2E test scenarios** from 15 to 20 search queries
+  - English technical (5): python, github, postgresql, fastapi, docker
+  - English news (3): tech news, python release, open source ai
+  - English github (2): mcp server example, fastapi repo
+  - Chinese technical (5): corresponding Chinese queries
+  - Chinese news (3): tech news, AI trends, open source software
+  - Chinese general (2): exam books, grad school math
+- **Expanded fetch URLs** from 5 to 10
+  - Technical docs (5)
+  - News sites (2): Hacker News, Python blog
+  - GitHub repo (1): fastapi
+  - Redirect page (1): httpbin
+  - JS-heavy page (1): python.org
+- **Categorized reporting** in live test results
+  - `search_by_category`: success rate and latency per query category
+  - `fetch_by_category`: success rate and latency per URL category
+  - Enables long-term tracking of scenario-specific stability
+
+---
+
+## [0.8.0] - 2026-09-06
+
+### ✨ Added
+- **Dynamic Provider Router** (`provider_router.py`)
+  - Replaces fixed-order fallback with intelligent health-based selection
+  - ProviderHealthScorer calculates 0-100 score per provider
+  - Weighted scoring: success rate (40%), latency (25%), error rate (20%), circuit state (15%)
+  - Rolling 24h metrics window with P50/P95 latency tracking
+  - Error type taxonomy: 429, 403, timeout, connection, other
+- **Cost-aware routing**
+  - ProviderCostTier: FREE, LOW_COST, PAID, PREMIUM
+  - `prefer_free` mode: free providers get small score boost when scores are close
+  - Paid providers (Tavily) only used when free providers are degraded
+- **Provider metrics tracking**
+  - Rolling request/success/error history (1000 entries)
+  - P50/P95 latency calculation
+  - Error type breakdown
+  - Circuit state tracking (open/half-open/closed)
+- **Enhanced health report** in `search_health` tool
+  - `dynamic_routing` section with ranked providers
+  - Per-provider scores, success rates, latencies, cost tiers
+  - Detailed reasons for each score
+
+### 🔧 Changed
+- SearchService now uses dynamic routing by default
+- Tavily provider integrated as PAID tier fallback
+- Bing/DuckDuckGo as FREE tier primary providers
+
+---
+
+## [0.7.1] - 2026-09-06
+
+### 🔧 Fixed
+- **Ruff G201**: Use `log.exception()` instead of `log.error(..., exc_info=True)` in tavily_provider.py
+- **Lint cleanup**: Fixed F541 (f-string without placeholders) in examples/ and tests/
+- **All GitHub Actions** updated to latest versions (checkout@v4, setup-python@v5, upload-artifact@v4)
+
+### ✨ Added
+- Code Quality workflow now fully green (Ruff, Mypy, Bandit, CodeQL all pass)
+
+---
+
+## [0.7.0] - 2026-09-06
+
+### ✨ Added
+- **Startup Self-Check** (`startup_check.py`)
+  - 5 checks run at MCP server startup: cache, search_engine, search_service, fetcher, search_connectivity
+  - Runs in background (non-blocking, does not delay server start)
+  - Each check tracks duration, pass/fail status, and detailed message
+  - Startup report included in `search_health` tool response
+- **Tavily Search API Provider** (`tavily_provider.py`)
+  - Stable API-based search designed specifically for AI agents
+  - No HTML scraping, no DOM/CAPTCHA/Bot detection risk
+  - Auto-detects `TAVILY_API_KEY` environment variable
+  - Full error handling: 401, 429, 5xx, timeout, connection error
+  - Integrated as 3rd fallback in SearchService (Bing → DuckDuckGo → Tavily)
+  - Circuit breaker and health tracking work automatically
+- **New config options**: `TAVILY_API_KEY`, `TAVILY_TIMEOUT`
+
+### 🔧 Changed
+- SearchService fallback chain: Bing → DuckDuckGo → Tavily (when API key configured)
+- Free providers remain primary, paid Tavily only used when needed
+
+---
+
 ## [0.6.0] - 2026-09-02
 
 ### ⚠️ BREAKING CHANGES
