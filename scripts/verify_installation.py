@@ -79,6 +79,7 @@ def check_python_version() -> str:
 def check_import_webscout() -> str:
     """Check webscout_mcp can be imported."""
     import webscout_mcp
+
     return f"webscout_mcp {webscout_mcp.__version__}"
 
 
@@ -90,6 +91,7 @@ def check_import_server() -> str:
 def check_import_config() -> str:
     """Check config can be imported."""
     from webscout_mcp.config import Config
+
     cfg = Config.from_env()
     return f"Config loaded (cache_dir={cfg.cache_dir})"
 
@@ -107,6 +109,7 @@ def check_import_provider_router() -> str:
 def check_import_errors() -> str:
     """Check error codes can be imported."""
     from webscout_mcp.errors import StandardErrorCode
+
     codes = [e.value for e in StandardErrorCode]
     return f"{len(codes)} standard error codes defined"
 
@@ -124,6 +127,7 @@ def check_import_cache() -> str:
 def check_server_creation() -> str:
     """Test that MCP server can be created."""
     from webscout_mcp.server import create_server
+
     server = create_server()
     tool_count = len(server._tool_manager._tools) if hasattr(server, "_tool_manager") else "unknown"
     return f"Server created (tools: {tool_count})"
@@ -133,6 +137,7 @@ def check_search_service_creation() -> str:
     """Test that SearchService can be created with providers."""
     from webscout_mcp.config import Config
     from webscout_mcp.search_service import create_search_service_from_config
+
     cfg = Config.from_env()
     service = create_search_service_from_config(cfg)
     providers = [p.name for p in service.providers]

@@ -268,8 +268,7 @@ class LiveTestReport:
                 search_by_category.setdefault(category, []).append(result)
 
             report["search_by_category"] = {
-                cat: self._calculate_stats(results)
-                for cat, results in search_by_category.items()
+                cat: self._calculate_stats(results) for cat, results in search_by_category.items()
             }
         except Exception:
             pass
@@ -286,8 +285,7 @@ class LiveTestReport:
                 fetch_by_category.setdefault(category, []).append(result)
 
             report["fetch_by_category"] = {
-                cat: self._calculate_stats(results)
-                for cat, results in fetch_by_category.items()
+                cat: self._calculate_stats(results) for cat, results in fetch_by_category.items()
             }
         except Exception:
             pass

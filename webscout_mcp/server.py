@@ -83,6 +83,7 @@ def create_server(config: Config | None = None) -> MCPServer:
     )
     # Run startup check in background (non-blocking)
     import asyncio
+
     asyncio.ensure_future(_startup_check.run_all())
 
     mcp = MCPServer(
@@ -277,7 +278,10 @@ def create_server(config: Config | None = None) -> MCPServer:
         if _startup_check is not None and _startup_check.report is not None:
             unified_report["startup_check"] = _startup_check.report.to_dict()
         else:
-            unified_report["startup_check"] = {"status": "not_run_yet", "message": "Startup check still running or not initialized"}
+            unified_report["startup_check"] = {
+                "status": "not_run_yet",
+                "message": "Startup check still running or not initialized",
+            }
 
         return json.dumps(unified_report, ensure_ascii=False, indent=2, default=str)
 

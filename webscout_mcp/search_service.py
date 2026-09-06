@@ -177,7 +177,9 @@ class SearchService:
                     )
                     if self.router is not None:
                         self.router.record_result(
-                            provider.name, False, response.latency_ms,
+                            provider.name,
+                            False,
+                            response.latency_ms,
                             response.error_type,
                         )
                     errors.append(response)
@@ -297,6 +299,7 @@ def create_search_service_from_config(
     # Tavily API backend (stable fallback, requires TAVILY_API_KEY)
     try:
         from .tavily_provider import TavilySearchProvider
+
         tavily = TavilySearchProvider(config)
         if tavily.is_configured:
             providers.append(tavily)

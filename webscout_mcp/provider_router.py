@@ -275,9 +275,7 @@ class ProviderRouter:
             prefer_free: If True, prefer free providers when scores are close.
             min_score_threshold: Minimum score to consider a provider healthy.
         """
-        self.metrics: dict[str, ProviderMetrics] = {
-            name: ProviderMetrics(name=name) for name in provider_names
-        }
+        self.metrics: dict[str, ProviderMetrics] = {name: ProviderMetrics(name=name) for name in provider_names}
         self.scorer = ProviderHealthScorer(cost_tiers=cost_tiers)
         self.prefer_free = prefer_free
         self.min_score_threshold = min_score_threshold

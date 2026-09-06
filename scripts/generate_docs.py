@@ -17,6 +17,7 @@ CI integration:
     python scripts/generate_docs.py --check
     git diff --exit-code
 """
+
 from __future__ import annotations
 
 import argparse
@@ -238,9 +239,9 @@ This document provides transparency about the stability and integration status o
 
 | Level | Count | Tools |
 |-------|-------|-------|
-| ✅ Stable | {len(stable_tools)} | {', '.join(f'`{t.name}`' for t in stable_tools)} |
-| 🔶 Beta | {len(beta_tools)} | {', '.join(f'`{t.name}`' for t in beta_tools)} |
-| 🧪 Experimental | {len(experimental_tools)} | {', '.join(f'`{t.name}`' for t in experimental_tools) or 'None'} |
+| ✅ Stable | {len(stable_tools)} | {", ".join(f"`{t.name}`" for t in stable_tools)} |
+| 🔶 Beta | {len(beta_tools)} | {", ".join(f"`{t.name}`" for t in beta_tools)} |
+| 🧪 Experimental | {len(experimental_tools)} | {", ".join(f"`{t.name}`" for t in experimental_tools) or "None"} |
 
 ---
 
