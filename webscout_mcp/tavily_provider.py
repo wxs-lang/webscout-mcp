@@ -194,7 +194,7 @@ class TavilySearchProvider:
                 latency_ms=self._measure_latency(start_time),
             )
         except Exception as e:
-            log.error(f"Tavily search error: {e}", exc_info=True)
+            log.exception("Tavily search error")
             return SearchResponse(
                 query=request.query,
                 provider=self.name,
