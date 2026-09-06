@@ -1,0 +1,33 @@
+{
+  "timestamp": "2026-09-06T21:27:51.467073",
+  "iteration": 10,
+  "stats": {
+    "elapsed_hours": 0.16,
+    "search": {
+      "total": 10,
+      "success": 10,
+      "failed": 0,
+      "success_rate": 100.0,
+      "p50_ms": 505.9,
+      "p95_ms": 15696.7,
+      "errors": {}
+    },
+    "fetch": {
+      "total": 3,
+      "success": 3,
+      "failed": 0,
+      "success_rate": 100.0,
+      "p50_ms": 1129.2,
+      "p95_ms": 1206.3,
+      "errors": {}
+    },
+    "providers": {
+      "bing": {
+        "total": 10,
+        "success": 10,
+        "failed": 0
+      }
+    },
+    "requests_per_hour": 82.9
+  }
+}

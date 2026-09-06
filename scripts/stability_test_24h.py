@@ -151,12 +151,12 @@ class StabilityMetrics:
         }
 
 
-async def run_search_test(search_service: SearchService, metrics: StabilityMetrics, query: str):
-    """Run a single search test."""
+async def run_search_test(search_service: SearchService, metrics: StabilityMetrics, query: str, timeout: float = 30.0):
+    """Run a single search test with timeout protection."""
     start = time.time()
     try:
         request = SearchRequest(query=query, max_results=5)
-        result = await search_service.search(request)
+        result = await asyncio.wait_for(search_service.search(request), timeout=timeout)
         latency = (time.time() - start) * 1000
         provider = getattr(result, 'provider', 'unknown')
         success = result.is_success if hasattr(result, 'is_success') else getattr(result, 'status') == 'success'
@@ -167,31 +167,45 @@ async def run_search_test(search_service: SearchService, metrics: StabilityMetri
         result_count = len(getattr(result, 'results', [])) if success else 0
         print(f"  {status} Search: {query[:40]:40s} | {latency:6.0f}ms | {provider} | {result_count} results")
         return success
+    except asyncio.TimeoutError:
+        latency = (time.time() - start) * 1000
+        metrics.record_search(False, latency, "timeout", "timeout")
+        print(f"  ⏱️  Search: {query[:40]:40s} | {latency:6.0f}ms | TIMEOUT (> {timeout}s)")
+        return False
     except Exception as e:
         latency = (time.time() - start) * 1000
         metrics.record_search(False, latency, "exception", str(type(e).__name__))
-        print(f"  ❌ Search: {query[:40]:40s} | {latency:6.0f}ms | EXCEPTION: {type(e).__name__}: {str(e)[:80]}")
+        print(f"  ❌ Search: {query[:40]:40s} | {latency:6.0f}ms | EXCEPTION: {type(e).__name__}: {str(e)[:60]}")
         return False
 
 
-async def run_fetch_test(fetcher: Fetcher, metrics: StabilityMetrics, url: str):
-    """Run a single fetch test."""
+async def run_fetch_test(fetcher: Fetcher, metrics: StabilityMetrics, url: str, timeout: float = 30.0):
+    """Run a single fetch test with timeout protection."""
     start = time.time()
     try:
-        result = await fetcher.fetch(url)
+        # Add external timeout protection
+        result = await asyncio.wait_for(fetcher.fetch(url), timeout=timeout)
         latency = (time.time() - start) * 1000
-        success = result is not None and getattr(result, 'success', True)
-        error = None if success else "fetch_failed"
+
+        # Check if result has content
+        content_len = len(getattr(result, 'content', '')) if result else 0
+        success = result is not None and content_len > 0
+
+        error = None if success else ("empty_content" if content_len == 0 else "fetch_failed")
         metrics.record_fetch(success, latency, error)
 
         status = "✅" if success else "❌"
-        content_len = len(getattr(result, 'content', '')) if result else 0
         print(f"  {status} Fetch:  {url[:50]:50s} | {latency:6.0f}ms | {content_len} chars")
         return success
+    except asyncio.TimeoutError:
+        latency = (time.time() - start) * 1000
+        metrics.record_fetch(False, latency, "timeout")
+        print(f"  ⏱️  Fetch:  {url[:50]:50s} | {latency:6.0f}ms | TIMEOUT (> {timeout}s)")
+        return False
     except Exception as e:
         latency = (time.time() - start) * 1000
         metrics.record_fetch(False, latency, str(type(e).__name__))
-        print(f"  ❌ Fetch:  {url[:50]:50s} | {latency:6.0f}ms | EXCEPTION: {type(e).__name__}")
+        print(f"  ❌ Fetch:  {url[:50]:50s} | {latency:6.0f}ms | EXCEPTION: {type(e).__name__}: {str(e)[:60]}")
         return False
 
 
@@ -255,25 +269,35 @@ async def main():
             iteration += 1
             print(f"\n--- Iteration {iteration} ({datetime.now().strftime('%H:%M:%S')}) ---")
 
-            # Run searches (rotate through queries)
-            query_idx = (iteration - 1) % len(SEARCH_QUERIES)
-            await run_search_test(search_service, metrics, SEARCH_QUERIES[query_idx])
+            try:
+                # Run searches (rotate through queries)
+                query_idx = (iteration - 1) % len(SEARCH_QUERIES)
+                await run_search_test(search_service, metrics, SEARCH_QUERIES[query_idx])
 
-            # Run fetch every 3 iterations
-            if iteration % 3 == 0:
-                url_idx = (iteration // 3 - 1) % len(FETCH_URLS)
-                await run_fetch_test(fetcher, metrics, FETCH_URLS[url_idx])
+                # Run fetch every 3 iterations
+                if iteration % 3 == 0:
+                    url_idx = (iteration // 3 - 1) % len(FETCH_URLS)
+                    await run_fetch_test(fetcher, metrics, FETCH_URLS[url_idx])
 
-            # Record memory
-            current, peak = tracemalloc.get_traced_memory()
-            metrics.record_memory(current / 1024 / 1024)
+                # Record memory
+                current, peak = tracemalloc.get_traced_memory()
+                metrics.record_memory(current / 1024 / 1024)
 
-            # Print periodic report
-            if iteration % report_interval == 0:
-                print_report(metrics, iteration)
+                # Print periodic report
+                if iteration % report_interval == 0:
+                    print_report(metrics, iteration)
+
+            except Exception as e:
+                # Catch any unexpected errors in an iteration so the test continues
+                print(f"  ⚠️  Iteration {iteration} error: {type(e).__name__}: {str(e)[:80]}")
+                import traceback
+                traceback.print_exc()
 
             # Wait before next iteration (with jitter to avoid thundering herd)
-            await asyncio.sleep(55 + (iteration % 10))  # ~1 minute per iteration
+            try:
+                await asyncio.sleep(55 + (iteration % 10))  # ~1 minute per iteration
+            except Exception:
+                pass
 
     except KeyboardInterrupt:
         print("\n\n⚠️  Test interrupted by user")

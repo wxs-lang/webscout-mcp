@@ -16,6 +16,7 @@ architecture based on the SearchProvider interface.
 from __future__ import annotations
 
 import asyncio
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -92,6 +93,43 @@ class SearchService:
         self.total_errors = 0
         self.last_used_provider: str | None = None
 
+        # Search result cache (in-memory, TTL-based)
+        self._search_cache: dict[str, tuple[float, SearchResponse]] = {}
+        self._cache_ttl = 300  # 5 minutes
+        self.cache_hits = 0
+        self.cache_misses = 0
+
+    def _get_cache_key(self, request: SearchRequest) -> str:
+        """Generate cache key from search request."""
+        return f"{request.query.lower()}|{request.max_results}|{request.language}|{request.region}"
+
+    def _get_from_cache(self, request: SearchRequest) -> SearchResponse | None:
+        """Get search response from cache if available and not expired."""
+        key = self._get_cache_key(request)
+        if key in self._search_cache:
+            timestamp, response = self._search_cache[key]
+            if time.time() - timestamp < self._cache_ttl:
+                self.cache_hits += 1
+                log.debug(f"Cache hit for query: {request.query}")
+                return response
+            else:
+                # Expired, remove
+                del self._search_cache[key]
+        self.cache_misses += 1
+        return None
+
+    def _put_in_cache(self, request: SearchRequest, response: SearchResponse) -> None:
+        """Store successful search response in cache."""
+        if response.is_success and len(response.results) > 0:
+            key = self._get_cache_key(request)
+            self._search_cache[key] = (time.time(), response)
+            # Simple eviction: if cache too large, remove oldest entries
+            if len(self._search_cache) > 1000:
+                # Remove 100 oldest entries
+                sorted_keys = sorted(self._search_cache.keys(), key=lambda k: self._search_cache[k][0])
+                for k in sorted_keys[:100]:
+                    del self._search_cache[k]
+
     def _is_provider_available(self, name: str) -> bool:
         """Check if a provider is available (circuit not open)."""
         backend = self.health_manager.get_backend(name)
@@ -111,6 +149,12 @@ class SearchService:
             SearchResponse with results or error information.
         """
         self.total_requests += 1
+
+        # Check cache first
+        cached = self._get_from_cache(request)
+        if cached is not None:
+            return cached
+
         errors: list[SearchResponse] = []
         tried_providers: list[str] = []
 
@@ -168,6 +212,8 @@ class SearchService:
                     self.last_used_provider = provider.name
                     if len(errors) > 0:
                         self.total_fallbacks += 1
+                    # Store in cache for future repeated queries
+                    self._put_in_cache(request, response)
                     return response
                 else:
                     # Provider returned an error response
