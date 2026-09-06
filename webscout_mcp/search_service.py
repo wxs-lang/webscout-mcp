@@ -20,12 +20,16 @@ from dataclasses import dataclass
 from typing import Any
 
 from .errors import StandardErrorCode
+from .logging_config import get_logger
+from .provider_router import ProviderCostTier, ProviderRouter
 from .search_health import SearchHealthManager
 from .search_provider import (
     SearchProvider,
     SearchRequest,
     SearchResponse,
 )
+
+log = get_logger(__name__)
 
 
 @dataclass
@@ -54,12 +58,15 @@ class SearchService:
         self,
         providers: list[SearchProvider],
         config: SearchServiceConfig | None = None,
+        router: ProviderRouter | None = None,
     ):
         """Initialize the SearchService.
 
         Args:
             providers: List of SearchProvider instances to use, in priority order.
             config: Optional configuration. Uses defaults if not provided.
+            router: Optional dynamic provider router. If provided, uses
+                health-based dynamic routing instead of fixed-order fallback.
         """
         if not providers:
             raise ValueError("At least one SearchProvider is required")
@@ -71,6 +78,13 @@ class SearchService:
             failure_threshold=self.config.circuit_failure_threshold,
             recovery_time=self.config.circuit_recovery_time,
         )
+
+        # Dynamic router (optional)
+        self.router = router
+        if self.router is not None:
+            log.info("SearchService initialized with dynamic health-based routing")
+        else:
+            log.info("SearchService initialized with fixed-order fallback")
 
         # Statistics
         self.total_requests = 0
@@ -86,9 +100,9 @@ class SearchService:
     async def search(self, request: SearchRequest) -> SearchResponse:
         """Execute a search with fallback and circuit breaking.
 
-        Tries providers in order until one succeeds. Providers with open
-        circuits are skipped. If all providers fail, returns a standardized
-        error response.
+        If a dynamic router is configured, uses health-based provider selection.
+        Otherwise, tries providers in fixed order. Providers with open circuits
+        are skipped. If all providers fail, returns a standardized error response.
 
         Args:
             request: The search request.
@@ -98,10 +112,36 @@ class SearchService:
         """
         self.total_requests += 1
         errors: list[SearchResponse] = []
+        tried_providers: list[str] = []
 
-        for provider in self.providers:
-            # Skip providers with open circuits
-            if not self._is_provider_available(provider.name):
+        # Build provider lookup map
+        provider_map = {p.name: p for p in self.providers}
+
+        while True:
+            # Select next provider
+            if self.router is not None:
+                # Dynamic routing: select best available provider
+                next_name = self.router.get_next_provider(exclude=tried_providers)
+                if next_name is None:
+                    break
+                provider = provider_map.get(next_name)
+                if provider is None:
+                    tried_providers.append(next_name)
+                    continue
+            else:
+                # Fixed order: find next untried provider
+                provider = None
+                for p in self.providers:
+                    if p.name not in tried_providers:
+                        provider = p
+                        break
+                if provider is None:
+                    break
+
+            tried_providers.append(provider.name)
+
+            # Skip providers with open circuits (fixed order mode)
+            if self.router is None and not self._is_provider_available(provider.name):
                 errors.append(
                     SearchResponse.error(
                         query=request.query,
@@ -122,6 +162,9 @@ class SearchService:
 
                 if response.is_success:
                     self.health_manager.record_success(provider.name)
+                    if self.router is not None:
+                        self.router.record_result(provider.name, True, response.latency_ms)
+                        self.router.set_circuit_closed(provider.name)
                     self.last_used_provider = provider.name
                     if len(errors) > 0:
                         self.total_fallbacks += 1
@@ -132,10 +175,17 @@ class SearchService:
                         provider.name,
                         response.error_message or "Unknown error",
                     )
+                    if self.router is not None:
+                        self.router.record_result(
+                            provider.name, False, response.latency_ms,
+                            response.error_type,
+                        )
                     errors.append(response)
 
             except asyncio.TimeoutError:
                 self.health_manager.record_failure(provider.name, "Timeout")
+                if self.router is not None:
+                    self.router.record_result(provider.name, False, self.config.request_timeout * 1000, "timeout")
                 errors.append(
                     SearchResponse.error(
                         query=request.query,
@@ -147,6 +197,8 @@ class SearchService:
                 )
             except Exception as e:
                 self.health_manager.record_failure(provider.name, str(e))
+                if self.router is not None:
+                    self.router.record_result(provider.name, False, 0, "unknown")
                 errors.append(
                     SearchResponse.error(
                         query=request.query,
@@ -178,6 +230,9 @@ class SearchService:
             "fallback_rate": (self.total_fallbacks / self.total_requests if self.total_requests > 0 else 0.0),
             "error_rate": (self.total_errors / self.total_requests if self.total_requests > 0 else 0.0),
         }
+        # Include dynamic router health report if configured
+        if self.router is not None:
+            report["dynamic_routing"] = self.router.get_health_report()
         return report
 
     def get_provider_health(self, name: str) -> dict[str, Any] | None:
@@ -260,4 +315,22 @@ def create_search_service_from_config(
         request_timeout=getattr(config, "search_timeout", 30.0),
     )
 
-    return SearchService(providers=providers, config=service_config)
+    # Create dynamic provider router with health-based scoring
+    # Free providers (Bing, DDG) are preferred, paid providers (Tavily)
+    # are used only when free providers are degraded or unavailable
+    cost_tiers = {
+        "bing": ProviderCostTier.FREE,
+        "duckduckgo": ProviderCostTier.FREE,
+        "google": ProviderCostTier.FREE,
+        "brave": ProviderCostTier.FREE,
+        "serpapi": ProviderCostTier.PAID,
+        "tavily": ProviderCostTier.PAID,
+    }
+    router = ProviderRouter(
+        provider_names=[p.name for p in providers],
+        cost_tiers=cost_tiers,
+        prefer_free=True,
+        min_score_threshold=30.0,
+    )
+
+    return SearchService(providers=providers, config=service_config, router=router)
