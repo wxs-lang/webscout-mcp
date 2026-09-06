@@ -40,32 +40,70 @@ from webscout_mcp.search_service import SearchService, SearchServiceConfig
 # Test queries - fixed set for consistent measurement
 # ============================================================
 SEARCH_QUERIES = [
-    # English queries (10)
+    # English - Technical documentation (5)
     "python asyncio documentation",
     "github actions workflow syntax",
     "postgresql create index best practices",
-    "fastapi tutorial 2024",
+    "fastapi tutorial",
     "docker compose networking",
-    "kubernetes pod lifecycle",
-    "redis caching strategies",
-    "elasticsearch query DSL",
-    "nginx reverse proxy configuration",
-    "linux systemd service example",
-    # Chinese queries (5)
+    # English - News/Current events (3)
+    "latest technology news",
+    "python release notes",
+    "open source ai tools",
+    # English - GitHub/Code (2)
+    "github mcp server example",
+    "fastapi github repository",
+    # Chinese - Technical (5)
     "Python 异步编程教程",
     "GitHub Actions 工作流配置",
     "PostgreSQL 索引优化",
     "FastAPI 快速入门",
     "Docker 网络配置",
+    # Chinese - News/General (3)
+    "最新科技新闻",
+    "人工智能发展趋势",
+    "开源软件推荐",
+    # Chinese - E-commerce/General (2)
+    "职业资格考试用书",
+    "考研数学复习资料",
 ]
 
+# Categorized queries for reporting
+SEARCH_CATEGORIES = {
+    "english_technical": SEARCH_QUERIES[0:5],
+    "english_news": SEARCH_QUERIES[5:8],
+    "english_github": SEARCH_QUERIES[8:10],
+    "chinese_technical": SEARCH_QUERIES[10:15],
+    "chinese_news": SEARCH_QUERIES[15:18],
+    "chinese_general": SEARCH_QUERIES[18:20],
+}
+
 FETCH_URLS = [
+    # Technical docs (5)
     "https://docs.python.org/3/library/asyncio.html",
     "https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions",
     "https://www.postgresql.org/docs/current/sql-createindex.html",
     "https://fastapi.tiangolo.com/tutorial/",
     "https://docs.docker.com/compose/networking/",
+    # News sites (2)
+    "https://news.ycombinator.com/",
+    "https://www.python.org/blogs/",
+    # GitHub repository (1)
+    "https://github.com/tiangolo/fastapi",
+    # Redirect page (1) - httpbin redirect
+    "https://httpbin.org/redirect/1",
+    # JS-heavy page (1)
+    "https://www.python.org/",
 ]
+
+# Categorized URLs for reporting
+FETCH_CATEGORIES = {
+    "technical_docs": FETCH_URLS[0:5],
+    "news_sites": FETCH_URLS[5:7],
+    "github_repo": FETCH_URLS[7:8],
+    "redirect": FETCH_URLS[8:9],
+    "js_heavy": FETCH_URLS[9:10],
+}
 
 # Results directory - can be overridden via env var for CI
 RESULTS_DIR = Path(os.environ.get("LIVE_TEST_RESULTS_DIR", "live-test-results"))
@@ -208,7 +246,7 @@ class LiveTestReport:
         }
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        report = {
             "timestamp": self.timestamp,
             "datetime": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self.timestamp)),
             "search": self._calculate_stats(self.search_results),
@@ -216,6 +254,45 @@ class LiveTestReport:
             "fallback": self._calculate_stats(self.fallback_results),
             "ddg_fallback_detail": self.get_ddg_fallback_stats(),
         }
+
+        # Add categorized search statistics
+        try:
+            search_by_category: dict[str, list[TestResult]] = {}
+            for result in self.search_results:
+                # Find which category this query belongs to
+                category = "unknown"
+                for cat_name, queries in SEARCH_CATEGORIES.items():
+                    if result.name and any(q in result.name for q in queries):
+                        category = cat_name
+                        break
+                search_by_category.setdefault(category, []).append(result)
+
+            report["search_by_category"] = {
+                cat: self._calculate_stats(results)
+                for cat, results in search_by_category.items()
+            }
+        except Exception:
+            pass
+
+        # Add categorized fetch statistics
+        try:
+            fetch_by_category: dict[str, list[TestResult]] = {}
+            for result in self.fetch_results:
+                category = "unknown"
+                for cat_name, urls in FETCH_CATEGORIES.items():
+                    if result.name and any(u in result.name for u in urls):
+                        category = cat_name
+                        break
+                fetch_by_category.setdefault(category, []).append(result)
+
+            report["fetch_by_category"] = {
+                cat: self._calculate_stats(results)
+                for cat, results in fetch_by_category.items()
+            }
+        except Exception:
+            pass
+
+        return report
 
     def save(self, path: str | Path) -> None:
         path = Path(path)
