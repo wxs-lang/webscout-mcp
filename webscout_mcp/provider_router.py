@@ -83,8 +83,14 @@ class ProviderMetrics:
     def _prune_old(self, deque_obj: deque) -> None:
         """Remove entries older than window."""
         cutoff = time.time() - self.window_seconds
-        while deque_obj and deque_obj[0] < cutoff:
-            deque_obj.popleft()
+        while deque_obj:
+            entry = deque_obj[0]
+            # Handle both float timestamps and (timestamp, value) tuples
+            ts = entry[0] if isinstance(entry, tuple) else entry
+            if ts < cutoff:
+                deque_obj.popleft()
+            else:
+                break
 
     @property
     def success_rate(self) -> float:
