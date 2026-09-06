@@ -19,7 +19,7 @@ import statistics
 import sys
 import time
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -28,7 +28,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 class BenchmarkResult:
     """Stores the result of a single benchmark."""
 
-    def __init__(self, name: str, durations: List[float], metadata: Optional[Dict] = None):
+    def __init__(self, name: str, durations: list[float], metadata: dict | None = None):
         self.name = name
         self.durations = durations
         self.metadata = metadata or {}
@@ -74,7 +74,7 @@ class BenchmarkResult:
     def throughput_per_sec(self) -> float:
         return self.iterations / (self.total_ms / 1000) if self.total_ms > 0 else 0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "name": self.name,
             "iterations": self.iterations,
@@ -97,14 +97,14 @@ class BenchmarkRunner:
     def __init__(self, warmup_iterations: int = 3, default_iterations: int = 20):
         self.warmup_iterations = warmup_iterations
         self.default_iterations = default_iterations
-        self.results: List[BenchmarkResult] = []
+        self.results: list[BenchmarkResult] = []
 
     def run_benchmark(
         self,
         name: str,
         func,
-        iterations: Optional[int] = None,
-        metadata: Optional[Dict] = None,
+        iterations: int | None = None,
+        metadata: dict | None = None,
     ) -> BenchmarkResult:
         """Run a single benchmark.
 
@@ -145,7 +145,7 @@ class BenchmarkRunner:
         self.results.append(result)
         return result
 
-    def get_summary(self) -> Dict[str, Any]:
+    def get_summary(self) -> dict[str, Any]:
         """Get summary of all benchmarks."""
         return {
             "timestamp": datetime.now().isoformat(),
@@ -154,7 +154,7 @@ class BenchmarkRunner:
             "system_info": self._get_system_info(),
         }
 
-    def _get_system_info(self) -> Dict[str, Any]:
+    def _get_system_info(self) -> dict[str, Any]:
         """Get system information."""
         info = {
             "python_version": sys.version,
@@ -380,7 +380,7 @@ def run_health_benchmarks(runner: BenchmarkRunner):
         print(f"  [ERROR] Health benchmarks failed: {e}")
 
 
-def generate_markdown_report(summary: Dict[str, Any], output_path: str):
+def generate_markdown_report(summary: dict[str, Any], output_path: str):
     """Generate a markdown report from benchmark results."""
     lines = []
 
@@ -462,7 +462,7 @@ def generate_markdown_report(summary: Dict[str, Any], output_path: str):
     print(f"\n📄 Markdown report saved to: {output_path}")
 
 
-def compare_reports(current: Dict, previous: Dict) -> Dict:
+def compare_reports(current: dict, previous: dict) -> dict:
     """Compare two benchmark reports and identify regressions."""
     comparisons = []
     regressions = []

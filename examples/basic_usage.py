@@ -51,7 +51,7 @@ async def example_search():
     search = SearchEngine(config)
     results = await search.search("python async programming", max_results=5)
 
-    print(f"Query: python async programming")
+    print("Query: python async programming")
     print(f"Results: {len(results)}")
     print()
 

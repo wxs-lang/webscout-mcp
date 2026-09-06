@@ -9,7 +9,6 @@ Demonstrates how to use the web monitor for:
 """
 
 from webscout_mcp.monitor import (
-    ChangeRecord,
     DingTalkAlert,
     EmailAlert,
     MonitorConfig,
@@ -52,7 +51,7 @@ def example_basic_monitoring():
 
     # Get statistics
     stats = monitor.get_stats()
-    print(f"\nMonitor Statistics:")
+    print("\nMonitor Statistics:")
     print(f"  Monitored URLs: {stats['monitored_urls']}")
     print(f"  Total changes: {stats['total_changes']}")
     print(f"  Alert channels: {stats['alert_channels']}")
@@ -142,10 +141,10 @@ def example_email_alert():
     monitor.add_alert_channel(email_alert)
 
     print("\nAdded email alert channel:")
-    print(f"  SMTP Server: smtp.gmail.com:587")
-    print(f"  From: your-email@gmail.com")
-    print(f"  To: recipient@example.com")
-    print(f"  TLS: Enabled")
+    print("  SMTP Server: smtp.gmail.com:587")
+    print("  From: your-email@gmail.com")
+    print("  To: recipient@example.com")
+    print("  TLS: Enabled")
 
     print("\nNote: For Gmail, use an App Password:")
     print("  1. Go to Google Account > Security")

@@ -52,19 +52,19 @@ def example_search_optimizer():
 
     # First search (cache miss)
     result1 = optimizer.search("python tutorial", search_fn=mock_search)
-    print(f"\nFirst search (cache miss):")
+    print("\nFirst search (cache miss):")
     print(f"  Total results: {result1.total_results}")
     print(f"  Search time: {result1.search_time_ms:.2f}ms")
     print(f"  Cache hit: {result1.cache_hit}")
 
     # Second search (cache hit)
     result2 = optimizer.search("python tutorial", search_fn=mock_search)
-    print(f"\nSecond search (cache hit):")
+    print("\nSecond search (cache hit):")
     print(f"  Total results: {result2.total_results}")
     print(f"  Search time: {result2.search_time_ms:.2f}ms")
     print(f"  Cache hit: {result2.cache_hit}")
 
-    print(f"\nTop 3 results:")
+    print("\nTop 3 results:")
     for i, item in enumerate(result1.results[:3], 1):
         print(f"  {i}. {item.title} (relevance: {item.relevance_score:.2f})")
 
@@ -113,7 +113,7 @@ def example_content_extractor():
     # Extract content
     content = extractor.extract(html, url="https://example.com/python-guide")
 
-    print(f"\nExtracted content:")
+    print("\nExtracted content:")
     print(f"  Title: {content.title}")
     print(f"  Author: {content.author}")
     print(f"  Language: {content.language}")
@@ -236,14 +236,14 @@ def example_health_check():
 
     # Check liveness
     liveness = checker.check_liveness()
-    print(f"\nLiveness check:")
+    print("\nLiveness check:")
     print(f"  Status: {liveness.status}")
     print(f"  Version: {liveness.version}")
     print(f"  Uptime: {liveness.uptime_seconds:.1f}s")
 
     # Check readiness
     readiness = checker.check_readiness()
-    print(f"\nReadiness check:")
+    print("\nReadiness check:")
     print(f"  Status: {readiness.status}")
     for check_name, check_result in readiness.checks.items():
         print(f"    {check_name}: {check_result.status}")
@@ -251,7 +251,7 @@ def example_health_check():
     # System monitor
     monitor = SystemMonitor()
     metrics = monitor.collect_metrics()
-    print(f"\nSystem metrics:")
+    print("\nSystem metrics:")
     print(f"  Platform: {metrics.platform}")
     print(f"  Python version: {metrics.python_version}")
     print(f"  CPU count: {metrics.cpu_count}")
@@ -259,7 +259,7 @@ def example_health_check():
 
     # Full health report
     report = get_health_report()
-    print(f"\nFull health report:")
+    print("\nFull health report:")
     print(f"  Overall status: {report['health']['status']}")
     print(f"  Service status: {report['service']['status']}")
 

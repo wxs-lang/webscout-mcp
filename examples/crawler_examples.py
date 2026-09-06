@@ -11,7 +11,6 @@ Run with: python examples/crawler_examples.py
 """
 
 import asyncio
-import json
 
 from webscout_mcp import Config, Crawler, Exporter, Fetcher
 

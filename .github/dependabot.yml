@@ -1,87 +1,34 @@
-# Dependabot configuration for webscout-mcp
-# See https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
-
 version: 2
 updates:
-  # Python dependencies (pip)
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
       time: "09:00"
-      timezone: "Asia/Shanghai"
     open-pull-requests-limit: 10
-    versioning-strategy: "widen"
     labels:
       - "dependencies"
-      - "python"
-    reviewers:
-      - "wxs-lang"
-    assignees:
-      - "wxs-lang"
+      - "pip"
     commit-message:
-      prefix: "deps"
-      prefix-development: "deps-dev"
+      prefix: "chore(deps)"
       include: "scope"
-    ignore:
-      # Ignore major version updates for stable dependencies
-      - dependency-name: "httpx"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "beautifulsoup4"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "lxml"
-        update-types: ["version-update:semver-major"]
     groups:
-      # Group minor and patch updates together
-      python-minor-patch:
-        patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
+      dev-dependencies:
+        dependency-type: "development"
+      production-dependencies:
+        dependency-type: "production"
 
-  # GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
       time: "09:00"
-      timezone: "Asia/Shanghai"
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
       - "github-actions"
-    reviewers:
-      - "wxs-lang"
     commit-message:
-      prefix: "ci"
+      prefix: "chore(ci)"
       include: "scope"
-    groups:
-      # Group all GitHub Actions updates together
-      github-actions-all:
-        patterns:
-          - "*"
-
-  # Docker dependencies
-  - package-ecosystem: "docker"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-      timezone: "Asia/Shanghai"
-    open-pull-requests-limit: 5
-    labels:
-      - "dependencies"
-      - "docker"
-    reviewers:
-      - "wxs-lang"
-    commit-message:
-      prefix: "docker"
-      include: "scope"
-
-# Security updates configuration
-# Dependabot security updates are enabled by default for supported ecosystems
-# See https://docs.github.com/en/code-security/dependabot/dependabot-security-updates

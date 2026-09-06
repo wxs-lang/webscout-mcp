@@ -1,0 +1,45 @@
+# ngrok 流量策略：为 webscout-mcp 端点添加限速
+# 用法：ngrok http 3000 --domain your-endpoint.ngrok.app --traffic-policy-file ngrok-rate-limit.yml
+
+on_http_request:
+  # 规则 1：对所有请求进行全局限速（每个 IP 每分钟 120 次请求）
+  - expressions:
+      - true
+    actions:
+      - type: rate_limit
+        config:
+          name: global_rate_limit_120_per_minute_per_ip
+          algorithm: sliding_window
+          capacity: 120
+          rate: 60s
+          bucket_key:
+            - conn.client_ip
+
+  # 规则 2：对搜索接口进行更严格的限速（每个 IP 每分钟 30 次）
+  - expressions:
+      - req.url.contains('/search')
+      - req.url.contains('/web_search')
+    actions:
+      - type: rate_limit
+        config:
+          name: search_rate_limit_30_per_minute_per_ip
+          algorithm: sliding_window
+          capacity: 30
+          rate: 60s
+          bucket_key:
+            - conn.client_ip
+
+  # 规则 3：对抓取接口进行限速（每个 IP 每分钟 60 次）
+  - expressions:
+      - req.url.contains('/fetch')
+      - req.url.contains('/web_fetch')
+      - req.url.contains('/crawl')
+    actions:
+      - type: rate_limit
+        config:
+          name: fetch_rate_limit_60_per_minute_per_ip
+          algorithm: sliding_window
+          capacity: 60
+          rate: 60s
+          bucket_key:
+            - conn.client_ip

@@ -8,7 +8,7 @@ Demonstrates how to use the browser fetcher for:
 - Login state management
 """
 
-from webscout_mcp.browser_fetcher import BrowserConfig, BrowserFetcher, BrowserResult
+from webscout_mcp.browser_fetcher import BrowserConfig, BrowserFetcher
 
 
 def example_fetch_js_page():
@@ -71,7 +71,7 @@ def example_screenshot():
     try:
         # Take a full-page screenshot
         output_path = "/tmp/example_screenshot.png"
-        print(f"\nTaking screenshot of https://example.com...")
+        print("\nTaking screenshot of https://example.com...")
         result = browser.fetch(
             "https://example.com",
             screenshot_path=output_path,
@@ -104,7 +104,7 @@ def example_pdf_export():
     try:
         # Export to PDF
         output_path = "/tmp/example_page.pdf"
-        print(f"\nExporting https://example.com to PDF...")
+        print("\nExporting https://example.com to PDF...")
         result = browser.fetch(
             "https://example.com",
             pdf_path=output_path,
@@ -183,7 +183,7 @@ def example_fill_form():
         if result.error:
             print(f"Error (expected for example.com): {result.error}")
         else:
-            print(f"  Form submitted!")
+            print("  Form submitted!")
             print(f"  New URL: {result.url}")
 
     finally:
@@ -257,7 +257,7 @@ def example_stealth_mode():
 
         result = browser.fetch("https://example.com")
         if not result.error:
-            print(f"\n  Page fetched successfully!")
+            print("\n  Page fetched successfully!")
             print(f"  Title: {result.title}")
 
     finally:

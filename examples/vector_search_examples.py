@@ -155,7 +155,7 @@ def example_document_management():
 
     # Get statistics
     stats = store.get_stats()
-    print(f"\nVector Store Statistics:")
+    print("\nVector Store Statistics:")
     print(f"  Total chunks: {stats['total_chunks']}")
     print(f"  Vector DB: {stats['vector_db']}")
     print(f"  Embedding backend: {stats['embedding_backend']}")
