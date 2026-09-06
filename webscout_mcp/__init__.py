@@ -1,6 +1,6 @@
 """webscout-mcp: A smart web search & fetch MCP server."""
 
-__version__ = "1.0.2"
+__version__ = "1.0.3"
 
 __all__ = [
     "Cache",
