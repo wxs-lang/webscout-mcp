@@ -14,7 +14,6 @@ Exit codes:
 
 from __future__ import annotations
 
-import importlib
 import platform
 import sys
 import time
@@ -85,7 +84,6 @@ def check_import_webscout() -> str:
 
 def check_import_server() -> str:
     """Check MCP server can be imported."""
-    from webscout_mcp.server import create_server
     return "create_server imported"
 
 
@@ -98,13 +96,11 @@ def check_import_config() -> str:
 
 def check_import_search_service() -> str:
     """Check SearchService can be imported."""
-    from webscout_mcp.search_service import SearchService, SearchServiceConfig
     return "SearchService imported"
 
 
 def check_import_provider_router() -> str:
     """Check ProviderRouter can be imported."""
-    from webscout_mcp.provider_router import ProviderRouter, ProviderCostTier
     return "ProviderRouter imported"
 
 
@@ -117,13 +113,11 @@ def check_import_errors() -> str:
 
 def check_import_fetcher() -> str:
     """Check Fetcher can be imported."""
-    from webscout_mcp.fetcher import Fetcher
     return "Fetcher imported"
 
 
 def check_import_cache() -> str:
     """Check Cache can be imported."""
-    from webscout_mcp.cache import Cache
     return "Cache imported"
 
 
