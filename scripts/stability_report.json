@@ -1,33 +1,35 @@
 {
-  "timestamp": "2026-09-06T23:10:42.825734",
-  "iteration": 10,
+  "timestamp": "2026-09-07T13:15:23.795206",
+  "iteration": 20,
   "stats": {
-    "elapsed_hours": 0.16,
+    "elapsed_hours": 0.33,
     "search": {
-      "total": 10,
-      "success": 10,
+      "total": 20,
+      "success": 20,
       "failed": 0,
       "success_rate": 100.0,
-      "p50_ms": 572.8,
-      "p95_ms": 15682.8,
+      "p50_ms": 500.8,
+      "p95_ms": 15518.1,
       "errors": {}
     },
     "fetch": {
-      "total": 3,
-      "success": 3,
-      "failed": 0,
-      "success_rate": 100.0,
-      "p50_ms": 1439.7,
-      "p95_ms": 7184.6,
-      "errors": {}
+      "total": 6,
+      "success": 5,
+      "failed": 1,
+      "success_rate": 83.3,
+      "p50_ms": 3184.7,
+      "p95_ms": 30015.1,
+      "errors": {
+        "timeout": 1
+      }
     },
     "providers": {
       "bing": {
-        "total": 10,
-        "success": 10,
+        "total": 20,
+        "success": 20,
         "failed": 0
       }
     },
-    "requests_per_hour": 81.8
+    "requests_per_hour": 77.8
   }
 }

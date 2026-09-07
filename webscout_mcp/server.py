@@ -26,7 +26,13 @@ from __future__ import annotations
 
 import json
 
-from mcp.server.fastmcp import FastMCP as MCPServer
+# MCP compatibility: support both 1.x (FastMCP) and 2.x (MCPServer)
+try:
+    # MCP 2.x: FastMCP was renamed to MCPServer
+    from mcp.server.mcpserver import MCPServer
+except ImportError:
+    # MCP 1.x: use FastMCP
+    from mcp.server.fastmcp import FastMCP as MCPServer
 
 from .cache import Cache
 from .config import Config

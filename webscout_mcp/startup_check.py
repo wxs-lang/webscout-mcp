@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .logging_config import get_logger
+from .search_provider import SearchRequest
 
 log = get_logger(__name__)
 
@@ -135,7 +136,7 @@ class StartupSelfCheck:
         if self.cache is None:
             return CheckResult("cache", False, message="Cache not initialized")
         try:
-            stats = self.cache.get_stats()
+            stats = self.cache.stats() if hasattr(self.cache, 'stats') else self.cache.get_stats()
             return CheckResult(
                 "cache",
                 True,
@@ -204,10 +205,19 @@ class StartupSelfCheck:
 
         try:
             if hasattr(search_obj, "search"):
-                result = await asyncio.wait_for(
-                    search_obj.search("test", max_results=1),
-                    timeout=5.0,
-                )
+                # Support both SearchService (SearchRequest) and SearchEngine (kwargs)
+                try:
+                    request = SearchRequest(query="test", max_results=1)
+                    result = await asyncio.wait_for(
+                        search_obj.search(request),
+                        timeout=5.0,
+                    )
+                except TypeError:
+                    # Fallback for old SearchEngine API
+                    result = await asyncio.wait_for(
+                        search_obj.search("test", max_results=1),
+                        timeout=5.0,
+                    )
                 results = result.get("results", []) if isinstance(result, dict) else []
                 return CheckResult(
                     "search_connectivity",
