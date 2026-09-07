@@ -136,7 +136,7 @@ class StartupSelfCheck:
         if self.cache is None:
             return CheckResult("cache", False, message="Cache not initialized")
         try:
-            stats = self.cache.stats() if hasattr(self.cache, 'stats') else self.cache.get_stats()
+            stats = self.cache.stats() if hasattr(self.cache, "stats") else self.cache.get_stats()
             return CheckResult(
                 "cache",
                 True,

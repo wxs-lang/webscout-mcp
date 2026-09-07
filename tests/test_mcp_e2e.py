@@ -45,6 +45,7 @@ def get_mcp_attr(obj: Any, attr_1x: str, attr_2x: str | None = None) -> Any:
         return getattr(obj, attr_2x)
     return None
 
+
 # MCP E2E tests are now enabled after fixing the asyncio event loop issue
 # (was: "Already running asyncio in this thread" - fixed by using run_stdio_async())
 # pytestmark = pytest.mark.xfail(
@@ -80,7 +81,7 @@ class TestMCPServerStartup:
             async with ClientSession(read_stream, write_stream) as session:
                 result = await session.initialize()
                 assert result is not None
-                assert get_mcp_attr(result, 'protocolVersion', 'protocol_version') is not None
+                assert get_mcp_attr(result, "protocolVersion", "protocol_version") is not None
                 assert result.capabilities is not None
                 assert result.serverInfo is not None
                 assert result.serverInfo.name == "webscout"
@@ -149,7 +150,9 @@ class TestMCPToolsList:
                 for tool in result.tools:
                     assert tool.name, "Tool missing name"
                     assert tool.description, f"Tool {tool.name} missing description"
-                    assert get_mcp_attr(tool, 'inputSchema', 'input_schema') is not None, f"Tool {tool.name} missing input_schema"
+                    assert get_mcp_attr(tool, "inputSchema", "input_schema") is not None, (
+                        f"Tool {tool.name} missing input_schema"
+                    )
 
 
 class TestMCPToolCalls:
@@ -199,7 +202,7 @@ class TestMCPToolCalls:
                 result = await session.call_tool("nonexistent_tool_12345", {})
                 assert result is not None
                 # MCP returns error response, not exception
-                is_error = get_mcp_attr(result, 'isError', 'is_error')
+                is_error = get_mcp_attr(result, "isError", "is_error")
                 assert is_error is not None
                 assert is_error is True
 
@@ -214,7 +217,7 @@ class TestMCPToolCalls:
                 result = await session.call_tool("web_search", {})
                 assert result is not None
                 # Either is_error is True, or an exception was raised
-                assert get_mcp_attr(result, 'isError', 'is_error') is not None
+                assert get_mcp_attr(result, "isError", "is_error") is not None
 
 
 class TestMCPMultipleSequentialCalls:
