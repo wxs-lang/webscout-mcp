@@ -83,8 +83,9 @@ class TestMCPServerStartup:
                 assert result is not None
                 assert get_mcp_attr(result, "protocolVersion", "protocol_version") is not None
                 assert result.capabilities is not None
-                assert result.serverInfo is not None
-                assert result.serverInfo.name == "webscout"
+                server_info = get_mcp_attr(result, "serverInfo", "server_info")
+                assert server_info is not None
+                assert server_info.name == "webscout"
 
     @pytest.mark.asyncio
     async def test_server_has_tools_capability(self) -> None:
