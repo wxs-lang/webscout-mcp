@@ -18,19 +18,19 @@ Run frequency: every 30 seconds (configurable)
 """
 
 import asyncio
-import time
 import json
+import time
 import tracemalloc
 from datetime import datetime
 from pathlib import Path
 
-# Import project modules
-from webscout_mcp.config import Config
-from webscout_mcp.search_service import create_search_service_from_config
-from webscout_mcp.search_provider import SearchRequest
-from webscout_mcp.fetcher import Fetcher
 from webscout_mcp.cache import Cache
 
+# Import project modules
+from webscout_mcp.config import Config
+from webscout_mcp.fetcher import Fetcher
+from webscout_mcp.search_provider import SearchRequest
+from webscout_mcp.search_service import create_search_service_from_config
 
 # ============================================================
 # Test Configuration
@@ -299,7 +299,6 @@ async def test_content_quality(fetcher, metrics, url):
         content = result.get("content", "") if isinstance(result, dict) else str(result)
         # Basic quality metrics
         word_count = len(content.split())
-        char_count = len(content)
         has_content = word_count > 10
         latency = (time.time() - start) * 1000
         passed = has_content

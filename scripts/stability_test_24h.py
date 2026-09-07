@@ -8,21 +8,20 @@ and generates periodic reports.
 
 import asyncio
 import json
-import time
 import os
 import sys
+import time
 import tracemalloc
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 # Add project to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from webscout_mcp.search_service import SearchService, create_search_service_from_config
-from webscout_mcp.search_provider import SearchRequest
 from webscout_mcp.config import Config
 from webscout_mcp.fetcher import Fetcher
-
+from webscout_mcp.search_provider import SearchRequest
+from webscout_mcp.search_service import SearchService, create_search_service_from_config
 
 # Test queries - mix of Chinese and English
 SEARCH_QUERIES = [
@@ -159,7 +158,7 @@ async def run_search_test(search_service: SearchService, metrics: StabilityMetri
         result = await asyncio.wait_for(search_service.search(request), timeout=timeout)
         latency = (time.time() - start) * 1000
         provider = getattr(result, 'provider', 'unknown')
-        success = result.is_success if hasattr(result, 'is_success') else getattr(result, 'status') == 'success'
+        success = result.is_success if hasattr(result, 'is_success') else result.status == 'success'
         error = getattr(result, 'error_type', None) if not success else None
         metrics.record_search(success, latency, provider, str(error) if error else None)
 
@@ -246,7 +245,7 @@ async def main():
     print("🚀 webscout-mcp 24-Hour Stability Test")
     print("=" * 80)
     print(f"Start time: {datetime.now().isoformat()}")
-    print(f"Test duration: 24 hours")
+    print("Test duration: 24 hours")
     print(f"Search queries: {len(SEARCH_QUERIES)}")
     print(f"Fetch URLs: {len(FETCH_URLS)}")
     print("=" * 80 + "\n")

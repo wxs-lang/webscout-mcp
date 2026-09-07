@@ -16,16 +16,15 @@ Usage:
     python3 scripts/qq_email_monitor.py
 """
 
-import imaplib
 import email
-from email.header import decode_header
-import time
+import imaplib
 import json
 import os
 import re
+import time
 from datetime import datetime, timedelta
+from email.header import decode_header
 from pathlib import Path
-
 
 # ============================================================
 # Configuration
@@ -278,7 +277,7 @@ def check_new_emails(mail, state):
         if new_errors > 0:
             print(f"🔴 Found {new_errors} new error email(s)!")
         else:
-            print(f"✅ No new error emails found")
+            print("✅ No new error emails found")
 
     except Exception as e:
         print(f"⚠️  Error checking emails: {e}")

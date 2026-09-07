@@ -13,14 +13,12 @@ Checks every 60 seconds. Alerts on any failures.
 """
 
 import json
-import time
-import subprocess
 import os
+import subprocess
+import time
+import urllib.request
 from datetime import datetime
 from pathlib import Path
-
-import urllib.request
-
 
 # ============================================================
 # Configuration
@@ -303,15 +301,15 @@ def main():
             # 4. Check system resources
             system_status = check_system_resources()
 
-            # 5. Generate report
-            report = generate_report(ci_status, process_status, log_status, system_status)
+            # 5. Generate report (logged internally)
+            generate_report(ci_status, process_status, log_status, system_status)
 
             # Summary
             total_alerts = sum(1 for v in log_status.values() if v["has_errors"])
             total_process_down = sum(1 for v in process_status.values() if not v["running"])
 
             print(f"\n{'─' * 80}")
-            print(f"📋 SUMMARY")
+            print("📋 SUMMARY")
             print(f"{'─' * 80}")
             print(f"  CI Failures: {len(ci_failures)}")
             print(f"  Processes Down: {total_process_down}")
@@ -319,9 +317,9 @@ def main():
             print(f"  System: {system_status.get('memory_percent', 'N/A')}% memory")
 
             if len(ci_failures) == 0 and total_process_down == 0 and total_alerts == 0:
-                print(f"\n  ✅ ALL SYSTEMS NOMINAL")
+                print("\n  ✅ ALL SYSTEMS NOMINAL")
             else:
-                print(f"\n  ⚠️  ISSUES DETECTED - See alerts.log for details")
+                print("\n  ⚠️  ISSUES DETECTED - See alerts.log for details")
 
         except Exception as e:
             alert(f"Monitor iteration failed: {e}", "ERROR")

@@ -164,6 +164,13 @@ ignore = [
 "webscout_mcp/setup.py" = ["F401", "F841"]
 "webscout_mcp/server.py" = ["F841"]
 
+# Monitoring/utility scripts - async file IO is acceptable for these scripts
+"scripts/*.py" = [
+    "ASYNC230",  # Blocking open in async - acceptable for monitoring scripts
+    "F841",      # Unused variable - common in scripts
+    "I001",      # Import sorting - scripts may have different import styles
+]
+
 [tool.bandit]
 # Bandit security scanning configuration
 exclude_dirs = ["tests", "venv", "build", "dist", ".github"]

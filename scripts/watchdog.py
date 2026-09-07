@@ -6,12 +6,11 @@ Runs in background, checks every 60 seconds if all monitors are running.
 If any monitor stops, automatically restarts it.
 """
 
+import os
 import subprocess
 import time
-import os
 from datetime import datetime
 from pathlib import Path
-
 
 PROJECT_DIR = Path(__file__).parent.parent
 WATCHDOG_LOG = PROJECT_DIR / "watchdog.log"
