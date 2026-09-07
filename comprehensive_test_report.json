@@ -1,0 +1,139 @@
+{
+  "iteration": 2,
+  "timestamp": "2026-09-07T12:58:11.747587",
+  "summary": {
+    "elapsed_seconds": 163.3,
+    "total_tests": 46,
+    "passed": 42,
+    "failed": 4,
+    "skipped": 0,
+    "pass_rate": 91.3,
+    "latency_stats": {
+      "web_search[open source AI tools...]": {
+        "p50_ms": 604.5,
+        "p95_ms": 604.5,
+        "count": 2
+      },
+      "web_search[docker best practice...]": {
+        "p50_ms": 678.2,
+        "p95_ms": 678.2,
+        "count": 2
+      },
+      "web_search[web scraping best pr...]": {
+        "p50_ms": 685.9,
+        "p95_ms": 685.9,
+        "count": 2
+      },
+      "web_search[postgresql tutorial...]": {
+        "p50_ms": 717.7,
+        "p95_ms": 717.7,
+        "count": 2
+      },
+      "web_search[fastapi github repos...]": {
+        "p50_ms": 752.7,
+        "p95_ms": 752.7,
+        "count": 2
+      },
+      "web_search[model context protoc...]": {
+        "p50_ms": 785.8,
+        "p95_ms": 785.8,
+        "count": 2
+      },
+      "web_search[latest technology ne...]": {
+        "p50_ms": 800.8,
+        "p95_ms": 800.8,
+        "count": 2
+      },
+      "web_search[python asyncio docum...]": {
+        "p50_ms": 1026.2,
+        "p95_ms": 1026.2,
+        "count": 2
+      },
+      "web_fetch[Python Docs]": {
+        "p50_ms": 4319.3,
+        "p95_ms": 4319.3,
+        "count": 2
+      },
+      "web_fetch[FastAPI]": {
+        "p50_ms": 10083.6,
+        "p95_ms": 10083.6,
+        "count": 2
+      },
+      "web_fetch[GitHub MCP]": {
+        "p50_ms": 5370.6,
+        "p95_ms": 5370.6,
+        "count": 2
+      },
+      "web_fetch[PyPI]": {
+        "p50_ms": 508.3,
+        "p95_ms": 508.3,
+        "count": 2
+      },
+      "web_fetch[Wikipedia]": {
+        "p50_ms": 30010.5,
+        "p95_ms": 30010.5,
+        "count": 2
+      },
+      "cache_stats": {
+        "p50_ms": 0.0,
+        "p95_ms": 0.0,
+        "count": 2
+      },
+      "cache_clear": {
+        "p50_ms": 4.7,
+        "p95_ms": 4.7,
+        "count": 2
+      },
+      "search_health": {
+        "p50_ms": 0.2,
+        "p95_ms": 0.2,
+        "count": 2
+      },
+      "metadata_extract": {
+        "p50_ms": 3826.2,
+        "p95_ms": 3826.2,
+        "count": 2
+      },
+      "rss_parse[https://github.com/wxs-lang/we...]": {
+        "p50_ms": 3064.1,
+        "p95_ms": 3064.1,
+        "count": 2
+      },
+      "rss_parse[https://hnrss.org/frontpage...]": {
+        "p50_ms": 15078.5,
+        "p95_ms": 15078.5,
+        "count": 2
+      },
+      "content_quality": {
+        "p50_ms": 699.1,
+        "p95_ms": 699.1,
+        "count": 2
+      },
+      "broken_links": {
+        "p50_ms": 1140.6,
+        "p95_ms": 1140.6,
+        "count": 2
+      },
+      "web_crawl": {
+        "p50_ms": 1582.8,
+        "p95_ms": 1582.8,
+        "count": 2
+      },
+      "web_extract": {
+        "p50_ms": 601.2,
+        "p95_ms": 601.2,
+        "count": 2
+      }
+    },
+    "recent_errors": [
+      [
+        "web_fetch[Wikipedia]",
+        "Timeout (>30s)"
+      ],
+      [
+        "web_fetch[Wikipedia]",
+        "Timeout (>30s)"
+      ],
+      [
+        "rss_parse[https://github.com/wxs-lang/we...]",
+        

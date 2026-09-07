@@ -1,0 +1,192 @@
+
+================================================================================
+🧪 COMPREHENSIVE MCP FUNCTION TEST SUITE
+================================================================================
+Start time: 2026-09-07 12:55:28
+Test interval: 30s
+Search queries: 16
+Fetch URLs: 5
+RSS feeds: 2
+================================================================================
+
+Tavily API key not configured, skipping Tavily backend
+
+────────────────────────────────────────────────────────────────────────────────
+📋 TEST ITERATION 1 - 12:55:28
+────────────────────────────────────────────────────────────────────────────────
+
+🔍 Testing web_search...
+[12:55:29] ✅ PASS | web_search[open source AI tools...] | 604ms
+[12:55:29] ✅ PASS | web_search[docker best practice...] | 678ms
+[12:55:29] ✅ PASS | web_search[web scraping best pr...] | 686ms
+[12:55:29] ✅ PASS | web_search[postgresql tutorial...] | 718ms
+[12:55:29] ✅ PASS | web_search[fastapi github repos...] | 753ms
+[12:55:29] ✅ PASS | web_search[model context protoc...] | 786ms
+[12:55:29] ✅ PASS | web_search[latest technology ne...] | 801ms
+[12:55:29] ✅ PASS | web_search[python asyncio docum...] | 1026ms
+
+🌐 Testing web_fetch...
+[12:55:33] ✅ PASS | web_fetch[Python Docs] | 4319ms
+error getting summary: 
+Traceback (most recent call last):
+  File "/home/user/.local/lib/python3.12/site-packages/readability/readability.py", line 259, in summary
+    self._html(True)
+  File "/home/user/.local/lib/python3.12/site-packages/readability/readability.py", line 180, in _html
+    self.html = self._parse(self.input)
+                ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/.local/lib/python3.12/site-packages/readability/readability.py", line 199, in _parse
+    doc = html_cleaner.clean_html(doc)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/.local/lib/python3.12/site-packages/lxml_html_clean/clean.py", line 660, in clean_html
+    self(doc)
+  File "/home/user/.local/lib/python3.12/site-packages/lxml_html_clean/clean.py", line 458, in __call__
+    _kill.popleft().drop_tree()  # popleft to start with innermost elements
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/python3.12/lib/python3.12/site-packages/lxml/html/__init__.py", line 324, in drop_tree
+    parent.text = (parent.text or '') + self.tail
+    ^^^^^^^^^^^
+  File "src/lxml/etree.pyx", line 1169, in lxml.etree._Element.text.__set__
+  File "src/lxml/apihelpers.pxi", line 763, in lxml.etree._setNodeText
+  File "src/lxml/apihelpers.pxi", line 751, in lxml.etree._createTextNode
+  File "src/lxml/apihelpers.pxi", line 1547, in lxml.etree._utf8
+ValueError: All strings must be XML compatible: Unicode or ASCII, no NULL bytes or control characters
+[12:55:42] ✅ PASS | web_fetch[FastAPI] | 8594ms
+[12:55:47] ✅ PASS | web_fetch[GitHub MCP] | 5371ms
+[12:55:48] ✅ PASS | web_fetch[PyPI] | 508ms
+[12:56:18] ❌ FAIL | web_fetch[Wikipedia] | 30006ms | Error: Timeout (>30s)
+
+💾 Testing cache_stats / cache_clear...
+[12:56:18] ✅ PASS | cache_stats | 0ms
+[12:56:18] ✅ PASS | cache_clear | 5ms
+
+❤️ Testing search_health...
+[12:56:18] ✅ PASS | search_health | 0ms
+
+📋 Testing metadata_extract...
+[12:56:22] ✅ PASS | metadata_extract | 3826ms
+
+📰 Testing rss_parse...
+[12:56:22] ✅ PASS | rss_parse[https://github.com/wxs-lang/we...] | 751ms
+[12:56:25] ✅ PASS | rss_parse[https://hnrss.org/frontpage...] | 2729ms
+
+✨ Testing content_quality...
+[12:56:26] ✅ PASS | content_quality | 549ms
+
+🔗 Testing broken_links...
+[12:56:27] ✅ PASS | broken_links | 1141ms | Error: Found 87 links
+
+🕷️ Testing web_crawl...
+[12:56:28] ✅ PASS | web_crawl | 1583ms
+
+📝 Testing web_extract...
+[12:56:29] ✅ PASS | web_extract | 601ms
+
+────────────────────────────────────────────────────────────────────────────────
+📊 ITERATION 1 SUMMARY
+────────────────────────────────────────────────────────────────────────────────
+  Total: 23 | Passed: 22 | Failed: 1 | Skipped: 0 | Pass Rate: 95.7%
+  Elapsed: 61.0s
+  Memory: 39.9MB (peak: 46.2MB)
+
+⚠️  WARNING: 1 test failures detected!
+Recent errors:
+  - web_fetch[Wikipedia]: Timeout (>30s)
+
+💤 Sleeping 30s until next iteration...
+
+────────────────────────────────────────────────────────────────────────────────
+📋 TEST ITERATION 2 - 12:57:05
+────────────────────────────────────────────────────────────────────────────────
+
+🔍 Testing web_search...
+[12:57:05] ✅ PASS | web_search[python asyncio docum...] | 0ms
+[12:57:05] ✅ PASS | web_search[fastapi github repos...] | 0ms
+[12:57:05] ✅ PASS | web_search[postgresql tutorial...] | 0ms
+[12:57:05] ✅ PASS | web_search[docker best practice...] | 0ms
+[12:57:05] ✅ PASS | web_search[model context protoc...] | 0ms
+[12:57:05] ✅ PASS | web_search[latest technology ne...] | 0ms
+[12:57:05] ✅ PASS | web_search[open source AI tools...] | 0ms
+[12:57:05] ✅ PASS | web_search[web scraping best pr...] | 0ms
+
+🌐 Testing web_fetch...
+[12:57:07] ✅ PASS | web_fetch[Python Docs] | 1261ms
+[12:57:17] ✅ PASS | web_fetch[FastAPI] | 10084ms
+[12:57:18] ✅ PASS | web_fetch[GitHub MCP] | 1357ms
+[12:57:19] ✅ PASS | web_fetch[PyPI] | 485ms
+[12:57:49] ❌ FAIL | web_fetch[Wikipedia] | 30011ms | Error: Timeout (>30s)
+
+💾 Testing cache_stats / cache_clear...
+[12:57:49] ✅ PASS | cache_stats | 0ms
+[12:57:49] ✅ PASS | cache_clear | 4ms
+
+❤️ Testing search_health...
+[12:57:49] ✅ PASS | search_health | 0ms
+
+📋 Testing metadata_extract...
+[12:57:50] ✅ PASS | metadata_extract | 1543ms
+
+📰 Testing rss_parse...
+[12:57:53] ❌ FAIL | rss_parse[https://github.com/wxs-lang/we...] | 3064ms | Error: 
+[12:58:08] ❌ FAIL | rss_parse[https://hnrss.org/frontpage...] | 15079ms | Error: 
+
+✨ Testing content_quality...
+[12:58:09] ✅ PASS | content_quality | 699ms
+
+🔗 Testing broken_links...
+[12:58:09] ✅ PASS | broken_links | 322ms | Error: Found 87 links
+
+🕷️ Testing web_crawl...
+[12:58:11] ✅ PASS | web_crawl | 1541ms
+
+📝 Testing web_extract...
+[12:58:11] ✅ PASS | web_extract | 327ms
+
+────────────────────────────────────────────────────────────────────────────────
+📊 ITERATION 2 SUMMARY
+────────────────────────────────────────────────────────────────────────────────
+  Total: 46 | Passed: 42 | Failed: 4 | Skipped: 0 | Pass Rate: 91.3%
+  Elapsed: 163.3s
+  Memory: 45.0MB (peak: 46.9MB)
+
+================================================================================
+🏁 FINAL TEST SUMMARY
+================================================================================
+  Total: 46
+  Passed: 42
+  Failed: 4
+  Pass Rate: 91.3%
+  Elapsed: 163.3s
+================================================================================
+Traceback (most recent call last):
+  File "/sandboxdata/workspace/file/webscout-mcp/scripts/comprehensive_test.py", line 500, in <module>
+    asyncio.run(run_full_test_suite())
+  File "/opt/python3.12/lib/python3.12/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/opt/python3.12/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/python3.12/lib/python3.12/asyncio/base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/sandboxdata/workspace/file/webscout-mcp/scripts/comprehensive_test.py", line 467, in run_full_test_suite
+    json.dump(report, f, indent=2, ensure_ascii=False)
+  File "/opt/python3.12/lib/python3.12/json/__init__.py", line 179, in dump
+    for chunk in iterable:
+                 ^^^^^^^^
+  File "/opt/python3.12/lib/python3.12/json/encoder.py", line 432, in _iterencode
+    yield from _iterencode_dict(o, _current_indent_level)
+  File "/opt/python3.12/lib/python3.12/json/encoder.py", line 406, in _iterencode_dict
+    yield from chunks
+  File "/opt/python3.12/lib/python3.12/json/encoder.py", line 406, in _iterencode_dict
+    yield from chunks
+  File "/opt/python3.12/lib/python3.12/json/encoder.py", line 326, in _iterencode_list
+    yield from chunks
+  File "/opt/python3.12/lib/python3.12/json/encoder.py", line 326, in _iterencode_list
+    yield from chunks
+  File "/opt/python3.12/lib/python3.12/json/encoder.py", line 439, in _iterencode
+    o = _default(o)
+        ^^^^^^^^^^^
+  File "/opt/python3.12/lib/python3.12/json/encoder.py", line 180, in default
+    raise TypeError(f'Object of type {o.__class__.__name__} '
+TypeError: Object of type ConnectError is not JSON serializable

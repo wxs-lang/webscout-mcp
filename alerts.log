@@ -1,0 +1,146 @@
+[2026-09-06 23:01:22] [CRITICAL] 🚨 ALERT: CI workflow failed: tests (run: 34037142930)
+[2026-09-06 23:01:25] [WARNING] 🚨 ALERT: Process not running: comprehensive_test
+[2026-09-06 23:01:25] [WARNING] 🚨 ALERT: Errors found in comprehensive_test log: Traceback (most recent call last):
+[2026-09-06 23:01:25] [WARNING] 🚨 ALERT: Errors found in email_errors log: ⚠️  ERROR EMAIL DETECTED
+[2026-09-06 23:01:26] [WARNING] 🚨 ALERT: Errors found in alerts log: [2026-09-06 23:01:25] [WARNING] 🚨 ALERT: Errors found in comprehensive_test log:
+[2026-09-06 23:02:26] [CRITICAL] 🚨 ALERT: CI workflow failed: tests (run: 34037142930)
+[2026-09-06 23:02:30] [WARNING] 🚨 ALERT: Process not running: comprehensive_test
+[2026-09-06 23:02:30] [WARNING] 🚨 ALERT: Errors found in comprehensive_test log: Traceback (most recent call last):
+[2026-09-06 23:02:31] [WARNING] 🚨 ALERT: Errors found in email_errors log: ⚠️  ERROR EMAIL DETECTED
+[2026-09-06 23:02:31] [WARNING] 🚨 ALERT: Errors found in alerts log: [2026-09-06 23:01:25] [WARNING] 🚨 ALERT: Errors found in comprehensive_test log:
+[2026-09-06 23:03:32] [CRITICAL] 🚨 ALERT: CI workflow failed: tests (run: 34037142930)
+[2026-09-06 23:03:36] [WARNING] 🚨 ALERT: Process not running: comprehensive_test
+[2026-09-06 23:03:36] [WARNING] 🚨 ALERT: Errors found in comprehensive_test log: Traceback (most recent call last):
+[2026-09-06 23:03:36] [WARNING] 🚨 ALERT: Errors found in email_errors log: ⚠️  ERROR EMAIL DETECTED
+[2026-09-06 23:03:36] [WARNING] 🚨 ALERT: Errors found in alerts log: [2026-09-06 23:01:25] [WARNING] 🚨 ALERT: Errors found in email_errors log: ⚠️  E
+[2026-09-06 23:04:37] [CRITICAL] 🚨 ALERT: CI workflow failed: tests (run: 34037142930)
+[2026-09-06 23:04:42] [WARNING] 🚨 ALERT: Errors found in comprehensive_test log: Traceback (most recent call last):
+[2026-09-06 23:04:42] [WARNING] 🚨 ALERT: Errors found in email_monitor log: ⚠️  ERROR EMAIL DETECTED
+[2026-09-06 23:04:42] [WARNING] 🚨 ALERT: Errors found in email_errors log: ⚠️  ERROR EMAIL DETECTED
+[2026-09-06 23:04:42] [WARNING] 🚨 ALERT: Errors found in alerts log: [2026-09-06 23:03:36] [WARNING] 🚨 ALERT: Errors found in comprehensive_test log:
+[2026-09-06 23:05:43] [CRITICAL] 🚨 ALERT: CI workflow failed: tests (run: 34037142930)
+[2026-09-06 23:05:47] [WARNING] 🚨 ALERT: Errors found in email_errors log: ⚠️  ERROR EMAIL DETECTED
+[2026-09-06 23:05:47] [WARNING] 🚨 ALERT: Errors found in alerts log: [2026-09-06 23:03:36] [WARNING] 🚨 ALERT: Errors found in email_errors log: ⚠️  E
+[2026-09-06 23:06:48] [CRITICAL] 🚨 ALERT: CI workflow failed: tests (run: 34037142930)
+[2026-09-06 23:06:53] [WARNING] 🚨 ALERT: Errors found in comprehensive_test log: [23:05:53] ❌ FAIL | web_fetch[Wikipedia] | 30018ms | Error: Timeout (>30s)
+[2026-09-06 23:06:53] [WARNING] 🚨 ALERT: Errors found in email_errors log: ⚠️  ERROR EMAIL DETECTED
+[2026-09-06 23:06:53] [WARNING] 🚨 ALERT: Errors found in alerts log: [2026-09-06 23:04:42] [WARNING] 🚨 ALERT: Errors found in email_monitor log: ⚠️  
+[2026-09-06 23:07:54] [CRITICAL] 🚨 ALERT: CI workflow failed: tests (run: 34037142930)
+[2026-09-06 23:07:59] [WARNING] 🚨 ALERT: Errors found in comprehensive_test log: [23:07:10] ❌ FAIL | web_fetch[Wikipedia] | 30048ms | Error: Timeout (>30s)
+[2026-09-06 23:07:59] [WARNING] 🚨 ALERT: Errors found in email_monitor log: ⚠️  ERROR EMAIL DETECTED
+[2026-09-06 23:07:59] [WARNING] 🚨 ALERT: Errors found in email_errors log: ⚠️  ERROR EMAIL DETECTED
+[2026-09-06 23:07:59] [WARNING] 🚨 ALERT: Errors found in alerts log: [2026-09-06 23:06:53] [WARNING] 🚨 ALERT: Errors found in comprehensive_test log:
+[2026-09-06 23:09:00] [CRITICAL] 🚨 ALERT: CI workflow failed: tests (run: 34037142930)
+[2026-09-06 23:09:04] [WARNING] 🚨 ALERT: Errors found in comprehensive_test log: [23:08:23] ❌ FAIL | web_fetch[Wikipedia] | 30045ms | Error: Timeout (>30s)
+[2026-09-06 23:09:05] [WARNING] 🚨 ALERT: Errors found in email_monitor log: ⚠️  ERROR EMAIL DETECTED
+[2026-09-06 23:09:05] [WARNING] 🚨 ALERT: Errors found in email_errors log: ⚠️  ERROR EMAIL DETECTED
+[2026-09-06 23:09:05] [WARNING] 🚨 ALERT: Errors found in alerts log: [2026-09-06 23:07:59] [WARNING] 🚨 ALERT: Errors found in email_monitor log: ⚠️  
+[2026-09-06 23:10:06] [CRITICAL] 🚨 ALERT: CI workflow failed: tests (run: 34037142930)
+[2026-09-06 23:10:10] [WARNING] 🚨 ALERT: Errors found in comprehensive_test log: [23:09:54] ❌ FAIL | web_fetch[Wikipedia] | 30013ms | Error: Timeout (>30s)
+[2026-09-06 23:10:10] [WARNING] 🚨 ALERT: Errors found in email_monitor log: ⚠️  ERROR EMAIL DETECTED
+[2026-09-06 23:10:10] [WARNING] 🚨 ALERT: Errors found in email_errors log: ⚠️  ERROR EMAIL DETECTED
+[2026-09-06 23:10:10] [WARNING] 🚨 ALERT: Errors found in alerts log: [2026-09-06 23:09:05] [WARNING] 🚨 ALERT: Errors found in email_monitor log: ⚠️  
+[2026-09-06 23:11:11] [CRITICAL] 🚨 ALERT: CI workflow failed: tests (run: 34037142930)
+[2026-09-06 23:11:15] [WARNING] 🚨 ALERT: Errors found in comprehensive_test log: [23:09:54] ❌ FAIL | web_fetch[Wikipedia] | 30013ms | Error: Timeout (>30s)
+[2026-09-06 23:11:15] [WARNING] 🚨 ALERT: Errors found in email_monitor log: ⚠️  ERROR EMAIL DETECTED
+[2026-09-06 23:11:15] [WARNING] 🚨 ALERT: Errors found in email_errors log: ⚠️  ERROR EMAIL DETECTED
+[2026-09-06 23:11:15] [WARNING] 🚨 ALERT: Errors found in alerts log: [2026-09-06 23:10:10] [WARNING] 🚨 ALERT: Errors found in email_monitor log: ⚠️  
+[2026-09-06 23:12:16] [CRITICAL] 🚨 ALERT: CI workflow failed: tests (run: 34037142930)
+[2026-09-06 23:12:21] [WARNING] 🚨 ALERT: Errors found in comprehensive_test log: [23:11:10] ❌ FAIL | web_fetch[Wikipedia] | 30046ms | Error: Timeout (>30s)
+[2026-09-06 23:12:21] [WARNING] 🚨 ALERT: Errors found in email_monitor log: ⚠️  ERROR EMAIL DETECTED
+[2026-09-06 23:12:21] [WARNING] 🚨 ALERT: Errors found in email_errors log: ⚠️  ERROR EMAIL DETECTED
+[2026-09-06 23:12:21] [WARNING] 🚨 ALERT: Errors found in alerts log: [2026-09-06 23:11:15] [WARNING] 🚨 ALERT: Errors found in email_monitor log: ⚠️  
+[2026-09-06 23:13:22] [CRITICAL] 🚨 ALERT: CI workflow failed: tests (run: 34037142930)
+[2026-09-06 23:13:26] [WARNING] 🚨 ALERT: Process not running: comprehensive_test
+[2026-09-06 23:13:26] [WARNING] 🚨 ALERT: Errors found in comprehensive_test log: [23:12:21] ❌ FAIL | web_fetch[Wikipedia] | 30017ms | Error: Timeout (>30s)
+[2026-09-06 23:13:26] [WARNING] 🚨 ALERT: Errors found in email_monitor log: ⚠️  ERROR EMAIL DETECTED
+[2026-09-06 23:13:26] [WARNING] 🚨 ALERT: Errors found in email_errors log: ⚠️  ERROR EMAIL DETECTED
+[2026-09-06 23:13:26] [WARNING] 🚨 ALERT: Errors found in alerts log: [2026-09-06 23:12:21] [WARNING] 🚨 ALERT: Errors found in email_monitor log: ⚠️  
+[2026-09-06 23:14:27] [CRITICAL] 🚨 ALERT: CI workflow failed: tests (run: 34037142930)
+[2026-09-06 23:14:31] [WARNING] 🚨 ALERT: Process not running: comprehensive_test
+[2026-09-06 23:14:32] [WARNING] 🚨 ALERT: Errors found in comprehensive_test log: [23:12:21] ❌ FAIL | web_fetch[Wikipedia] | 30017ms | Error: Timeout (>30s)
+[2026-09-06 23:14:32] [WARNING] 🚨 ALERT: Errors found in email_monitor log: ⚠️  ERROR EMAIL DETECTED
+[2026-09-06 23:14:32] [WARNING] 🚨 ALERT: Errors found in email_errors log: ⚠️  ERROR EMAIL DETECTED
+[2026-09-06 23:14:32] [WARNING] 🚨 ALERT: Errors found in alerts log: [2026-09-06 23:13:26] [WARNING] 🚨 ALERT: Errors found in email_monitor log: ⚠️  
+[2026-09-07 12:54:22] [CRITICAL] 🚨 ALERT: CI workflow failed: tests (run: 34037142930)
+[2026-09-07 12:54:25] [CRITICAL] 🚨 ALERT: CI workflow failed: live-tests (run: 34082446925)
+[2026-09-07 12:54:26] [WARNING] 🚨 ALERT: Errors found in comprehensive_test log: Traceback (most recent call last):
+[2026-09-07 12:54:26] [WARNING] 🚨 ALERT: Errors found in email_errors log: ⚠️  ERROR EMAIL DETECTED
+[2026-09-07 12:54:27] [WARNING] 🚨 ALERT: Errors found in alerts log: [2026-09-06 23:14:32] [WARNING] 🚨 ALERT: Errors found in comprehensive_test log:
+[2026-09-07 12:55:28] [CRITICAL] 🚨 ALERT: CI workflow failed: tests (run: 34037142930)
+[2026-09-07 12:55:30] [CRITICAL] 🚨 ALERT: CI workflow failed: live-tests (run: 34082446925)
+[2026-09-07 12:55:32] [CRITICAL] 🚨 ALERT: CI workflow failed: tests (run: 34037142930)
+[2026-09-07 12:55:34] [WARNING] 🚨 ALERT: Errors found in email_errors log: ⚠️  ERROR EMAIL DETECTED
+[2026-09-07 12:55:34] [WARNING] 🚨 ALERT: Errors found in alerts log: [2026-09-06 23:14:32] [WARNING] 🚨 ALERT: Errors found in email_monitor log: ⚠️  
+[2026-09-07 12:55:36] [CRITICAL] 🚨 ALERT: CI workflow failed: live-tests (run: 34082446925)
+[2026-09-07 12:55:38] [WARNING] 🚨 ALERT: Errors found in email_errors log: ⚠️  ERROR EMAIL DETECTED
+[2026-09-07 12:55:38] [WARNING] 🚨 ALERT: Errors found in alerts log: [2026-09-06 23:14:32] [WARNING] 🚨 ALERT: Errors found in email_errors log: ⚠️  E
+[2026-09-07 12:56:36] [CRITICAL] 🚨 ALERT: CI workflow failed: tests (run: 34037142930)
+[2026-09-07 12:56:45] [CRITICAL] 🚨 ALERT: CI workflow failed: live-tests (run: 34082446925)
+[2026-09-07 12:56:45] [CRITICAL] 🚨 ALERT: CI workflow failed: tests (run: 34037142930)
+[2026-09-07 12:56:52] [WARNING] 🚨 ALERT: Errors found in comprehensive_test log: Traceback (most recent call last):
+[2026-09-07 12:56:53] [CRITICAL] 🚨 ALERT: CI workflow failed: live-tests (run: 34082446925)
+[2026-09-07 12:56:55] [WARNING] 🚨 ALERT: Errors found in email_errors log: ⚠️  ERROR EMAIL DETECTED
+[2026-09-07 12:56:56] [WARNING] 🚨 ALERT: Errors found in alerts log: [2026-09-07 12:54:26] [WARNING] 🚨 ALERT: Errors found in email_errors log: ⚠️  E
+[2026-09-07 12:57:03] [WARNING] 🚨 ALERT: Process not running: email_monitor
+[2026-09-07 12:57:15] [WARNING] 🚨 ALERT: Errors found in comprehensive_test log: Traceback (most recent call last):
+[2026-09-07 12:57:15] [WARNING] 🚨 ALERT: Errors found in email_errors log: ⚠️  ERROR EMAIL DETECTED
+[2026-09-07 12:57:24] [WARNING] 🚨 ALERT: Errors found in alerts log: [2026-09-07 12:55:38] [WARNING] 🚨 ALERT: Errors found in email_errors log: ⚠️  E
+[2026-09-07 12:57:37] [CRITICAL] 🚨 ALERT: CI workflow failed: tests (run: 34037142930)
+[2026-09-07 12:57:39] [CRITICAL] 🚨 ALERT: CI workflow failed: live-tests (run: 34082446925)
+[2026-09-07 12:57:41] [WARNING] 🚨 ALERT: Errors found in email_monitor log: ⚠️  ERROR EMAIL DETECTED
+[2026-09-07 12:57:41] [WARNING] 🚨 ALERT: Errors found in email_errors log: ⚠️  ERROR EMAIL DETECTED
+[2026-09-07 12:57:41] [WARNING] 🚨 ALERT: Errors found in alerts log: [2026-09-07 12:56:55] [WARNING] 🚨 ALERT: Errors found in email_errors log: ⚠️  E
+[2026-09-07 12:58:03] [CRITICAL] 🚨 ALERT: CI workflow failed: tests (run: 34037142930)
+[2026-09-07 12:58:06] [CRITICAL] 🚨 ALERT: CI workflow failed: live-tests (run: 34082446925)
+[2026-09-07 12:58:07] [WARNING] 🚨 ALERT: Errors found in comprehensive_test log: Traceback (most recent call last):
+[2026-09-07 12:58:07] [WARNING] 🚨 ALERT: Errors found in email_monitor log: ⚠️  ERROR EMAIL DETECTED
+[2026-09-07 12:58:07] [WARNING] 🚨 ALERT: Errors found in email_errors log: ⚠️  ERROR EMAIL DETECTED
+[2026-09-07 12:58:08] [WARNING] 🚨 ALERT: Errors found in alerts log: [2026-09-07 12:57:41] [WARNING] 🚨 ALERT: Errors found in email_monitor log: ⚠️  
+[2026-09-07 12:58:25] [CRITICAL] 🚨 ALERT: CI workflow failed: tests (run: 34037142930)
+[2026-09-07 12:58:28] [CRITICAL] 🚨 ALERT: CI workflow failed: live-tests (run: 34082446925)
+[2026-09-07 12:58:29] [WARNING] 🚨 ALERT: Process not running: comprehensive_test
+[2026-09-07 12:58:29] [WARNING] 🚨 ALERT: Errors found in comprehensive_test log: [12:57:49] ❌ FAIL | web_fetch[Wikipedia] | 30011ms | Error: Timeout (>30s)
+[2026-09-07 12:58:29] [WARNING] 🚨 ALERT: Errors found in email_monitor log: ⚠️  ERROR EMAIL DETECTED
+[2026-09-07 12:58:29] [WARNING] 🚨 ALERT: Errors found in email_errors log: ⚠️  ERROR EMAIL DETECTED
+[2026-09-07 12:58:30] [WARNING] 🚨 ALERT: Errors found in alerts log: [2026-09-07 12:58:07] [WARNING] 🚨 ALERT: Errors found in email_monitor log: ⚠️  
+[2026-09-07 12:58:42] [CRITICAL] 🚨 ALERT: CI workflow failed: tests (run: 34037142930)
+[2026-09-07 12:58:45] [CRITICAL] 🚨 ALERT: CI workflow failed: live-tests (run: 34082446925)
+[2026-09-07 12:58:46] [WARNING] 🚨 ALERT: Process not running: comprehensive_test
+[2026-09-07 12:58:47] [WARNING] 🚨 ALERT: Errors found in comprehensive_test log: [12:57:49] ❌ FAIL | web_fetch[Wikipedia] | 30011ms | Error: Timeout (>30s)
+[2026-09-07 12:58:47] [WARNING] 🚨 ALERT: Errors found in email_errors log: ⚠️  ERROR EMAIL DETECTED
+[2026-09-07 12:58:48] [WARNING] 🚨 ALERT: Errors found in alerts log: [2026-09-07 12:58:29] [WARNING] 🚨 ALERT: Errors found in comprehensive_test log:
+[2026-09-07 12:59:08] [CRITICAL] 🚨 ALERT: CI workflow failed: tests (run: 34037142930)
+[2026-09-07 12:59:11] [CRITICAL] 🚨 ALERT: CI workflow failed: live-tests (run: 34082446925)
+[2026-09-07 12:59:12] [WARNING] 🚨 ALERT: Process not running: comprehensive_test
+[2026-09-07 12:59:12] [WARNING] 🚨 ALERT: Errors found in comprehensive_test log: [12:57:49] ❌ FAIL | web_fetch[Wikipedia] | 30011ms | Error: Timeout (>30s)
+[2026-09-07 12:59:12] [WARNING] 🚨 ALERT: Errors found in email_monitor log: ⚠️  ERROR EMAIL DETECTED
+[2026-09-07 12:59:12] [WARNING] 🚨 ALERT: Errors found in email_errors log: ⚠️  ERROR EMAIL DETECTED
+[2026-09-07 12:59:13] [WARNING] 🚨 ALERT: Errors found in alerts log: [2026-09-07 12:58:47] [WARNING] 🚨 ALERT: Errors found in comprehensive_test log:
+[2026-09-07 12:59:28] [CRITICAL] 🚨 ALERT: CI workflow failed: tests (run: 34037142930)
+[2026-09-07 12:59:31] [CRITICAL] 🚨 ALERT: CI workflow failed: live-tests (run: 34082446925)
+[2026-09-07 12:59:33] [WARNING] 🚨 ALERT: Process not running: comprehensive_test
+[2026-09-07 12:59:33] [WARNING] 🚨 ALERT: Errors found in comprehensive_test log: [12:57:49] ❌ FAIL | web_fetch[Wikipedia] | 30011ms | Error: Timeout (>30s)
+[2026-09-07 12:59:33] [WARNING] 🚨 ALERT: Errors found in email_errors log: ⚠️  ERROR EMAIL DETECTED
+[2026-09-07 12:59:33] [WARNING] 🚨 ALERT: Errors found in alerts log: [2026-09-07 12:59:12] [WARNING] 🚨 ALERT: Errors found in comprehensive_test log:
+[2026-09-07 13:00:34] [CRITICAL] 🚨 ALERT: CI workflow failed: tests (run: 34037142930)
+[2026-09-07 13:00:36] [CRITICAL] 🚨 ALERT: CI workflow failed: live-tests (run: 34082446925)
+[2026-09-07 13:00:38] [WARNING] 🚨 ALERT: Process not running: comprehensive_test
+[2026-09-07 13:00:38] [WARNING] 🚨 ALERT: Errors found in stability_test log: Traceback (most recent call last):
+[2026-09-07 13:00:38] [WARNING] 🚨 ALERT: Errors found in comprehensive_test log: [12:57:49] ❌ FAIL | web_fetch[Wikipedia] | 30011ms | Error: Timeout (>30s)
+[2026-09-07 13:00:38] [WARNING] 🚨 ALERT: Errors found in email_errors log: ⚠️  ERROR EMAIL DETECTED
+[2026-09-07 13:00:38] [WARNING] 🚨 ALERT: Errors found in alerts log: [2026-09-07 12:59:33] [WARNING] 🚨 ALERT: Errors found in comprehensive_test log:
+[2026-09-07 13:01:39] [CRITICAL] 🚨 ALERT: CI workflow failed: tests (run: 34037142930)
+[2026-09-07 13:01:42] [CRITICAL] 🚨 ALERT: CI workflow failed: live-tests (run: 34082446925)
+[2026-09-07 13:01:43] [WARNING] 🚨 ALERT: Process not running: comprehensive_test
+[2026-09-07 13:01:44] [WARNING] 🚨 ALERT: Errors found in stability_test log: Traceback (most recent call last):
+[2026-09-07 13:01:44] [WARNING] 🚨 ALERT: Errors found in comprehensive_test log: [12:57:49] ❌ FAIL | web_fetch[Wikipedia] | 30011ms | Error: Timeout (>30s)
+[2026-09-07 13:01:44] [WARNING] 🚨 ALERT: Errors found in email_errors log: ⚠️  ERROR EMAIL DETECTED
+[2026-09-07 13:01:44] [WARNING] 🚨 ALERT: Errors found in alerts log: [2026-09-07 13:00:38] [WARNING] 🚨 ALERT: Errors found in comprehensive_test log:
+[2026-09-07 13:02:45] [CRITICAL] 🚨 ALERT: CI workflow failed: tests (run: 34037142930)
+[2026-09-07 13:02:47] [CRITICAL] 🚨 ALERT: CI workflow failed: live-tests (run: 34082446925)
+[2026-09-07 13:02:50] [WARNING] 🚨 ALERT: Process not running: comprehensive_test
+[2026-09-07 13:02:50] [WARNING] 🚨 ALERT: Errors found in stability_test log: Traceback (most recent call last):
+[2026-09-07 13:02:50] [WARNING] 🚨 ALERT: Errors found in comprehensive_test log: [12:57:49] ❌ FAIL | web_fetch[Wikipedia] | 30011ms | Error: Timeout (>30s)
+[2026-09-07 13:02:50] [WARNING] 🚨 ALERT: Errors found in email_errors log: ⚠️  ERROR EMAIL DETECTED
+[2026-09-07 13:02:50] [WARNING] 🚨 ALERT: Errors found in alerts log: [2026-09-07 13:01:44] [WARNING] 🚨 ALERT: Errors found in comprehensive_test log:

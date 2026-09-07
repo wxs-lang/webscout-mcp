@@ -49,3 +49,13 @@ Thumbs.db
 *.sqlite3
 .webscout_cache/
 venv311/
+
+# Monitor logs
+*.log
+email_errors.log
+alerts.log
+monitoring_report.json
+comprehensive_test_report.json
+stability_final.json
+.webscout_cache.db
+

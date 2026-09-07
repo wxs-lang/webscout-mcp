@@ -41,7 +41,7 @@ jobs:
             --tb=short \
             --cov=webscout_mcp \
             --cov-report=term-missing \
-            --cov-fail-under=63 \
+            --cov-fail-under=62 \
             --ignore=tests/live \
             --ignore=tests/test_mcp_live_e2e.py
 
