@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-09-07T13:15:55.084910",
+  "timestamp": "2026-09-08T10:59:04.604756",
   "ci_status": {
     "tests": {
       "status": "completed",
@@ -30,32 +30,29 @@
     "stability_test": {
       "running": true,
       "pids": [
-        "1516",
-        "1517"
+        "1953"
       ]
     },
     "comprehensive_test": {
       "running": true,
       "pids": [
-        "2416"
+        "2240",
+        "2243"
       ]
     },
     "email_monitor": {
       "running": true,
       "pids": [
-        "1573",
-        "1614",
-        "1615",
-        "1619"
+        "1957"
       ]
     }
   },
   "log_status": {
     "stability_test": {
-      "has_errors": true
+      "has_errors": false
     },
     "comprehensive_test": {
-      "has_errors": true
+      "has_errors": false
     },
     "email_monitor": {
       "has_errors": false
@@ -68,11 +65,11 @@
     }
   },
   "system_status": {
-    "memory_used_mb": 881.4,
+    "memory_used_mb": 747.6,
     "memory_total_mb": 4033.6,
-    "memory_percent": 21.9,
-    "disk_used": "192M",
+    "memory_percent": 18.5,
+    "disk_used": "66M",
     "disk_total": "9.8G",
-    "disk_percent": "2%"
+    "disk_percent": "1%"
   }
 }

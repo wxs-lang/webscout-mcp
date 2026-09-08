@@ -19,10 +19,15 @@ Run frequency: every 30 seconds (configurable)
 
 import asyncio
 import json
+import os
+import sys
 import time
 import tracemalloc
 from datetime import datetime
 from pathlib import Path
+
+# Add project root to sys.path for module imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from webscout_mcp.cache import Cache
 

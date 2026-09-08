@@ -1,128 +1,128 @@
 {
-  "iteration": 3,
-  "timestamp": "2026-09-07T13:15:03.986702",
+  "iteration": 9,
+  "timestamp": "2026-09-08T10:59:18.036073",
   "summary": {
-    "elapsed_seconds": 202.5,
-    "total_tests": 69,
-    "passed": 65,
-    "failed": 4,
+    "elapsed_seconds": 623.3,
+    "total_tests": 207,
+    "passed": 198,
+    "failed": 9,
     "skipped": 0,
-    "pass_rate": 94.2,
+    "pass_rate": 95.7,
     "latency_stats": {
-      "web_search[fastapi github repos...]": {
-        "p50_ms": 0.0,
-        "p95_ms": 535.2,
-        "count": 3
-      },
-      "web_search[python asyncio docum...]": {
-        "p50_ms": 0.1,
-        "p95_ms": 796.2,
-        "count": 3
-      },
-      "web_search[model context protoc...]": {
-        "p50_ms": 0.0,
-        "p95_ms": 587.8,
-        "count": 3
-      },
       "web_search[docker best practice...]": {
         "p50_ms": 0.0,
-        "p95_ms": 657.6,
-        "count": 3
+        "p95_ms": 15710.3,
+        "count": 9
       },
       "web_search[open source AI tools...]": {
         "p50_ms": 0.0,
-        "p95_ms": 658.6,
-        "count": 3
+        "p95_ms": 15779.3,
+        "count": 9
+      },
+      "web_search[fastapi github repos...]": {
+        "p50_ms": 0.0,
+        "p95_ms": 15832.7,
+        "count": 9
       },
       "web_search[latest technology ne...]": {
         "p50_ms": 0.0,
-        "p95_ms": 678.8,
-        "count": 3
-      },
-      "web_search[web scraping best pr...]": {
-        "p50_ms": 0.0,
-        "p95_ms": 708.6,
-        "count": 3
+        "p95_ms": 15760.9,
+        "count": 9
       },
       "web_search[postgresql tutorial...]": {
         "p50_ms": 0.0,
-        "p95_ms": 719.2,
-        "count": 3
+        "p95_ms": 15845.1,
+        "count": 9
+      },
+      "web_search[python asyncio docum...]": {
+        "p50_ms": 0.1,
+        "p95_ms": 15676.4,
+        "count": 9
+      },
+      "web_search[model context protoc...]": {
+        "p50_ms": 0.0,
+        "p95_ms": 15820.6,
+        "count": 9
+      },
+      "web_search[web scraping best pr...]": {
+        "p50_ms": 0.0,
+        "p95_ms": 15803.8,
+        "count": 9
       },
       "web_fetch[Python Docs]": {
-        "p50_ms": 2340.2,
-        "p95_ms": 3687.6,
-        "count": 3
+        "p50_ms": 1032.5,
+        "p95_ms": 1193.8,
+        "count": 9
       },
       "web_fetch[FastAPI]": {
-        "p50_ms": 2985.6,
-        "p95_ms": 5175.6,
-        "count": 3
+        "p50_ms": 1102.6,
+        "p95_ms": 1164.1,
+        "count": 9
       },
       "web_fetch[GitHub MCP]": {
-        "p50_ms": 1359.9,
-        "p95_ms": 1867.7,
-        "count": 3
+        "p50_ms": 1170.8,
+        "p95_ms": 1399.7,
+        "count": 9
       },
       "web_fetch[PyPI]": {
-        "p50_ms": 494.5,
-        "p95_ms": 562.7,
-        "count": 3
+        "p50_ms": 501.1,
+        "p95_ms": 605.1,
+        "count": 9
       },
       "web_fetch[Wikipedia]": {
-        "p50_ms": 30017.5,
-        "p95_ms": 30048.1,
-        "count": 3
+        "p50_ms": 30029.3,
+        "p95_ms": 30077.5,
+        "count": 9
       },
       "cache_stats": {
         "p50_ms": 0.0,
         "p95_ms": 0.0,
-        "count": 3
+        "count": 9
       },
       "cache_clear": {
-        "p50_ms": 3.8,
-        "p95_ms": 4.1,
-        "count": 3
+        "p50_ms": 1.8,
+        "p95_ms": 5.6,
+        "count": 9
       },
       "search_health": {
-        "p50_ms": 0.2,
-        "p95_ms": 0.2,
-        "count": 3
+        "p50_ms": 0.3,
+        "p95_ms": 0.4,
+        "count": 9
       },
       "metadata_extract": {
-        "p50_ms": 1523.7,
-        "p95_ms": 2081.6,
-        "count": 3
+        "p50_ms": 1019.7,
+        "p95_ms": 1229.8,
+        "count": 9
       },
       "rss_parse[https://github.com/wxs-lang/we...]": {
-        "p50_ms": 1014.5,
-        "p95_ms": 3057.9,
-        "count": 3
+        "p50_ms": 939.9,
+        "p95_ms": 965.3,
+        "count": 9
       },
       "rss_parse[https://hnrss.org/frontpage...]": {
-        "p50_ms": 1346.5,
-        "p95_ms": 1923.8,
-        "count": 3
+        "p50_ms": 1786.4,
+        "p95_ms": 5497.4,
+        "count": 9
       },
       "content_quality": {
-        "p50_ms": 307.7,
-        "p95_ms": 323.0,
-        "count": 3
+        "p50_ms": 280.8,
+        "p95_ms": 751.7,
+        "count": 9
       },
       "broken_links": {
-        "p50_ms": 311.6,
-        "p95_ms": 319.9,
-        "count": 3
+        "p50_ms": 284.2,
+        "p95_ms": 315.4,
+        "count": 9
       },
       "web_crawl": {
-        "p50_ms": 2283.8,
-        "p95_ms": 4101.7,
-        "count": 3
+        "p50_ms": 1045.1,
+        "p95_ms": 2396.6,
+        "count": 9
       },
       "web_extract": {
-        "p50_ms": 490.0,
-        "p95_ms": 2189.4,
-        "count": 3
+        "p50_ms": 258.8,
+        "p95_ms": 698.0,
+        "count": 9
       }
     },
     "recent_errors": [
@@ -139,5 +139,381 @@
         "Timeout (>30s)"
       ],
       [
-        "rss_parse[https://github.com/wxs-lang/we...]",
-        
+        "web_fetch[Wikipedia]",
+        "Timeout (>30s)"
+      ],
+      [
+        "web_fetch[Wikipedia]",
+        "Timeout (>30s)"
+      ],
+      [
+        "web_fetch[Wikipedia]",
+        "Timeout (>30s)"
+      ],
+      [
+        "web_fetch[Wikipedia]",
+        "Timeout (>30s)"
+      ],
+      [
+        "web_fetch[Wikipedia]",
+        "Timeout (>30s)"
+      ],
+      [
+        "web_fetch[Wikipedia]",
+        "Timeout (>30s)"
+      ]
+    ]
+  },
+  "recent_tests": [
+    {
+      "timestamp": "10:56:56",
+      "test": "content_quality",
+      "status": "pass",
+      "latency_ms": 344.26212310791016,
+      "error": null
+    },
+    {
+      "timestamp": "10:56:56",
+      "test": "broken_links",
+      "status": "pass",
+      "latency_ms": 262.09092140197754,
+      "error": "Found 110 links"
+    },
+    {
+      "timestamp": "10:56:57",
+      "test": "web_crawl",
+      "status": "pass",
+      "latency_ms": 820.9958076477051,
+      "error": null
+    },
+    {
+      "timestamp": "10:56:57",
+      "test": "web_extract",
+      "status": "pass",
+      "latency_ms": 258.79669189453125,
+      "error": null
+    },
+    {
+      "timestamp": "10:57:27",
+      "test": "web_search[python asyncio docum...]",
+      "status": "pass",
+      "latency_ms": 0.1087188720703125,
+      "error": null
+    },
+    {
+      "timestamp": "10:57:27",
+      "test": "web_search[fastapi github repos...]",
+      "status": "pass",
+      "latency_ms": 0.0400543212890625,
+      "error": null
+    },
+    {
+      "timestamp": "10:57:27",
+      "test": "web_search[postgresql tutorial...]",
+      "status": "pass",
+      "latency_ms": 0.025987625122070312,
+      "error": null
+    },
+    {
+      "timestamp": "10:57:27",
+      "test": "web_search[docker best practice...]",
+      "status": "pass",
+      "latency_ms": 0.02384185791015625,
+      "error": null
+    },
+    {
+      "timestamp": "10:57:27",
+      "test": "web_search[model context protoc...]",
+      "status": "pass",
+      "latency_ms": 0.08249282836914062,
+      "error": null
+    },
+    {
+      "timestamp": "10:57:27",
+      "test": "web_search[latest technology ne...]",
+      "status": "pass",
+      "latency_ms": 0.034809112548828125,
+      "error": null
+    },
+    {
+      "timestamp": "10:57:27",
+      "test": "web_search[open source AI tools...]",
+      "status": "pass",
+      "latency_ms": 0.024080276489257812,
+      "error": null
+    },
+    {
+      "timestamp": "10:57:27",
+      "test": "web_search[web scraping best pr...]",
+      "status": "pass",
+      "latency_ms": 0.033855438232421875,
+      "error": null
+    },
+    {
+      "timestamp": "10:57:28",
+      "test": "web_fetch[Python Docs]",
+      "status": "pass",
+      "latency_ms": 1064.6374225616455,
+      "error": null
+    },
+    {
+      "timestamp": "10:57:29",
+      "test": "web_fetch[FastAPI]",
+      "status": "pass",
+      "latency_ms": 1083.8651657104492,
+      "error": null
+    },
+    {
+      "timestamp": "10:57:30",
+      "test": "web_fetch[GitHub MCP]",
+      "status": "pass",
+      "latency_ms": 1226.2301445007324,
+      "error": null
+    },
+    {
+      "timestamp": "10:57:31",
+      "test": "web_fetch[PyPI]",
+      "status": "pass",
+      "latency_ms": 570.5320835113525,
+      "error": null
+    },
+    {
+      "timestamp": "10:58:01",
+      "test": "web_fetch[Wikipedia]",
+      "status": "fail",
+      "latency_ms": 30029.293537139893,
+      "error": "Timeout (>30s)"
+    },
+    {
+      "timestamp": "10:58:01",
+      "test": "cache_stats",
+      "status": "pass",
+      "latency_ms": 0.003337860107421875,
+      "error": null
+    },
+    {
+      "timestamp": "10:58:01",
+      "test": "cache_clear",
+      "status": "pass",
+      "latency_ms": 1.7447471618652344,
+      "error": null
+    },
+    {
+      "timestamp": "10:58:01",
+      "test": "search_health",
+      "status": "pass",
+      "latency_ms": 0.33593177795410156,
+      "error": null
+    },
+    {
+      "timestamp": "10:58:02",
+      "test": "metadata_extract",
+      "status": "pass",
+      "latency_ms": 1033.5471630096436,
+      "error": null
+    },
+    {
+      "timestamp": "10:58:03",
+      "test": "rss_parse[https://github.com/wxs-lang/we...]",
+      "status": "pass",
+      "latency_ms": 894.4149017333984,
+      "error": null
+    },
+    {
+      "timestamp": "10:58:05",
+      "test": "rss_parse[https://hnrss.org/frontpage...]",
+      "status": "pass",
+      "latency_ms": 1691.7014122009277,
+      "error": null
+    },
+    {
+      "timestamp": "10:58:05",
+      "test": "content_quality",
+      "status": "pass",
+      "latency_ms": 273.7407684326172,
+      "error": null
+    },
+    {
+      "timestamp": "10:58:05",
+      "test": "broken_links",
+      "status": "pass",
+      "latency_ms": 270.0009346008301,
+      "error": "Found 110 links"
+    },
+    {
+      "timestamp": "10:58:06",
+      "test": "web_crawl",
+      "status": "pass",
+      "latency_ms": 1012.8786563873291,
+      "error": null
+    },
+    {
+      "timestamp": "10:58:07",
+      "test": "web_extract",
+      "status": "pass",
+      "latency_ms": 523.8873958587646,
+      "error": null
+    },
+    {
+      "timestamp": "10:58:37",
+      "test": "web_search[python asyncio docum...]",
+      "status": "pass",
+      "latency_ms": 0.09942054748535156,
+      "error": null
+    },
+    {
+      "timestamp": "10:58:37",
+      "test": "web_search[fastapi github repos...]",
+      "status": "pass",
+      "latency_ms": 0.03552436828613281,
+      "error": null
+    },
+    {
+      "timestamp": "10:58:37",
+      "test": "web_search[postgresql tutorial...]",
+      "status": "pass",
+      "latency_ms": 0.03409385681152344,
+      "error": null
+    },
+    {
+      "timestamp": "10:58:37",
+      "test": "web_search[docker best practice...]",
+      "status": "pass",
+      "latency_ms": 0.024080276489257812,
+      "error": null
+    },
+    {
+      "timestamp": "10:58:37",
+      "test": "web_search[model context protoc...]",
+      "status": "pass",
+      "latency_ms": 0.023365020751953125,
+      "error": null
+    },
+    {
+      "timestamp": "10:58:37",
+      "test": "web_search[latest technology ne...]",
+      "status": "pass",
+      "latency_ms": 0.024080276489257812,
+      "error": null
+    },
+    {
+      "timestamp": "10:58:37",
+      "test": "web_search[open source AI tools...]",
+      "status": "pass",
+      "latency_ms": 0.02193450927734375,
+      "error": null
+    },
+    {
+      "timestamp": "10:58:37",
+      "test": "web_search[web scraping best pr...]",
+      "status": "pass",
+      "latency_ms": 0.020503997802734375,
+      "error": null
+    },
+    {
+      "timestamp": "10:58:38",
+      "test": "web_fetch[Python Docs]",
+      "status": "pass",
+      "latency_ms": 974.2374420166016,
+      "error": null
+    },
+    {
+      "timestamp": "10:58:39",
+      "test": "web_fetch[FastAPI]",
+      "status": "pass",
+      "latency_ms": 1161.2188816070557,
+      "error": null
+    },
+    {
+      "timestamp": "10:58:40",
+      "test": "web_fetch[GitHub MCP]",
+      "status": "pass",
+      "latency_ms": 1017.9524421691895,
+      "error": null
+    },
+    {
+      "timestamp": "10:58:41",
+      "test": "web_fetch[PyPI]",
+      "status": "pass",
+      "latency_ms": 496.9756603240967,
+      "error": null
+    },
+    {
+      "timestamp": "10:59:11",
+      "test": "web_fetch[Wikipedia]",
+      "status": "fail",
+      "latency_ms": 30035.80904006958,
+      "error": "Timeout (>30s)"
+    },
+    {
+      "timestamp": "10:59:11",
+      "test": "cache_stats",
+      "status": "pass",
+      "latency_ms": 0.003814697265625,
+      "error": null
+    },
+    {
+      "timestamp": "10:59:11",
+      "test": "cache_clear",
+      "status": "pass",
+      "latency_ms": 1.5139579772949219,
+      "error": null
+    },
+    {
+      "timestamp": "10:59:11",
+      "test": "search_health",
+      "status": "pass",
+      "latency_ms": 0.34427642822265625,
+      "error": null
+    },
+    {
+      "timestamp": "10:59:12",
+      "test": "metadata_extract",
+      "status": "pass",
+      "latency_ms": 983.4089279174805,
+      "error": null
+    },
+    {
+      "timestamp": "10:59:12",
+      "test": "rss_parse[https://github.com/wxs-lang/we...]",
+      "status": "pass",
+      "latency_ms": 897.515058517456,
+      "error": null
+    },
+    {
+      "timestamp": "10:59:14",
+      "test": "rss_parse[https://hnrss.org/frontpage...]",
+      "status": "pass",
+      "latency_ms": 1819.0093040466309,
+      "error": null
+    },
+    {
+      "timestamp": "10:59:15",
+      "test": "content_quality",
+      "status": "pass",
+      "latency_ms": 265.52844047546387,
+      "error": null
+    },
+    {
+      "timestamp": "10:59:15",
+      "test": "broken_links",
+      "status": "pass",
+      "latency_ms": 305.00197410583496,
+      "error": "Found 110 links"
+    },
+    {
+      "timestamp": "10:59:17",
+      "test": "web_crawl",
+      "status": "pass",
+      "latency_ms": 2396.634340286255,
+      "error": null
+    },
+    {
+      "timestamp": "10:59:18",
+      "test": "web_extract",
+      "status": "pass",
+      "latency_ms": 258.79430770874023,
+      "error": null
+    }
+  ]
+}
