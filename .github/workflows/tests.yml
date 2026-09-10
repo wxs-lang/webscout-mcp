@@ -252,7 +252,7 @@ jobs:
             2>&1 | tee coverage_output.txt
           exit ${PIPESTATUS[0]}
 
-      - name: Check minimum coverage (ratchet: can only stay same or go up)
+      - name: "Check minimum coverage (ratchet: can only stay same or go up)"
         run: |
           python -c "
           import xml.etree.ElementTree as ET
