@@ -70,6 +70,48 @@ jobs:
             live-test-results/
           retention-days: 90
 
+      - name: Generate SLO report (7d/30d metrics)
+        if: always()
+        run: |
+          echo "Generating SLO report from historical live test data..."
+          python scripts/slo_aggregator.py || echo "SLO aggregation completed with warnings (may be no data yet)"
+          echo ""
+          echo "## SLO Dashboard" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f slo-reports/slo_report.json ]; then
+            python -c "
+            import json
+            with open('slo-reports/slo_report.json') as f:
+                report = json.load(f)
+            print(f'**Overall Status:** \`{report[\"overall_status\"].upper()}\`')
+            print()
+            print('### 7-Day SLO')
+            slo7 = report.get('slo_7d', {})
+            print(f'- Status: \`{slo7.get(\"status\", \"unknown\").upper()}\`')
+            print(f'- Search Success: **{slo7.get(\"search\", {}).get(\"success_rate\", \"N/A\")}%**')
+            print(f'- Fetch Success: **{slo7.get(\"fetch\", {}).get(\"success_rate\", \"N/A\")}%**')
+            print(f'- Search P95: {slo7.get(\"search\", {}).get(\"latency_p95_ms\", \"N/A\")}ms')
+            print()
+            print('### 30-Day SLO')
+            slo30 = report.get('slo_30d', {})
+            print(f'- Status: \`{slo30.get(\"status\", \"unknown\").upper()}\`')
+            print(f'- Search Success: **{slo30.get(\"search\", {}).get(\"success_rate\", \"N/A\")}%**')
+            print(f'- Fetch Success: **{slo30.get(\"fetch\", {}).get(\"success_rate\", \"N/A\")}%**')
+            print(f'- Search P95: {slo30.get(\"search\", {}).get(\"latency_p95_ms\", \"N/A\")}ms')
+            " >> $GITHUB_STEP_SUMMARY
+          else
+            echo "No SLO report generated" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload SLO report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: slo-report
+          path: |
+            slo-reports/
+          retention-days: 90
+
 
       # Note: Live test reports are stored as artifacts (90 days retention)
       # and summarized in the GitHub Actions run summary.
