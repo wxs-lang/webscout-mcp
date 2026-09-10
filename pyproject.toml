@@ -79,7 +79,6 @@ include = ["webscout_mcp*"]
 
 [tool.setuptools_scm]
 write_to = "webscout_mcp/_version.py"
-write_to_template = '__version__ = "{version}"\n'
 tag_regex = "^v(?P<version>.*)$"
 version_scheme = "post-release"
 local_scheme = "no-local-version"
