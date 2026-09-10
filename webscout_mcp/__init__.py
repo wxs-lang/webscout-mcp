@@ -1,12 +1,13 @@
 """webscout-mcp: A smart web search & fetch MCP server."""
 
+from importlib.metadata import PackageNotFoundError, version
+
 # Version is managed by setuptools-scm (Git tag as single source of truth)
 # Do NOT hardcode version here - it will be auto-generated during build
 try:
     from ._version import __version__
 except ImportError:
     try:
-        from importlib.metadata import version, PackageNotFoundError
         __version__ = version("webscout-mcp")
     except PackageNotFoundError:
         __version__ = "0.0.0-dev"
