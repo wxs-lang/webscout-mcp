@@ -48,7 +48,7 @@ jobs:
 
       - name: Upload ruff results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ruff-results
           path: |
@@ -89,7 +89,7 @@ jobs:
 
       - name: Upload mypy results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mypy-results
           path: |
