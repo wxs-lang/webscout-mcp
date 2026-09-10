@@ -113,12 +113,21 @@ jobs:
           retention-days: 7
 
   # ============================================================
-  # MCP E2E Tests - slow, real stdio MCP protocol, single Python
+  # MCP E2E Tests - slow, real stdio MCP protocol, dual matrix (MCP 1.x + 2.x)
   # ============================================================
   mcp-e2e-tests:
-    name: MCP E2E Tests
+    name: MCP E2E Tests (MCP ${{ matrix.mcp-version }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        mcp-version: ["1.x", "2.x"]
+        include:
+          - mcp-version: "1.x"
+            mcp-pin: "mcp>=1.0.0,<2.0.0"
+          - mcp-version: "2.x"
+            mcp-pin: "mcp>=2.0.0,<3.0.0"
 
     steps:
       - name: Checkout repository
@@ -130,11 +139,13 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      - name: Install dependencies
+      - name: Install dependencies (MCP ${{ matrix.mcp-version }})
         run: |
           python -m pip install --upgrade pip setuptools wheel
           pip install -e ".[all,dev,test]" || pip install -e .
-          pip install pytest pytest-asyncio anyio "mcp>=1.0.0,<3.0.0"
+          pip install pytest pytest-asyncio anyio "${{ matrix.mcp-pin }}"
+          echo "Installed MCP version:"
+          pip show mcp | grep Version
 
       - name: Run MCP E2E tests (no parallel)
         run: |
@@ -149,7 +160,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: mcp-e2e-tests
+          name: mcp-e2e-tests-mcp-${{ matrix.mcp-version }}
           path: |
             mcp-e2e-test-results.xml
             mcp_e2e_test_output.txt
@@ -241,20 +252,70 @@ jobs:
             2>&1 | tee coverage_output.txt
           exit ${PIPESTATUS[0]}
 
-      - name: Check minimum coverage
+      - name: Check minimum coverage (ratchet: can only stay same or go up)
         run: |
           python -c "
           import xml.etree.ElementTree as ET
+          import os
+
+          # Parse current coverage
           tree = ET.parse('coverage.xml')
           root = tree.getroot()
           line_rate = float(root.get('line-rate', 0)) * 100
-          print(f'Line coverage: {line_rate:.1f}%')
-          if line_rate < 62:
-              print(f'WARNING: Coverage {line_rate:.1f}% is below 62% baseline (temporary, will raise to 67%+ with more tests)')
+          print(f'Current line coverage: {line_rate:.1f}%')
+
+          # Read baseline
+          baseline_file = '.coverage-baseline'
+          baseline = 62.0  # default minimum
+          if os.path.exists(baseline_file):
+              with open(baseline_file) as f:
+                  for line in f:
+                      if line.startswith('MINIMUM_LINE_COVERAGE='):
+                          baseline = float(line.split('=')[1].strip())
+                          break
+          print(f'Baseline minimum: {baseline:.1f}%')
+
+          # Ratchet check: coverage must not drop below baseline
+          if line_rate < baseline:
+              print(f'❌ FAILURE: Coverage {line_rate:.1f}% dropped below baseline {baseline:.1f}%')
+              print('   Coverage ratchet prevents regression. Add more tests or fix failing tests.')
               exit(1)
+          elif line_rate > baseline + 0.1:
+              # Coverage improved - auto-update baseline (ratchet up)
+              print(f'✅ Coverage improved from {baseline:.1f}% to {line_rate:.1f}%')
+              print(f'   Auto-updating baseline to {line_rate:.1f}%')
+              with open(baseline_file, 'w') as f:
+                  f.write(f'# Coverage Baseline - auto-updated when coverage improves\n')
+                  f.write(f'# This file enforces a \"ratchet\": coverage can only stay the same or go up\n')
+                  f.write(f'# Format: MINIMUM_LINE_COVERAGE=<percentage>\n')
+                  f.write(f'MINIMUM_LINE_COVERAGE={line_rate:.1f}\n')
+              print(f'   Baseline updated to {line_rate:.1f}%')
           else:
-              print(f'Coverage {line_rate:.1f}% meets 62% baseline')
+              print(f'✅ Coverage {line_rate:.1f}% meets baseline {baseline:.1f}%')
+
+          # Show per-module coverage for core modules
+          print()
+          print('=== Core Module Coverage ===')
+          for package in root.findall('.//package'):
+              name = package.get('name', '')
+              if any(core in name for core in ['server', 'search_service', 'search_provider', 'provider_router', 'cache', 'config', 'errors', 'fetcher', 'startup_check']):
+                  rate = float(package.get('line-rate', 0)) * 100
+                  print(f'  {name}: {rate:.1f}%')
           "
+
+      - name: Commit updated baseline (if coverage improved)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          if git diff --quiet .coverage-baseline; then
+            echo "No baseline update needed"
+          else
+            echo "Baseline improved - committing update"
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add .coverage-baseline
+            git commit -m "chore: auto-update coverage baseline (ratchet up)"
+            git push
+          fi
 
       - name: Upload coverage report
         if: always()

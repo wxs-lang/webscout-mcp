@@ -1,0 +1,4 @@
+# Coverage Baseline - auto-updated when coverage improves
+# This file enforces a "ratchet": coverage can only stay the same or go up
+# Format: MINIMUM_LINE_COVERAGE=<percentage>
+MINIMUM_LINE_COVERAGE=62.0
