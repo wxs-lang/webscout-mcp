@@ -1,24 +1,21 @@
 name: Automated Release
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
-      version_bump:
-        description: 'Version bump type'
+      version:
+        description: 'Release version (e.g., 1.1.4)'
         required: true
-        default: 'patch'
-        type: choice
-        options:
-          - patch
-          - minor
-          - major
+        type: string
       dry_run:
         description: 'Dry run (no release created)'
         required: false
         default: false
         type: boolean
+
+# NOTE: Auto-release on push to main has been DISABLED.
+# Version is now managed by setuptools-scm (Git tag as single source of truth).
+# To release: manually trigger this workflow with the desired version number.
 
 concurrency:
   group: release-${{ github.ref }}
@@ -29,7 +26,7 @@ env:
 
 jobs:
   check-version:
-    name: Check if release is needed
+    name: Validate release version
     runs-on: ubuntu-latest
     outputs:
       should_release: ${{ steps.check.outputs.should_release }}
@@ -41,63 +38,29 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install semver
-        run: pip install semver
-
-      - name: Determine version bump
+      - name: Validate version format
         id: check
         run: |
-          # Get current version from pyproject.toml
-          CURRENT_VERSION=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
-          echo "Current version: $CURRENT_VERSION"
+          VERSION="${{ github.event.inputs.version }}"
+          echo "Requested version: $VERSION"
 
-          # Get latest tag
-          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          echo "Latest tag: $LATEST_TAG"
-
-          # Determine version bump based on commits
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            BUMP="${{ github.event.inputs.version_bump }}"
-          else
-            # Auto-detect based on commit messages since last tag
-            COMMITS=$(git log ${LATEST_TAG}..HEAD --oneline 2>/dev/null || echo "")
-            if echo "$COMMITS" | grep -qE '^[a-f0-9]+ (feat|feature)!:'; then
-              BUMP="major"
-            elif echo "$COMMITS" | grep -qE '^[a-f0-9]+ (feat|feature):'; then
-              BUMP="minor"
-            elif echo "$COMMITS" | grep -qE '^[a-f0-9]+ (fix|patch|bugfix):'; then
-              BUMP="patch"
-            else
-              BUMP="none"
-            fi
-          fi
-
-          echo "Version bump: $BUMP"
-
-          if [ "$BUMP" = "none" ]; then
+          # Validate semver format
+          if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "❌ Invalid version format: $VERSION (must be X.Y.Z)"
             echo "should_release=false" >> $GITHUB_OUTPUT
-            echo "No version bump needed"
-          else
-            # Calculate new version
-            NEW_VERSION=$(python -c "
-          import semver
-          v = semver.VersionInfo.parse('$CURRENT_VERSION')
-          if '$BUMP' == 'major':
-              print(v.bump_major())
-          elif '$BUMP' == 'minor':
-              print(v.bump_minor())
-          else:
-              print(v.bump_patch())
-          ")
-            echo "New version: $NEW_VERSION"
-            echo "should_release=true" >> $GITHUB_OUTPUT
-            echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+            exit 1
           fi
+
+          # Check if tag already exists
+          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            echo "❌ Tag v$VERSION already exists"
+            echo "should_release=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+          echo "✅ Version $VERSION is valid"
+          echo "should_release=true" >> $GITHUB_OUTPUT
+          echo "new_version=$VERSION" >> $GITHUB_OUTPUT
 
   quality-gate:
     name: Quality Gate (verify required checks)
@@ -231,20 +194,6 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Update version in pyproject.toml
-        run: |
-          NEW_VERSION="${{ needs.check-version.outputs.new_version }}"
-          echo "Updating version to $NEW_VERSION"
-          python -c "
-          import tomllib
-          with open('pyproject.toml', 'rb') as f:
-              data = tomllib.load(f)
-          data['project']['version'] = '$NEW_VERSION'
-          import tomli_w
-          with open('pyproject.toml', 'wb') as f:
-              tomli_w.dump(data, f)
-          " || sed -i "s/^version = \".*\"/version = \"$NEW_VERSION\"/" pyproject.toml
-
       - name: Generate release notes
         id: release_notes
         run: |
@@ -275,18 +224,11 @@ jobs:
 
           cat release_notes.md
 
-      - name: Commit version bump
+      - name: Create tag
         run: |
           NEW_VERSION="${{ needs.check-version.outputs.new_version }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add pyproject.toml
-          git commit -m "chore: bump version to v$NEW_VERSION"
-          git push
-
-      - name: Create tag
-        run: |
-          NEW_VERSION="${{ needs.check-version.outputs.new_version }}"
           git tag -a "v$NEW_VERSION" -m "Release v$NEW_VERSION"
           git push origin "v$NEW_VERSION"
 

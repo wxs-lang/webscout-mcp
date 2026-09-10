@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=61.0", "wheel", "setuptools-scm>=8.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "webscout-mcp"
-version = "1.1.3"
+dynamic = ["version"]
 description = "AI-powered web intelligence platform: search, fetch, crawl, extract, understand, and monitor the web with built-in AI, vector search, browser automation, and alerting"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -76,6 +76,13 @@ webscout-mcp = "webscout_mcp.__main__:main"
 
 [tool.setuptools.packages.find]
 include = ["webscout_mcp*"]
+
+[tool.setuptools_scm]
+write_to = "webscout_mcp/_version.py"
+write_to_template = '__version__ = "{version}"\n'
+tag_regex = "^v(?P<version>.*)$"
+version_scheme = "post-release"
+local_scheme = "no-local-version"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

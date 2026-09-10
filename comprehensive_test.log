@@ -2,7 +2,7 @@
 ================================================================================
 🧪 COMPREHENSIVE MCP FUNCTION TEST SUITE
 ================================================================================
-Start time: 2026-09-07 13:05:15
+Start time: 2026-09-08 10:47:52
 Test interval: 30s
 Search queries: 16
 Fetch URLs: 5
@@ -12,58 +12,164 @@ RSS feeds: 2
 Tavily API key not configured, skipping Tavily backend
 
 ────────────────────────────────────────────────────────────────────────────────
-📋 TEST ITERATION 1 - 13:05:15
+📋 TEST ITERATION 1 - 10:47:52
 ────────────────────────────────────────────────────────────────────────────────
 
 🔍 Testing web_search...
-[13:05:16] ✅ PASS | web_search[model context protoc...] | 625ms
-[13:05:16] ✅ PASS | web_search[latest technology ne...] | 675ms
-[13:05:16] ✅ PASS | web_search[web scraping best pr...] | 676ms
-[13:05:16] ✅ PASS | web_search[python asyncio docum...] | 911ms
-[13:05:16] ✅ PASS | web_search[fastapi github repos...] | 746ms
-[13:05:16] ✅ PASS | web_search[docker best practice...] | 776ms
-[13:05:16] ✅ PASS | web_search[open source AI tools...] | 785ms
-[13:05:16] ✅ PASS | web_search[postgresql tutorial...] | 800ms
+[10:47:53] ✅ PASS | web_search[docker best practice...] | 598ms
+[10:47:53] ✅ PASS | web_search[open source AI tools...] | 695ms
+[10:47:53] ✅ PASS | web_search[fastapi github repos...] | 729ms
+[10:47:53] ✅ PASS | web_search[web scraping best pr...] | 735ms
+[10:47:53] ✅ PASS | web_search[latest technology ne...] | 756ms
+[10:47:53] ✅ PASS | web_search[postgresql tutorial...] | 810ms
+[10:47:53] ✅ PASS | web_search[python asyncio docum...] | 1053ms
+[10:47:53] ✅ PASS | web_search[model context protoc...] | 820ms
 
 🌐 Testing web_fetch...
-[13:05:19] ✅ PASS | web_fetch[Python Docs] | 3600ms
-[13:05:20] ✅ PASS | web_fetch[FastAPI] | 969ms
-[13:05:22] ✅ PASS | web_fetch[GitHub MCP] | 1849ms
-[13:05:23] ✅ PASS | web_fetch[PyPI] | 479ms
-[13:05:53] ❌ FAIL | web_fetch[Wikipedia] | 30026ms | Error: Timeout (>30s)
+[10:47:54] ✅ PASS | web_fetch[Python Docs] | 1034ms
+[10:47:55] ✅ PASS | web_fetch[FastAPI] | 1023ms
+[10:47:56] ✅ PASS | web_fetch[GitHub MCP] | 510ms
+[10:47:56] ✅ PASS | web_fetch[PyPI] | 506ms
+[10:48:26] ❌ FAIL | web_fetch[Wikipedia] | 30016ms | Error: Timeout (>30s)
 
 💾 Testing cache_stats / cache_clear...
-[13:05:53] ✅ PASS | cache_stats | 0ms
-[13:05:53] ✅ PASS | cache_clear | 4ms
+[10:48:26] ✅ PASS | cache_stats | 0ms
+[10:48:26] ✅ PASS | cache_clear | 2ms
 
 ❤️ Testing search_health...
-[13:05:53] ✅ PASS | search_health | 0ms
+[10:48:26] ✅ PASS | search_health | 0ms
 
 📋 Testing metadata_extract...
-[13:05:54] ✅ PASS | metadata_extract | 1282ms
+[10:48:27] ✅ PASS | metadata_extract | 928ms
 
 📰 Testing rss_parse...
-[13:05:55] ✅ PASS | rss_parse[https://github.com/wxs-lang/we...] | 845ms
-[13:05:57] ✅ PASS | rss_parse[https://hnrss.org/frontpage...] | 2338ms
+[10:48:28] ✅ PASS | rss_parse[https://github.com/wxs-lang/we...] | 890ms
+[10:48:43] ❌ FAIL | rss_parse[https://hnrss.org/frontpage...] | 15127ms | Error: 
 
 ✨ Testing content_quality...
-[13:05:57] ✅ PASS | content_quality | 292ms
+[10:48:43] ✅ PASS | content_quality | 245ms
 
 🔗 Testing broken_links...
-[13:05:58] ✅ PASS | broken_links | 329ms | Error: Found 87 links
+[10:48:44] ✅ PASS | broken_links | 283ms | Error: Found 110 links
 
 🕷️ Testing web_crawl...
-[13:05:59] ✅ PASS | web_crawl | 1008ms
+[10:48:45] ✅ PASS | web_crawl | 974ms
 
 📝 Testing web_extract...
-[13:05:59] ✅ PASS | web_extract | 397ms
+[10:48:45] ✅ PASS | web_extract | 245ms
+
+────────────────────────────────────────────────────────────────────────────────
+📊 ITERATION 1 SUMMARY
+────────────────────────────────────────────────────────────────────────────────
+  Total: 23 | Passed: 21 | Failed: 2 | Skipped: 0 | Pass Rate: 91.3%
+  Elapsed: 52.9s
+  Memory: 8.7MB (peak: 12.8MB)
+
+================================================================================
+🏁 FINAL TEST SUMMARY
+================================================================================
+  Total: 23
+  Passed: 21
+  Failed: 2
+  Pass Rate: 91.3%
+  Elapsed: 52.9s
+================================================================================
+��───────────
+📋 TEST ITERATION 2 - 10:48:29
+────────────────────────────────────────────────────────────────────────────────
+
+🔍 Testing web_search...
+[10:48:29] ✅ PASS | web_search[python asyncio docum...] | 0ms
+[10:48:29] ✅ PASS | web_search[fastapi github repos...] | 0ms
+[10:48:29] ✅ PASS | web_search[postgresql tutorial...] | 0ms
+[10:48:29] ✅ PASS | web_search[docker best practice...] | 0ms
+[10:48:29] ✅ PASS | web_search[model context protoc...] | 0ms
+[10:48:29] ✅ PASS | web_search[latest technology ne...] | 0ms
+[10:48:29] ✅ PASS | web_search[open source AI tools...] | 0ms
+[10:48:29] ✅ PASS | web_search[web scraping best pr...] | 0ms
+
+🌐 Testing web_fetch...
+[10:48:30] ✅ PASS | web_fetch[Python Docs] | 964ms
+[10:48:31] ✅ PASS | web_fetch[FastAPI] | 1077ms
+[10:48:32] ✅ PASS | web_fetch[GitHub MCP] | 493ms
+[10:48:32] ✅ PASS | web_fetch[PyPI] | 512ms
+0:48:30] ✅ PASS | web_search[fastapi github repos...] | 994ms
+[10:48:30] ✅ PASS | web_search[postgresql tutorial...] | 1034ms
+[10:48:30] ✅ PASS | web_search[docker best practice...] | 1035ms
+[10:48:30] ✅ PASS | web_search[model context protoc...] | 1034ms
+[10:48:30] ✅ PASS | web_search[web scraping best pr...] | 1023ms
+
+🌐 Testing web_fetch...
+[10:48:31] ✅ PASS | web_fetch[Python Docs] | 1020ms
+[10:48:32] ✅ PASS | web_fetch[FastAPI] | 1065ms
+[10:48:33] ✅ PASS | web_fetch[GitHub MCP] | 1243ms
+[10:48:34] ✅ PASS | web_fetch[PyPI] | 523ms
+
+================================================================================
+🧪 COMPREHENSIVE MCP FUNCTION TEST SUITE
+================================================================================
+Start time: 2026-09-08 10:48:54
+Test interval: 30s
+Search queries: 16
+Fetch URLs: 5
+RSS feeds: 2
+================================================================================
+
+Tavily API key not configured, skipping Tavily backend
+
+────────────────────────────────────────────────────────────────────────────────
+📋 TEST ITERATION 1 - 10:48:54
+────────────────────────────────────────────────────────────────────────────────
+
+🔍 Testing web_search...
+[10:48:55] ✅ PASS | web_search[docker best practice...] | 715ms
+[10:48:55] ✅ PASS | web_search[open source AI tools...] | 744ms
+[10:48:55] ✅ PASS | web_search[fastapi github repos...] | 786ms
+[10:48:55] ✅ PASS | web_search[latest technology ne...] | 814ms
+[10:48:55] ✅ PASS | web_search[postgresql tutorial...] | 849ms
+[10:48:55] ✅ PASS | web_search[python asyncio docum...] | 1084ms
+[10:48:55] ✅ PASS | web_search[model context protoc...] | 859ms
+[10:48:55] ✅ PASS | web_search[web scraping best pr...] | 855ms
+
+🌐 Testing web_fetch...
+[10:48:56] ✅ PASS | web_fetch[Python Docs] | 976ms
+[10:48:57] ✅ PASS | web_fetch[FastAPI] | 1033ms
+[10:48:58] ✅ PASS | web_fetch[GitHub MCP] | 1105ms
+[10:48:59] ✅ PASS | web_fetch[PyPI] | 605ms
+[10:49:29] ❌ FAIL | web_fetch[Wikipedia] | 30028ms | Error: Timeout (>30s)
+
+💾 Testing cache_stats / cache_clear...
+[10:49:29] ✅ PASS | cache_stats | 0ms
+[10:49:29] ✅ PASS | cache_clear | 6ms
+
+❤️ Testing search_health...
+[10:49:29] ✅ PASS | search_health | 0ms
+
+📋 Testing metadata_extract...
+[10:49:30] ✅ PASS | metadata_extract | 1135ms
+
+📰 Testing rss_parse...
+[10:49:31] ✅ PASS | rss_parse[https://github.com/wxs-lang/we...] | 942ms
+[10:49:34] ✅ PASS | rss_parse[https://hnrss.org/frontpage...] | 2613ms
+
+✨ Testing content_quality...
+[10:49:34] ✅ PASS | content_quality | 455ms
+
+🔗 Testing broken_links...
+[10:49:35] ✅ PASS | broken_links | 272ms | Error: Found 110 links
+
+🕷️ Testing web_crawl...
+[10:49:35] ✅ PASS | web_crawl | 847ms
+
+📝 Testing web_extract...
+[10:49:36] ✅ PASS | web_extract | 266ms
 
 ────────────────────────────────────────────────────────────────────────────────
 📊 ITERATION 1 SUMMARY
 ────────────────────────────────────────────────────────────────────────────────
   Total: 23 | Passed: 22 | Failed: 1 | Skipped: 0 | Pass Rate: 95.7%
-  Elapsed: 44.5s
-  Memory: 40.3MB (peak: 45.9MB)
+  Elapsed: 41.4s
+  Memory: 8.7MB (peak: 12.1MB)
 
 ⚠️  WARNING: 1 test failures detected!
 Recent errors:
@@ -72,81 +178,58 @@ Recent errors:
 💤 Sleeping 30s until next iteration...
 
 ────────────────────────────────────────────────────────────────────────────────
-📋 TEST ITERATION 2 - 13:06:29
+📋 TEST ITERATION 2 - 10:50:06
 ────────────────────────────────────────────────────────────────────────────────
 
 🔍 Testing web_search...
-[13:06:29] ✅ PASS | web_search[python asyncio docum...] | 0ms
-[13:06:29] ✅ PASS | web_search[fastapi github repos...] | 0ms
-[13:06:29] ✅ PASS | web_search[postgresql tutorial...] | 0ms
-[13:06:29] ✅ PASS | web_search[docker best practice...] | 0ms
-[13:06:29] ✅ PASS | web_search[model context protoc...] | 0ms
-[13:06:29] ✅ PASS | web_search[latest technology ne...] | 0ms
-[13:06:29] ✅ PASS | web_search[open source AI tools...] | 0ms
-[13:06:29] ✅ PASS | web_search[web scraping best pr...] | 0ms
+[10:50:06] ✅ PASS | web_search[python asyncio docum...] | 0ms
+[10:50:06] ✅ PASS | web_search[fastapi github repos...] | 0ms
+[10:50:06] ✅ PASS | web_search[postgresql tutorial...] | 0ms
+[10:50:06] ✅ PASS | web_search[docker best practice...] | 0ms
+[10:50:06] ✅ PASS | web_search[model context protoc...] | 0ms
+[10:50:06] ✅ PASS | web_search[latest technology ne...] | 0ms
+[10:50:06] ✅ PASS | web_search[open source AI tools...] | 0ms
+[10:50:06] ✅ PASS | web_search[web scraping best pr...] | 0ms
 
 🌐 Testing web_fetch...
-[13:06:30] ✅ PASS | web_fetch[Python Docs] | 993ms
-error getting summary: 
-Traceback (most recent call last):
-  File "/home/user/.local/lib/python3.12/site-packages/readability/readability.py", line 259, in summary
-    self._html(True)
-  File "/home/user/.local/lib/python3.12/site-packages/readability/readability.py", line 180, in _html
-    self.html = self._parse(self.input)
-                ^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/user/.local/lib/python3.12/site-packages/readability/readability.py", line 199, in _parse
-    doc = html_cleaner.clean_html(doc)
-          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/user/.local/lib/python3.12/site-packages/lxml_html_clean/clean.py", line 660, in clean_html
-    self(doc)
-  File "/home/user/.local/lib/python3.12/site-packages/lxml_html_clean/clean.py", line 458, in __call__
-    _kill.popleft().drop_tree()  # popleft to start with innermost elements
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/python3.12/lib/python3.12/site-packages/lxml/html/__init__.py", line 324, in drop_tree
-    parent.text = (parent.text or '') + self.tail
-    ^^^^^^^^^^^
-  File "src/lxml/etree.pyx", line 1169, in lxml.etree._Element.text.__set__
-  File "src/lxml/apihelpers.pxi", line 763, in lxml.etree._setNodeText
-  File "src/lxml/apihelpers.pxi", line 751, in lxml.etree._createTextNode
-  File "src/lxml/apihelpers.pxi", line 1547, in lxml.etree._utf8
-ValueError: All strings must be XML compatible: Unicode or ASCII, no NULL bytes or control characters
-[13:06:37] ✅ PASS | web_fetch[FastAPI] | 6939ms
-[13:06:39] ✅ PASS | web_fetch[GitHub MCP] | 1564ms
-[13:06:39] ✅ PASS | web_fetch[PyPI] | 494ms
-[13:07:09] ❌ FAIL | web_fetch[Wikipedia] | 30009ms | Error: Timeout (>30s)
+[10:50:07] ✅ PASS | web_fetch[Python Docs] | 1010ms
+[10:50:08] ✅ PASS | web_fetch[FastAPI] | 1055ms
+[10:50:09] ✅ PASS | web_fetch[GitHub MCP] | 1287ms
+[10:50:10] ✅ PASS | web_fetch[PyPI] | 525ms
+[10:50:40] ❌ FAIL | web_fetch[Wikipedia] | 30069ms | Error: Timeout (>30s)
 
 💾 Testing cache_stats / cache_clear...
-[13:07:09] ✅ PASS | cache_stats | 0ms
-[13:07:09] ✅ PASS | cache_clear | 4ms
+[10:50:40] ✅ PASS | cache_stats | 0ms
+[10:50:40] ✅ PASS | cache_clear | 2ms
 
 ❤️ Testing search_health...
-[13:07:09] ✅ PASS | search_health | 0ms
+[10:50:40] ✅ PASS | search_health | 0ms
 
 📋 Testing metadata_extract...
-[13:07:10] ✅ PASS | metadata_extract | 1048ms
+[10:50:41] ✅ PASS | metadata_extract | 1001ms
 
 📰 Testing rss_parse...
-[13:07:11] ✅ PASS | rss_parse[https://github.com/wxs-lang/we...] | 796ms
-[13:07:16] ✅ PASS | rss_parse[https://hnrss.org/frontpage...] | 5346ms
+[10:50:42] ✅ PASS | rss_parse[https://github.com/wxs-lang/we...] | 861ms
+[10:50:43] ✅ PASS | rss_parse[https://hnrss.org/frontpage...] | 1786ms
 
 ✨ Testing content_quality...
-[13:07:17] ✅ PASS | content_quality | 322ms
+[10:50:44] ✅ PASS | content_quality | 281ms
 
 🔗 Testing broken_links...
-[13:07:17] ✅ PASS | broken_links | 319ms | Error: Found 87 links
+[10:50:44] ✅ PASS | broken_links | 315ms | Error: Found 110 links
 
 🕷️ Testing web_crawl...
-[13:07:18] ✅ PASS | web_crawl | 1150ms
+[10:50:45] ✅ PASS | web_crawl | 1154ms
 
 📝 Testing web_extract...
-[13:07:19] ✅ PASS | web_extract | 930ms
+[10:50:46] ✅ PASS | web_extract | 698ms
 
 ────────────────────────────────────────────────────────────────────────────────
 📊 ITERATION 2 SUMMARY
 ────────────────────────────────────────────────────────────────────────────────
   Total: 46 | Passed: 44 | Failed: 2 | Skipped: 0 | Pass Rate: 95.7%
-  Elapsed: 124.4s
-  Memory: 44.9MB (peak: 46.9MB)
+  Elapsed: 111.6s
+  Memory: 14.1MB (peak: 15.3MB)
 
 ⚠️  WARNING: 2 test failures detected!
 Recent errors:
@@ -156,106 +239,454 @@ Recent errors:
 💤 Sleeping 30s until next iteration...
 
 ────────────────────────────────────────────────────────────────────────────────
-📋 TEST ITERATION 3 - 13:07:49
+📋 TEST ITERATION 3 - 10:51:16
 ────────────────────────────────────────────────────────────────────────────────
 
 🔍 Testing web_search...
-[13:07:49] ✅ PASS | web_search[python asyncio docum...] | 0ms
-[13:07:49] ✅ PASS | web_search[fastapi github repos...] | 0ms
-[13:07:49] ✅ PASS | web_search[postgresql tutorial...] | 0ms
-[13:07:49] ✅ PASS | web_search[docker best practice...] | 0ms
-[13:07:49] ✅ PASS | web_search[model context protoc...] | 0ms
-[13:07:49] ✅ PASS | web_search[latest technology ne...] | 0ms
-[13:07:49] ✅ PASS | web_search[open source AI tools...] | 0ms
-[13:07:49] ✅ PASS | web_search[web scraping best pr...] | 0ms
+[10:51:16] ✅ PASS | web_search[python asyncio docum...] | 0ms
+[10:51:16] ✅ PASS | web_search[fastapi github repos...] | 0ms
+[10:51:16] ✅ PASS | web_search[postgresql tutorial...] | 0ms
+[10:51:16] ✅ PASS | web_search[docker best practice...] | 0ms
+[10:51:16] ✅ PASS | web_search[model context protoc...] | 0ms
+[10:51:16] ✅ PASS | web_search[latest technology ne...] | 0ms
+[10:51:16] ✅ PASS | web_search[open source AI tools...] | 0ms
+[10:51:16] ✅ PASS | web_search[web scraping best pr...] | 0ms
 
 🌐 Testing web_fetch...
-[13:07:50] ✅ PASS | web_fetch[Python Docs] | 1082ms
-[13:07:53] ✅ PASS | web_fetch[FastAPI] | 2531ms
-[13:07:58] ✅ PASS | web_fetch[GitHub MCP] | 4834ms
-[13:07:58] ✅ PASS | web_fetch[PyPI] | 478ms
-[13:08:28] ❌ FAIL | web_fetch[Wikipedia] | 30026ms | Error: Timeout (>30s)
+[10:51:17] ✅ PASS | web_fetch[Python Docs] | 1101ms
+[10:51:18] ✅ PASS | web_fetch[FastAPI] | 1013ms
+[10:51:19] ✅ PASS | web_fetch[GitHub MCP] | 1400ms
+[10:51:20] ✅ PASS | web_fetch[PyPI] | 560ms
+[10:51:50] ❌ FAIL | web_fetch[Wikipedia] | 30077ms | Error: Timeout (>30s)
 
 💾 Testing cache_stats / cache_clear...
-[13:08:28] ✅ PASS | cache_stats | 0ms
-[13:08:28] ✅ PASS | cache_clear | 4ms
+[10:51:50] ✅ PASS | cache_stats | 0ms
+[10:51:50] ✅ PASS | cache_clear | 2ms
 
 ❤️ Testing search_health...
-[13:08:28] ✅ PASS | search_health | 0ms
+[10:51:50] ✅ PASS | search_health | 0ms
 
 📋 Testing metadata_extract...
-[13:08:29] ✅ PASS | metadata_extract | 1057ms
+[10:51:51] ✅ PASS | metadata_extract | 922ms
 
 📰 Testing rss_parse...
-[13:08:32] ❌ FAIL | rss_parse[https://github.com/wxs-lang/we...] | 3135ms | Error: 
-[13:08:35] ✅ PASS | rss_parse[https://hnrss.org/frontpage...] | 2567ms
+[10:51:52] ✅ PASS | rss_parse[https://github.com/wxs-lang/we...] | 940ms
+[10:51:54] ✅ PASS | rss_parse[https://hnrss.org/frontpage...] | 1701ms
 
 ✨ Testing content_quality...
-[13:08:35] ✅ PASS | content_quality | 319ms
+[10:51:54] ✅ PASS | content_quality | 254ms
 
 🔗 Testing broken_links...
-[13:08:36] ✅ PASS | broken_links | 326ms | Error: Found 87 links
+[10:51:54] ✅ PASS | broken_links | 284ms | Error: Found 110 links
 
 🕷️ Testing web_crawl...
-[13:08:37] ✅ PASS | web_crawl | 1275ms
+[10:51:55] ✅ PASS | web_crawl | 1011ms
 
 📝 Testing web_extract...
-[13:08:38] ✅ PASS | web_extract | 982ms
+[10:51:55] ✅ PASS | web_extract | 249ms
 
 ────────────────────────────────────────────────────────────────────────────────
 📊 ITERATION 3 SUMMARY
 ────────────────────────────────────────────────────────────────────────────────
-  Total: 69 | Passed: 65 | Failed: 4 | Skipped: 0 | Pass Rate: 94.2%
-  Elapsed: 203.1s
-  Memory: 50.5MB (peak: 51.8MB)
+  Total: 69 | Passed: 66 | Failed: 3 | Skipped: 0 | Pass Rate: 95.7%
+  Elapsed: 181.3s
+  Memory: 20.2MB (peak: 20.7MB)
 
-================================================================================
-🏁 FINAL TEST SUMMARY
-================================================================================
-  Total: 69
-  Passed: 65
-  Failed: 4
-  Pass Rate: 94.2%
-  Elapsed: 203.2s
-================================================================================
-Traceback (most recent call last):
-  File "/sandboxdata/workspace/file/webscout-mcp/scripts/comprehensive_test.py", line 500, in <module>
-    asyncio.run(run_full_test_suite())
-  File "/opt/python3.12/lib/python3.12/asyncio/runners.py", line 195, in run
-    return runner.run(main)
-           ^^^^^^^^^^^^^^^^
-  File "/opt/python3.12/lib/python3.12/asyncio/runners.py", line 118, in run
-    return self._loop.run_until_complete(task)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/python3.12/lib/python3.12/asyncio/base_events.py", line 691, in run_until_complete
-    return future.result()
-           ^^^^^^^^^^^^^^^
-  File "/sandboxdata/workspace/file/webscout-mcp/scripts/comprehensive_test.py", line 467, in run_full_test_suite
-    json.dump(report, f, indent=2, ensure_ascii=False)
-  File "/opt/python3.12/lib/python3.12/json/__init__.py", line 179, in dump
-    for chunk in iterable:
-                 ^^^^^^^^
-  File "/opt/python3.12/lib/python3.12/json/encoder.py", line 432, in _iterencode
-    yield from _iterencode_dict(o, _current_indent_level)
-  File "/opt/python3.12/lib/python3.12/json/encoder.py", line 406, in _iterencode_dict
-    yield from chunks
-  File "/opt/python3.12/lib/python3.12/json/encoder.py", line 406, in _iterencode_dict
-    yield from chunks
-  File "/opt/python3.12/lib/python3.12/json/encoder.py", line 326, in _iterencode_list
-    yield from chunks
-  File "/opt/python3.12/lib/python3.12/json/encoder.py", line 326, in _iterencode_list
-    yield from chunks
-  File "/opt/python3.12/lib/python3.12/json/encoder.py", line 439, in _iterencode
-    o = _default(o)
-        ^^^^^^^^^^^
-  File "/opt/python3.12/lib/python3.12/json/encoder.py", line 180, in default
-    raise TypeError(f'Object of type {o.__class__.__name__} '
-TypeError: Object of type ConnectError is not JSON serializable
+⚠️  WARNING: 3 test failures detected!
+Recent errors:
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+
+💤 Sleeping 30s until next iteration...
+
+────────────────────────────────────────────────────────────────────────────────
+📋 TEST ITERATION 4 - 10:52:26
+────────────────────────────────────────────────────────────────────────────────
+
+🔍 Testing web_search...
+[10:52:26] ✅ PASS | web_search[python asyncio docum...] | 0ms
+[10:52:26] ✅ PASS | web_search[fastapi github repos...] | 0ms
+[10:52:26] ✅ PASS | web_search[postgresql tutorial...] | 0ms
+[10:52:26] ✅ PASS | web_search[docker best practice...] | 0ms
+[10:52:26] ✅ PASS | web_search[model context protoc...] | 0ms
+[10:52:26] ✅ PASS | web_search[latest technology ne...] | 0ms
+[10:52:26] ✅ PASS | web_search[open source AI tools...] | 0ms
+[10:52:26] ✅ PASS | web_search[web scraping best pr...] | 0ms
+
+🌐 Testing web_fetch...
+[10:52:27] ✅ PASS | web_fetch[Python Docs] | 1194ms
+[10:52:28] ✅ PASS | web_fetch[FastAPI] | 1164ms
+[10:52:29] ✅ PASS | web_fetch[GitHub MCP] | 1346ms
+[10:52:30] ✅ PASS | web_fetch[PyPI] | 501ms
+[10:53:00] ❌ FAIL | web_fetch[Wikipedia] | 30072ms | Error: Timeout (>30s)
+
+💾 Testing cache_stats / cache_clear...
+[10:53:00] ✅ PASS | cache_stats | 0ms
+[10:53:00] ✅ PASS | cache_clear | 2ms
+
+❤️ Testing search_health...
+[10:53:00] ✅ PASS | search_health | 0ms
+
+📋 Testing metadata_extract...
+[10:53:01] ✅ PASS | metadata_extract | 1020ms
+
+📰 Testing rss_parse...
+[10:53:02] ✅ PASS | rss_parse[https://github.com/wxs-lang/we...] | 950ms
+[10:53:03] ✅ PASS | rss_parse[https://hnrss.org/frontpage...] | 1405ms
+
+✨ Testing content_quality...
+[10:53:04] ✅ PASS | content_quality | 752ms
+
+🔗 Testing broken_links...
+[10:53:04] ✅ PASS | broken_links | 291ms | Error: Found 110 links
+
+🕷️ Testing web_crawl...
+[10:53:05] ✅ PASS | web_crawl | 1091ms
+
+📝 Testing web_extract...
+[10:53:06] ✅ PASS | web_extract | 249ms
+
+────────────────────────────────────────────────────────────────────────────────
+📊 ITERATION 4 SUMMARY
+────────────────────────────────────────────────────────────────────────────────
+  Total: 92 | Passed: 88 | Failed: 4 | Skipped: 0 | Pass Rate: 95.7%
+  Elapsed: 251.5s
+  Memory: 4.0MB (peak: 26.2MB)
+
+⚠️  WARNING: 4 test failures detected!
+Recent errors:
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+
+💤 Sleeping 30s until next iteration...
+
+────────────────────────────────────────────────────────────────────────────────
+📋 TEST ITERATION 5 - 10:53:36
+────────────────────────────────────────────────────────────────────────────────
+
+🔍 Testing web_search...
+[10:53:36] ✅ PASS | web_search[python asyncio docum...] | 0ms
+[10:53:36] ✅ PASS | web_search[fastapi github repos...] | 0ms
+[10:53:36] ✅ PASS | web_search[postgresql tutorial...] | 0ms
+[10:53:36] ✅ PASS | web_search[docker best practice...] | 0ms
+[10:53:36] ✅ PASS | web_search[model context protoc...] | 0ms
+[10:53:36] ✅ PASS | web_search[latest technology ne...] | 0ms
+[10:53:36] ✅ PASS | web_search[open source AI tools...] | 0ms
+[10:53:36] ✅ PASS | web_search[web scraping best pr...] | 0ms
+
+🌐 Testing web_fetch...
+[10:53:37] ✅ PASS | web_fetch[Python Docs] | 1151ms
+[10:53:38] ✅ PASS | web_fetch[FastAPI] | 1123ms
+[10:53:39] ✅ PASS | web_fetch[GitHub MCP] | 1164ms
+[10:53:40] ✅ PASS | web_fetch[PyPI] | 490ms
+[10:54:10] ❌ FAIL | web_fetch[Wikipedia] | 30024ms | Error: Timeout (>30s)
+
+💾 Testing cache_stats / cache_clear...
+[10:54:10] ✅ PASS | cache_stats | 0ms
+[10:54:10] ✅ PASS | cache_clear | 2ms
+
+❤️ Testing search_health...
+[10:54:10] ✅ PASS | search_health | 0ms
+
+📋 Testing metadata_extract...
+[10:54:11] ✅ PASS | metadata_extract | 815ms
+
+📰 Testing rss_parse...
+[10:54:12] ✅ PASS | rss_parse[https://github.com/wxs-lang/we...] | 949ms
+[10:54:17] ✅ PASS | rss_parse[https://hnrss.org/frontpage...] | 5497ms
+
+✨ Testing content_quality...
+[10:54:17] ✅ PASS | content_quality | 221ms
+
+🔗 Testing broken_links...
+[10:54:18] ✅ PASS | broken_links | 245ms | Error: Found 110 links
+
+🕷️ Testing web_crawl...
+[10:54:19] ✅ PASS | web_crawl | 1475ms
+
+📝 Testing web_extract...
+[10:54:19] ✅ PASS | web_extract | 220ms
+
+────────────────────────────────────────────────────────────────────────────────
+📊 ITERATION 5 SUMMARY
+────────────────────────────────────────────────────────────────────────────────
+  Total: 115 | Passed: 110 | Failed: 5 | Skipped: 0 | Pass Rate: 95.7%
+  Elapsed: 325.0s
+  Memory: 8.7MB (peak: 26.2MB)
+
+⚠️  WARNING: 5 test failures detected!
+Recent errors:
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+
+💤 Sleeping 30s until next iteration...
+
+────────────────────────────────────────────────────────────────────────────────
+📋 TEST ITERATION 6 - 10:54:49
+────────────────────────────────────────────────────────────────────────────────
+
+🔍 Testing web_search...
+[10:55:05] ✅ PASS | web_search[python asyncio docum...] | 15676ms
+[10:55:05] ✅ PASS | web_search[docker best practice...] | 15710ms
+[10:55:05] ✅ PASS | web_search[latest technology ne...] | 15761ms
+[10:55:05] ✅ PASS | web_search[open source AI tools...] | 15779ms
+[10:55:05] ✅ PASS | web_search[web scraping best pr...] | 15804ms
+[10:55:05] ✅ PASS | web_search[model context protoc...] | 15821ms
+[10:55:05] ✅ PASS | web_search[fastapi github repos...] | 15833ms
+[10:55:05] ✅ PASS | web_search[postgresql tutorial...] | 15845ms
+
+🌐 Testing web_fetch...
+[10:55:06] ✅ PASS | web_fetch[Python Docs] | 991ms
+[10:55:07] ✅ PASS | web_fetch[FastAPI] | 1143ms
+[10:55:09] ✅ PASS | web_fetch[GitHub MCP] | 1141ms
+[10:55:09] ✅ PASS | web_fetch[PyPI] | 495ms
+[10:55:39] ❌ FAIL | web_fetch[Wikipedia] | 30017ms | Error: Timeout (>30s)
+
+💾 Testing cache_stats / cache_clear...
+[10:55:39] ✅ PASS | cache_stats | 0ms
+[10:55:39] ✅ PASS | cache_clear | 2ms
+
+❤️ Testing search_health...
+[10:55:39] ✅ PASS | search_health | 0ms
+
+📋 Testing metadata_extract...
+[10:55:40] ✅ PASS | metadata_extract | 1230ms
+
+📰 Testing rss_parse...
+[10:55:41] ✅ PASS | rss_parse[https://github.com/wxs-lang/we...] | 846ms
+[10:55:43] ✅ PASS | rss_parse[https://hnrss.org/frontpage...] | 1466ms
+
+✨ Testing content_quality...
+[10:55:43] ✅ PASS | content_quality | 455ms
+
+🔗 Testing broken_links...
+[10:55:43] ✅ PASS | broken_links | 300ms | Error: Found 110 links
+
+🕷️ Testing web_crawl...
+[10:55:44] ✅ PASS | web_crawl | 1045ms
+
+📝 Testing web_extract...
+[10:55:45] ✅ PASS | web_extract | 265ms
+
+────────────────────────────────────────────────────────────────────────────────
+📊 ITERATION 6 SUMMARY
+────────────────────────────────────────────────────────────────────────────────
+  Total: 138 | Passed: 132 | Failed: 6 | Skipped: 0 | Pass Rate: 95.7%
+  Elapsed: 410.4s
+  Memory: 21.4MB (peak: 26.2MB)
+
+⚠️  WARNING: 6 test failures detected!
+Recent errors:
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+
+💤 Sleeping 30s until next iteration...
+
+────────────────────────────────────────────────────────────────────────────────
+📋 TEST ITERATION 7 - 10:56:15
+────────────────────────────────────────────────────────────────────────────────
+
+🔍 Testing web_search...
+[10:56:15] ✅ PASS | web_search[python asyncio docum...] | 0ms
+[10:56:15] ✅ PASS | web_search[fastapi github repos...] | 0ms
+[10:56:15] ✅ PASS | web_search[postgresql tutorial...] | 0ms
+[10:56:15] ✅ PASS | web_search[docker best practice...] | 0ms
+[10:56:15] ✅ PASS | web_search[model context protoc...] | 0ms
+[10:56:15] ✅ PASS | web_search[latest technology ne...] | 0ms
+[10:56:15] ✅ PASS | web_search[open source AI tools...] | 0ms
+[10:56:15] ✅ PASS | web_search[web scraping best pr...] | 0ms
+
+🌐 Testing web_fetch...
+[10:56:16] ✅ PASS | web_fetch[Python Docs] | 1032ms
+[10:56:17] ✅ PASS | web_fetch[FastAPI] | 1103ms
+[10:56:18] ✅ PASS | web_fetch[GitHub MCP] | 1171ms
+[10:56:19] ✅ PASS | web_fetch[PyPI] | 477ms
+[10:56:49] ❌ FAIL | web_fetch[Wikipedia] | 30017ms | Error: Timeout (>30s)
+
+💾 Testing cache_stats / cache_clear...
+[10:56:49] ✅ PASS | cache_stats | 0ms
+[10:56:49] ✅ PASS | cache_clear | 3ms
+
+❤️ Testing search_health...
+[10:56:49] ✅ PASS | search_health | 0ms
+
+📋 Testing metadata_extract...
+[10:56:50] ✅ PASS | metadata_extract | 1141ms
+
+📰 Testing rss_parse...
+[10:56:51] ✅ PASS | rss_parse[https://github.com/wxs-lang/we...] | 965ms
+[10:56:55] ✅ PASS | rss_parse[https://hnrss.org/frontpage...] | 4577ms
+
+✨ Testing content_quality...
+[10:56:56] ✅ PASS | content_quality | 344ms
+
+🔗 Testing broken_links...
+[10:56:56] ✅ PASS | broken_links | 262ms | Error: Found 110 links
+
+🕷️ Testing web_crawl...
+[10:56:57] ✅ PASS | web_crawl | 821ms
+
+📝 Testing web_extract...
+[10:56:57] ✅ PASS | web_extract | 259ms
+
+────────────────────────────────────────────────────────────────────────────────
+📊 ITERATION 7 SUMMARY
+────────────────────────────────────────────────────────────────────────────────
+  Total: 161 | Passed: 154 | Failed: 7 | Skipped: 0 | Pass Rate: 95.7%
+  Elapsed: 482.7s
+  Memory: 5.4MB (peak: 27.3MB)
+
+⚠️  WARNING: 7 test failures detected!
+Recent errors:
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+
+💤 Sleeping 30s until next iteration...
+
+────────────────────────────────────────────────────────────────────────────────
+📋 TEST ITERATION 8 - 10:57:27
+────────────────────────────────────────────────────────────────────────────────
+
+🔍 Testing web_search...
+[10:57:27] ✅ PASS | web_search[python asyncio docum...] | 0ms
+[10:57:27] ✅ PASS | web_search[fastapi github repos...] | 0ms
+[10:57:27] ✅ PASS | web_search[postgresql tutorial...] | 0ms
+[10:57:27] ✅ PASS | web_search[docker best practice...] | 0ms
+[10:57:27] ✅ PASS | web_search[model context protoc...] | 0ms
+[10:57:27] ✅ PASS | web_search[latest technology ne...] | 0ms
+[10:57:27] ✅ PASS | web_search[open source AI tools...] | 0ms
+[10:57:27] ✅ PASS | web_search[web scraping best pr...] | 0ms
+
+🌐 Testing web_fetch...
+[10:57:28] ✅ PASS | web_fetch[Python Docs] | 1065ms
+[10:57:29] ✅ PASS | web_fetch[FastAPI] | 1084ms
+[10:57:30] ✅ PASS | web_fetch[GitHub MCP] | 1226ms
+[10:57:31] ✅ PASS | web_fetch[PyPI] | 571ms
+[10:58:01] ❌ FAIL | web_fetch[Wikipedia] | 30029ms | Error: Timeout (>30s)
+
+💾 Testing cache_stats / cache_clear...
+[10:58:01] ✅ PASS | cache_stats | 0ms
+[10:58:01] ✅ PASS | cache_clear | 2ms
+
+❤️ Testing search_health...
+[10:58:01] ✅ PASS | search_health | 0ms
+
+📋 Testing metadata_extract...
+[10:58:02] ✅ PASS | metadata_extract | 1034ms
+
+📰 Testing rss_parse...
+[10:58:03] ✅ PASS | rss_parse[https://github.com/wxs-lang/we...] | 894ms
+[10:58:05] ✅ PASS | rss_parse[https://hnrss.org/frontpage...] | 1692ms
+
+✨ Testing content_quality...
+[10:58:05] ✅ PASS | content_quality | 274ms
+
+🔗 Testing broken_links...
+[10:58:05] ✅ PASS | broken_links | 270ms | Error: Found 110 links
+
+🕷️ Testing web_crawl...
+[10:58:06] ✅ PASS | web_crawl | 1013ms
+
+📝 Testing web_extract...
+[10:58:07] ✅ PASS | web_extract | 524ms
+
+────────────────────────────────────────────────────────────────────────────────
+📊 ITERATION 8 SUMMARY
+────────────────────────────────────────────────────────────────────────────────
+  Total: 184 | Passed: 176 | Failed: 8 | Skipped: 0 | Pass Rate: 95.7%
+  Elapsed: 552.5s
+  Memory: 10.7MB (peak: 27.3MB)
+
+⚠️  WARNING: 8 test failures detected!
+Recent errors:
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+
+💤 Sleeping 30s until next iteration...
+
+────────────────────────────────────────────────────────────────────────────────
+📋 TEST ITERATION 9 - 10:58:37
+────────────────────────────────────────────────────────────────────────────────
+
+🔍 Testing web_search...
+[10:58:37] ✅ PASS | web_search[python asyncio docum...] | 0ms
+[10:58:37] ✅ PASS | web_search[fastapi github repos...] | 0ms
+[10:58:37] ✅ PASS | web_search[postgresql tutorial...] | 0ms
+[10:58:37] ✅ PASS | web_search[docker best practice...] | 0ms
+[10:58:37] ✅ PASS | web_search[model context protoc...] | 0ms
+[10:58:37] ✅ PASS | web_search[latest technology ne...] | 0ms
+[10:58:37] ✅ PASS | web_search[open source AI tools...] | 0ms
+[10:58:37] ✅ PASS | web_search[web scraping best pr...] | 0ms
+
+🌐 Testing web_fetch...
+[10:58:38] ✅ PASS | web_fetch[Python Docs] | 974ms
+[10:58:39] ✅ PASS | web_fetch[FastAPI] | 1161ms
+[10:58:40] ✅ PASS | web_fetch[GitHub MCP] | 1018ms
+[10:58:41] ✅ PASS | web_fetch[PyPI] | 497ms
+[10:59:11] ❌ FAIL | web_fetch[Wikipedia] | 30036ms | Error: Timeout (>30s)
+
+💾 Testing cache_stats / cache_clear...
+[10:59:11] ✅ PASS | cache_stats | 0ms
+[10:59:11] ✅ PASS | cache_clear | 2ms
+
+❤️ Testing search_health...
+[10:59:11] ✅ PASS | search_health | 0ms
+
+📋 Testing metadata_extract...
+[10:59:12] ✅ PASS | metadata_extract | 983ms
+
+📰 Testing rss_parse...
+[10:59:12] ✅ PASS | rss_parse[https://github.com/wxs-lang/we...] | 898ms
+[10:59:14] ✅ PASS | rss_parse[https://hnrss.org/frontpage...] | 1819ms
+
+✨ Testing content_quality...
+[10:59:15] ✅ PASS | content_quality | 266ms
+
+🔗 Testing broken_links...
+[10:59:15] ✅ PASS | broken_links | 305ms | Error: Found 110 links
+
+🕷️ Testing web_crawl...
+[10:59:17] ✅ PASS | web_crawl | 2397ms
+
+📝 Testing web_extract...
+[10:59:18] ✅ PASS | web_extract | 259ms
+
+────────────────────────────────────────────────────────────────────────────────
+📊 ITERATION 9 SUMMARY
+────────────────────────────────────────────────────────────────────────────────
+  Total: 207 | Passed: 198 | Failed: 9 | Skipped: 0 | Pass Rate: 95.7%
+  Elapsed: 623.3s
+  Memory: 16.2MB (peak: 27.3MB)
+
+⚠️  WARNING: 9 test failures detected!
+Recent errors:
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+
+💤 Sleeping 30s until next iteration...
 
 ================================================================================
 🧪 COMPREHENSIVE MCP FUNCTION TEST SUITE
 ================================================================================
-Start time: 2026-09-07 13:08:40
+Start time: 2026-09-08 17:57:55
 Test interval: 30s
 Search queries: 16
 Fetch URLs: 5
@@ -265,58 +696,58 @@ RSS feeds: 2
 Tavily API key not configured, skipping Tavily backend
 
 ────────────────────────────────────────────────────────────────────────────────
-📋 TEST ITERATION 1 - 13:08:40
+📋 TEST ITERATION 1 - 17:57:55
 ────────────────────────────────────────────────────────────────────────────────
 
 🔍 Testing web_search...
-[13:08:41] ✅ PASS | web_search[postgresql tutorial...] | 573ms
-[13:08:41] ✅ PASS | web_search[open source AI tools...] | 572ms
-[13:08:41] ✅ PASS | web_search[python asyncio docum...] | 934ms
-[13:08:41] ✅ PASS | web_search[fastapi github repos...] | 730ms
-[13:08:41] ✅ PASS | web_search[model context protoc...] | 727ms
-[13:08:41] ✅ PASS | web_search[web scraping best pr...] | 727ms
-[13:08:41] ✅ PASS | web_search[latest technology ne...] | 730ms
-[13:08:41] ✅ PASS | web_search[docker best practice...] | 745ms
+[17:57:56] ✅ PASS | web_search[postgresql tutorial...] | 653ms
+[17:57:56] ✅ PASS | web_search[python asyncio docum...] | 912ms
+[17:57:56] ✅ PASS | web_search[docker best practice...] | 722ms
+[17:57:56] ✅ PASS | web_search[latest technology ne...] | 727ms
+[17:57:56] ✅ PASS | web_search[fastapi github repos...] | 750ms
+[17:57:56] ✅ PASS | web_search[web scraping best pr...] | 791ms
+[17:57:56] ✅ PASS | web_search[open source AI tools...] | 807ms
+[17:57:56] ✅ PASS | web_search[model context protoc...] | 814ms
 
 🌐 Testing web_fetch...
-[13:08:45] ✅ PASS | web_fetch[Python Docs] | 3772ms
-[13:08:46] ✅ PASS | web_fetch[FastAPI] | 952ms
-[13:08:48] ✅ PASS | web_fetch[GitHub MCP] | 2032ms
-[13:08:49] ✅ PASS | web_fetch[PyPI] | 485ms
-[13:09:19] ❌ FAIL | web_fetch[Wikipedia] | 30013ms | Error: Timeout (>30s)
+[17:57:59] ✅ PASS | web_fetch[Python Docs] | 2343ms
+[17:58:00] ✅ PASS | web_fetch[FastAPI] | 1270ms
+[17:58:01] ✅ PASS | web_fetch[GitHub MCP] | 1114ms
+[17:58:02] ✅ PASS | web_fetch[PyPI] | 551ms
+[17:58:32] ❌ FAIL | web_fetch[Wikipedia] | 30040ms | Error: Timeout (>30s)
 
 💾 Testing cache_stats / cache_clear...
-[13:09:19] ✅ PASS | cache_stats | 0ms
-[13:09:19] ✅ PASS | cache_clear | 4ms
+[17:58:32] ✅ PASS | cache_stats | 0ms
+[17:58:32] ✅ PASS | cache_clear | 4ms
 
 ❤️ Testing search_health...
-[13:09:19] ✅ PASS | search_health | 0ms
+[17:58:32] ✅ PASS | search_health | 0ms
 
 📋 Testing metadata_extract...
-[13:09:19] ✅ PASS | metadata_extract | 598ms
+[17:58:33] ✅ PASS | metadata_extract | 1723ms
 
 📰 Testing rss_parse...
-[13:09:20] ✅ PASS | rss_parse[https://github.com/wxs-lang/we...] | 875ms
-[13:09:21] ✅ PASS | rss_parse[https://hnrss.org/frontpage...] | 1298ms
+[17:58:34] ✅ PASS | rss_parse[https://github.com/wxs-lang/we...] | 918ms
+[17:58:36] ✅ PASS | rss_parse[https://hnrss.org/frontpage...] | 1468ms
 
 ✨ Testing content_quality...
-[13:09:22] ✅ PASS | content_quality | 545ms
+[17:58:36] ✅ PASS | content_quality | 541ms
 
 🔗 Testing broken_links...
-[13:09:22] ✅ PASS | broken_links | 223ms | Error: Found 87 links
+[17:58:37] ✅ PASS | broken_links | 494ms | Error: Found 110 links
 
 🕷️ Testing web_crawl...
-[13:09:24] ✅ PASS | web_crawl | 1351ms
+[17:58:38] ✅ PASS | web_crawl | 972ms
 
 📝 Testing web_extract...
-[13:09:24] ✅ PASS | web_extract | 753ms
+[17:58:38] ✅ PASS | web_extract | 352ms
 
 ────────────────────────────────────────────────────────────────────────────────
 📊 ITERATION 1 SUMMARY
 ────────────────────────────────────────────────────────────────────────────────
   Total: 23 | Passed: 22 | Failed: 1 | Skipped: 0 | Pass Rate: 95.7%
-  Elapsed: 43.9s
-  Memory: 40.3MB (peak: 45.9MB)
+  Elapsed: 42.8s
+  Memory: 8.7MB (peak: 12.6MB)
 
 ⚠️  WARNING: 1 test failures detected!
 Recent errors:
@@ -325,106 +756,29 @@ Recent errors:
 💤 Sleeping 30s until next iteration...
 
 ────────────────────────────────────────────────────────────────────────────────
-📋 TEST ITERATION 2 - 13:09:54
+📋 TEST ITERATION 2 - 17:59:08
 ────────────────────────────────────────────────────────────────────────────────
 
 🔍 Testing web_search...
-[13:09:54] ✅ PASS | web_search[python asyncio docum...] | 0ms
-[13:09:54] ✅ PASS | web_search[fastapi github repos...] | 0ms
-[13:09:54] ✅ PASS | web_search[postgresql tutorial...] | 0ms
-[13:09:54] ✅ PASS | web_search[docker best practice...] | 0ms
-[13:09:54] ✅ PASS | web_search[model context protoc...] | 0ms
-[13:09:54] ✅ PASS | web_search[latest technology ne...] | 0ms
-[13:09:54] ✅ PASS | web_search[open source AI tools...] | 0ms
-[13:09:54] ✅ PASS | web_search[web scraping best pr...] | 0ms
+[17:59:08] ✅ PASS | web_search[python asyncio docum...] | 0ms
+[17:59:08] ✅ PASS | web_search[fastapi github repos...] | 0ms
+[17:59:08] ✅ PASS | web_search[postgresql tutorial...] | 0ms
+[17:59:08] ✅ PASS | web_search[docker best practice...] | 0ms
+[17:59:08] ✅ PASS | web_search[model context protoc...] | 0ms
+[17:59:08] ✅ PASS | web_search[latest technology ne...] | 0ms
+[17:59:08] ✅ PASS | web_search[open source AI tools...] | 0ms
+[17:59:08] ✅ PASS | web_search[web scraping best pr...] | 0ms
 
 🌐 Testing web_fetch...
-[13:09:55] ✅ PASS | web_fetch[Python Docs] | 904ms
-[13:09:58] ✅ PASS | web_fetch[FastAPI] | 2885ms
-[13:09:59] ✅ PASS | web_fetch[GitHub MCP] | 1288ms
-[13:10:00] ✅ PASS | web_fetch[PyPI] | 472ms
-[13:10:30] ❌ FAIL | web_fetch[Wikipedia] | 30016ms | Error: Timeout (>30s)
-
-💾 Testing cache_stats / cache_clear...
-[13:10:30] ✅ PASS | cache_stats | 0ms
-[13:10:30] ✅ PASS | cache_clear | 4ms
-
-❤️ Testing search_health...
-[13:10:30] ✅ PASS | search_health | 0ms
-
-📋 Testing metadata_extract...
-[13:10:31] ✅ PASS | metadata_extract | 666ms
-
-📰 Testing rss_parse...
-[13:10:34] ❌ FAIL | rss_parse[https://github.com/wxs-lang/we...] | 3060ms | Error: 
-[13:10:37] ✅ PASS | rss_parse[https://hnrss.org/frontpage...] | 3525ms
-
-✨ Testing content_quality...
-[13:10:37] ✅ PASS | content_quality | 326ms
-
-🔗 Testing broken_links...
-[13:10:38] ✅ PASS | broken_links | 222ms | Error: Found 87 links
-
-🕷️ Testing web_crawl...
-[13:10:40] ✅ PASS | web_crawl | 1997ms
-
-📝 Testing web_extract...
-[13:10:42] ✅ PASS | web_extract | 2134ms
-
-────────────────────────────────────────────────────────────────────────────────
-📊 ITERATION 2 SUMMARY
-────────────────────────────────────────────────────────────────────────────────
-  Total: 46 | Passed: 43 | Failed: 3 | Skipped: 0 | Pass Rate: 93.5%
-  Elapsed: 121.5s
-  Memory: 44.7MB (peak: 46.5MB)
-
-================================================================================
-🏁 FINAL TEST SUMMARY
-================================================================================
-  Total: 46
-  Passed: 43
-  Failed: 3
-  Pass Rate: 93.5%
-  Elapsed: 121.5s
-================================================================================
-Traceback (most recent call last):
-  File "/sandboxdata/workspace/file/webscout-mcp/scripts/comprehensive_test.py", line 500, in <module>
-    asyncio.run(run_full_test_suite())
-  File "/opt/python3.12/lib/python3.12/asyncio/runners.py", line 195, in run
-    return runner.run(main)
-           ^^^^^^^^^^^^^^^^
-  File "/opt/python3.12/lib/python3.12/asyncio/runners.py", line 118, in run
-    return self._loop.run_until_complete(task)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/python3.12/lib/python3.12/asyncio/base_events.py", line 691, in run_until_complete
-    return future.result()
-           ^^^^^^^^^^^^^^^
-  File "/sandboxdata/workspace/file/webscout-mcp/scripts/comprehensive_test.py", line 467, in run_full_test_suite
-    json.dump(report, f, indent=2, ensure_ascii=False)
-  File "/opt/python3.12/lib/python3.12/json/__init__.py", line 179, in dump
-    for chunk in iterable:
-                 ^^^^^^^^
-  File "/opt/python3.12/lib/python3.12/json/encoder.py", line 432, in _iterencode
-    yield from _iterencode_dict(o, _current_indent_level)
-  File "/opt/python3.12/lib/python3.12/json/encoder.py", line 406, in _iterencode_dict
-    yield from chunks
-  File "/opt/python3.12/lib/python3.12/json/encoder.py", line 406, in _iterencode_dict
-    yield from chunks
-  File "/opt/python3.12/lib/python3.12/json/encoder.py", line 326, in _iterencode_list
-    yield from chunks
-  File "/opt/python3.12/lib/python3.12/json/encoder.py", line 326, in _iterencode_list
-    yield from chunks
-  File "/opt/python3.12/lib/python3.12/json/encoder.py", line 439, in _iterencode
-    o = _default(o)
-        ^^^^^^^^^^^
-  File "/opt/python3.12/lib/python3.12/json/encoder.py", line 180, in default
-    raise TypeError(f'Object of type {o.__class__.__name__} '
-TypeError: Object of type ConnectError is not JSON serializable
+[17:59:09] ✅ PASS | web_fetch[Python Docs] | 577ms
+[17:59:11] ✅ PASS | web_fetch[FastAPI] | 2078ms
+[17:59:12] ✅ PASS | web_fetch[GitHub MCP] | 1122ms
+[17:59:12] ✅ PASS | web_fetch[PyPI] | 483ms
 
 ================================================================================
 🧪 COMPREHENSIVE MCP FUNCTION TEST SUITE
 ================================================================================
-Start time: 2026-09-07 13:11:41
+Start time: 2026-09-08 18:02:57
 Test interval: 30s
 Search queries: 16
 Fetch URLs: 5
@@ -434,58 +788,58 @@ RSS feeds: 2
 Tavily API key not configured, skipping Tavily backend
 
 ────────────────────────────────────────────────────────────────────────────────
-📋 TEST ITERATION 1 - 13:11:41
+📋 TEST ITERATION 1 - 18:02:58
 ────────────────────────────────────────────────────────────────────────────────
 
 🔍 Testing web_search...
-[13:11:42] ✅ PASS | web_search[fastapi github repos...] | 535ms
-[13:11:42] ✅ PASS | web_search[python asyncio docum...] | 796ms
-[13:11:42] ✅ PASS | web_search[model context protoc...] | 588ms
-[13:11:42] ✅ PASS | web_search[docker best practice...] | 658ms
-[13:11:42] ✅ PASS | web_search[open source AI tools...] | 659ms
-[13:11:42] ✅ PASS | web_search[latest technology ne...] | 679ms
-[13:11:42] ✅ PASS | web_search[web scraping best pr...] | 709ms
-[13:11:42] ✅ PASS | web_search[postgresql tutorial...] | 719ms
+[18:02:58] ✅ PASS | web_search[fastapi github repos...] | 677ms
+[18:02:59] ✅ PASS | web_search[web scraping best pr...] | 724ms
+[18:02:59] ✅ PASS | web_search[docker best practice...] | 776ms
+[18:02:59] ✅ PASS | web_search[postgresql tutorial...] | 838ms
+[18:02:59] ✅ PASS | web_search[model context protoc...] | 853ms
+[18:02:59] ✅ PASS | web_search[python asyncio docum...] | 1099ms
+[18:02:59] ✅ PASS | web_search[open source AI tools...] | 875ms
+[18:02:59] ✅ PASS | web_search[latest technology ne...] | 876ms
 
 🌐 Testing web_fetch...
-[13:11:46] ✅ PASS | web_fetch[Python Docs] | 3688ms
-[13:11:51] ✅ PASS | web_fetch[FastAPI] | 5176ms
-[13:11:53] ✅ PASS | web_fetch[GitHub MCP] | 1868ms
-[13:11:53] ✅ PASS | web_fetch[PyPI] | 563ms
-[13:12:23] ❌ FAIL | web_fetch[Wikipedia] | 30003ms | Error: Timeout (>30s)
+[18:03:00] ✅ PASS | web_fetch[Python Docs] | 1031ms
+[18:03:01] ✅ PASS | web_fetch[FastAPI] | 1210ms
+[18:03:02] ✅ PASS | web_fetch[GitHub MCP] | 1280ms
+[18:03:03] ✅ PASS | web_fetch[PyPI] | 491ms
+[18:03:33] ❌ FAIL | web_fetch[Wikipedia] | 30026ms | Error: Timeout (>30s)
 
 💾 Testing cache_stats / cache_clear...
-[13:12:23] ✅ PASS | cache_stats | 0ms
-[13:12:23] ✅ PASS | cache_clear | 4ms
+[18:03:33] ✅ PASS | cache_stats | 0ms
+[18:03:33] ✅ PASS | cache_clear | 2ms
 
 ❤️ Testing search_health...
-[13:12:23] ✅ PASS | search_health | 0ms
+[18:03:33] ✅ PASS | search_health | 0ms
 
 📋 Testing metadata_extract...
-[13:12:24] ✅ PASS | metadata_extract | 992ms
+[18:03:34] ✅ PASS | metadata_extract | 965ms
 
 📰 Testing rss_parse...
-[13:12:25] ✅ PASS | rss_parse[https://github.com/wxs-lang/we...] | 1014ms
-[13:12:27] ✅ PASS | rss_parse[https://hnrss.org/frontpage...] | 1924ms
+[18:03:35] ✅ PASS | rss_parse[https://github.com/wxs-lang/we...] | 1034ms
+[18:03:37] ✅ PASS | rss_parse[https://hnrss.org/frontpage...] | 1830ms
 
 ✨ Testing content_quality...
-[13:12:27] ✅ PASS | content_quality | 280ms
+[18:03:37] ✅ PASS | content_quality | 255ms
 
 🔗 Testing broken_links...
-[13:12:28] ✅ PASS | broken_links | 312ms | Error: Found 87 links
+[18:03:37] ✅ PASS | broken_links | 278ms | Error: Found 110 links
 
 🕷️ Testing web_crawl...
-[13:12:30] ✅ PASS | web_crawl | 2284ms
+[18:03:38] ✅ PASS | web_crawl | 1161ms
 
 📝 Testing web_extract...
-[13:12:30] ✅ PASS | web_extract | 278ms
+[18:03:39] ✅ PASS | web_extract | 256ms
 
 ────────────────────────────────────────────────────────────────────────────────
 📊 ITERATION 1 SUMMARY
 ────────────────────────────────────────────────────────────────────────────────
   Total: 23 | Passed: 22 | Failed: 1 | Skipped: 0 | Pass Rate: 95.7%
-  Elapsed: 49.3s
-  Memory: 40.3MB (peak: 45.9MB)
+  Elapsed: 40.9s
+  Memory: 8.7MB (peak: 12.4MB)
 
 ⚠️  WARNING: 1 test failures detected!
 Recent errors:
@@ -494,58 +848,58 @@ Recent errors:
 💤 Sleeping 30s until next iteration...
 
 ────────────────────────────────────────────────────────────────────────────────
-📋 TEST ITERATION 2 - 13:13:00
+📋 TEST ITERATION 2 - 18:04:09
 ────────────────────────────────────────────────────────────────────────────────
 
 🔍 Testing web_search...
-[13:13:00] ✅ PASS | web_search[python asyncio docum...] | 0ms
-[13:13:00] ✅ PASS | web_search[fastapi github repos...] | 0ms
-[13:13:00] ✅ PASS | web_search[postgresql tutorial...] | 0ms
-[13:13:00] ✅ PASS | web_search[docker best practice...] | 0ms
-[13:13:00] ✅ PASS | web_search[model context protoc...] | 0ms
-[13:13:00] ✅ PASS | web_search[latest technology ne...] | 0ms
-[13:13:00] ✅ PASS | web_search[open source AI tools...] | 0ms
-[13:13:00] ✅ PASS | web_search[web scraping best pr...] | 0ms
+[18:04:09] ✅ PASS | web_search[python asyncio docum...] | 0ms
+[18:04:09] ✅ PASS | web_search[fastapi github repos...] | 0ms
+[18:04:09] ✅ PASS | web_search[postgresql tutorial...] | 0ms
+[18:04:09] ✅ PASS | web_search[docker best practice...] | 0ms
+[18:04:09] ✅ PASS | web_search[model context protoc...] | 0ms
+[18:04:09] ✅ PASS | web_search[latest technology ne...] | 0ms
+[18:04:09] ✅ PASS | web_search[open source AI tools...] | 0ms
+[18:04:09] ✅ PASS | web_search[web scraping best pr...] | 0ms
 
 🌐 Testing web_fetch...
-[13:13:02] ✅ PASS | web_fetch[Python Docs] | 1680ms
-[13:13:05] ✅ PASS | web_fetch[FastAPI] | 2986ms
-[13:13:06] ✅ PASS | web_fetch[GitHub MCP] | 1360ms
-[13:13:07] ✅ PASS | web_fetch[PyPI] | 483ms
-[13:13:37] ❌ FAIL | web_fetch[Wikipedia] | 30048ms | Error: Timeout (>30s)
+[18:04:10] ✅ PASS | web_fetch[Python Docs] | 980ms
+[18:04:11] ✅ PASS | web_fetch[FastAPI] | 976ms
+[18:04:12] ✅ PASS | web_fetch[GitHub MCP] | 1195ms
+[18:04:12] ✅ PASS | web_fetch[PyPI] | 480ms
+[18:04:42] ❌ FAIL | web_fetch[Wikipedia] | 30039ms | Error: Timeout (>30s)
 
 💾 Testing cache_stats / cache_clear...
-[13:13:37] ✅ PASS | cache_stats | 0ms
-[13:13:37] ✅ PASS | cache_clear | 4ms
+[18:04:42] ✅ PASS | cache_stats | 0ms
+[18:04:42] ✅ PASS | cache_clear | 2ms
 
 ❤️ Testing search_health...
-[13:13:37] ✅ PASS | search_health | 0ms
+[18:04:42] ✅ PASS | search_health | 0ms
 
 📋 Testing metadata_extract...
-[13:13:39] ✅ PASS | metadata_extract | 2082ms
+[18:04:43] ✅ PASS | metadata_extract | 925ms
 
 📰 Testing rss_parse...
-[13:13:40] ✅ PASS | rss_parse[https://github.com/wxs-lang/we...] | 750ms
-[13:13:41] ✅ PASS | rss_parse[https://hnrss.org/frontpage...] | 1346ms
+[18:04:44] ✅ PASS | rss_parse[https://github.com/wxs-lang/we...] | 969ms
+[18:04:46] ✅ PASS | rss_parse[https://hnrss.org/frontpage...] | 1325ms
 
 ✨ Testing content_quality...
-[13:13:41] ✅ PASS | content_quality | 323ms
+[18:04:46] ✅ PASS | content_quality | 259ms
 
 🔗 Testing broken_links...
-[13:13:42] ✅ PASS | broken_links | 320ms | Error: Found 87 links
+[18:04:46] ✅ PASS | broken_links | 281ms | Error: Found 110 links
 
 🕷️ Testing web_crawl...
-[13:13:46] ✅ PASS | web_crawl | 4102ms
+[18:04:47] ✅ PASS | web_crawl | 1106ms
 
 📝 Testing web_extract...
-[13:13:48] ✅ PASS | web_extract | 2189ms
+[18:04:48] ✅ PASS | web_extract | 843ms
 
 ────────────────────────────────────────────────────────────────────────────────
 📊 ITERATION 2 SUMMARY
 ────────────────────────────────────────────────────────────────────────────────
   Total: 46 | Passed: 44 | Failed: 2 | Skipped: 0 | Pass Rate: 95.7%
-  Elapsed: 127.1s
-  Memory: 44.6MB (peak: 46.5MB)
+  Elapsed: 110.4s
+  Memory: 14.1MB (peak: 15.4MB)
 
 ⚠️  WARNING: 2 test failures detected!
 Recent errors:
@@ -555,93 +909,451 @@ Recent errors:
 💤 Sleeping 30s until next iteration...
 
 ────────────────────────────────────────────────────────────────────────────────
-📋 TEST ITERATION 3 - 13:14:18
+📋 TEST ITERATION 3 - 18:05:18
 ────────────────────────────────────────────────────────────────────────────────
 
 🔍 Testing web_search...
-[13:14:18] ✅ PASS | web_search[python asyncio docum...] | 0ms
-[13:14:18] ✅ PASS | web_search[fastapi github repos...] | 0ms
-[13:14:18] ✅ PASS | web_search[postgresql tutorial...] | 0ms
-[13:14:18] ✅ PASS | web_search[docker best practice...] | 0ms
-[13:14:18] ✅ PASS | web_search[model context protoc...] | 0ms
-[13:14:18] ✅ PASS | web_search[latest technology ne...] | 0ms
-[13:14:18] ✅ PASS | web_search[open source AI tools...] | 0ms
-[13:14:18] ✅ PASS | web_search[web scraping best pr...] | 0ms
+[18:05:18] ✅ PASS | web_search[python asyncio docum...] | 0ms
+[18:05:18] ✅ PASS | web_search[fastapi github repos...] | 0ms
+[18:05:18] ✅ PASS | web_search[postgresql tutorial...] | 0ms
+[18:05:18] ✅ PASS | web_search[docker best practice...] | 0ms
+[18:05:18] ✅ PASS | web_search[model context protoc...] | 0ms
+[18:05:18] ✅ PASS | web_search[latest technology ne...] | 0ms
+[18:05:18] ✅ PASS | web_search[open source AI tools...] | 0ms
+[18:05:18] ✅ PASS | web_search[web scraping best pr...] | 0ms
 
 🌐 Testing web_fetch...
-[13:14:20] ✅ PASS | web_fetch[Python Docs] | 2340ms
-error getting summary: 
-Traceback (most recent call last):
-  File "/home/user/.local/lib/python3.12/site-packages/readability/readability.py", line 259, in summary
-    self._html(True)
-  File "/home/user/.local/lib/python3.12/site-packages/readability/readability.py", line 180, in _html
-    self.html = self._parse(self.input)
-                ^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/user/.local/lib/python3.12/site-packages/readability/readability.py", line 199, in _parse
-    doc = html_cleaner.clean_html(doc)
-          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/user/.local/lib/python3.12/site-packages/lxml_html_clean/clean.py", line 660, in clean_html
-    self(doc)
-  File "/home/user/.local/lib/python3.12/site-packages/lxml_html_clean/clean.py", line 458, in __call__
-    _kill.popleft().drop_tree()  # popleft to start with innermost elements
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/python3.12/lib/python3.12/site-packages/lxml/html/__init__.py", line 324, in drop_tree
-    parent.text = (parent.text or '') + self.tail
-    ^^^^^^^^^^^
-  File "src/lxml/etree.pyx", line 1169, in lxml.etree._Element.text.__set__
-  File "src/lxml/apihelpers.pxi", line 763, in lxml.etree._setNodeText
-  File "src/lxml/apihelpers.pxi", line 751, in lxml.etree._createTextNode
-  File "src/lxml/apihelpers.pxi", line 1547, in lxml.etree._utf8
-ValueError: All strings must be XML compatible: Unicode or ASCII, no NULL bytes or control characters
-[13:14:23] ✅ PASS | web_fetch[FastAPI] | 2789ms
-[13:14:25] ✅ PASS | web_fetch[GitHub MCP] | 1342ms
-[13:14:25] ✅ PASS | web_fetch[PyPI] | 495ms
-[13:14:55] ❌ FAIL | web_fetch[Wikipedia] | 30017ms | Error: Timeout (>30s)
+[18:05:21] ✅ PASS | web_fetch[Python Docs] | 3142ms
+[18:05:22] ✅ PASS | web_fetch[FastAPI] | 1066ms
+[18:05:24] ✅ PASS | web_fetch[GitHub MCP] | 1217ms
+[18:05:24] ✅ PASS | web_fetch[PyPI] | 487ms
+[18:05:54] ❌ FAIL | web_fetch[Wikipedia] | 30038ms | Error: Timeout (>30s)
 
 💾 Testing cache_stats / cache_clear...
-[13:14:55] ✅ PASS | cache_stats | 0ms
-[13:14:55] ✅ PASS | cache_clear | 4ms
+[18:05:54] ✅ PASS | cache_stats | 0ms
+[18:05:54] ✅ PASS | cache_clear | 2ms
 
 ❤️ Testing search_health...
-[13:14:55] ✅ PASS | search_health | 0ms
+[18:05:54] ✅ PASS | search_health | 0ms
 
 📋 Testing metadata_extract...
-[13:14:57] ✅ PASS | metadata_extract | 1524ms
+[18:05:55] ✅ PASS | metadata_extract | 1132ms
 
 📰 Testing rss_parse...
-[13:15:00] ❌ FAIL | rss_parse[https://github.com/wxs-lang/we...] | 3058ms | Error: 
-[13:15:01] ✅ PASS | rss_parse[https://hnrss.org/frontpage...] | 1338ms
+[18:05:56] ✅ PASS | rss_parse[https://github.com/wxs-lang/we...] | 913ms
+[18:05:58] ✅ PASS | rss_parse[https://hnrss.org/frontpage...] | 1420ms
 
 ✨ Testing content_quality...
-[13:15:01] ✅ PASS | content_quality | 308ms
+[18:05:58] ✅ PASS | content_quality | 520ms
 
 🔗 Testing broken_links...
-[13:15:02] ✅ PASS | broken_links | 299ms | Error: Found 87 links
+[18:05:59] ✅ PASS | broken_links | 529ms | Error: Found 110 links
 
 🕷️ Testing web_crawl...
-[13:15:03] ✅ PASS | web_crawl | 1327ms
+[18:06:00] ✅ PASS | web_crawl | 1496ms
 
 📝 Testing web_extract...
-[13:15:03] ✅ PASS | web_extract | 490ms
+[18:06:01] ✅ PASS | web_extract | 544ms
 
 ────────────────────────────────────────────────────────────────────────────────
 📊 ITERATION 3 SUMMARY
 ────────────────────────────────────────────────────────────────────────────────
-  Total: 69 | Passed: 65 | Failed: 4 | Skipped: 0 | Pass Rate: 94.2%
-  Elapsed: 202.5s
-  Memory: 50.4MB (peak: 51.7MB)
+  Total: 69 | Passed: 66 | Failed: 3 | Skipped: 0 | Pass Rate: 95.7%
+  Elapsed: 183.0s
+  Memory: 20.2MB (peak: 20.8MB)
+
+⚠️  WARNING: 3 test failures detected!
+Recent errors:
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+
+💤 Sleeping 30s until next iteration...
+
+────────────────────────────────────────────────────────────────────────────────
+📋 TEST ITERATION 4 - 18:06:31
+────────────────────────────────────────────────────────────────────────────────
+
+🔍 Testing web_search...
+[18:06:31] ✅ PASS | web_search[python asyncio docum...] | 0ms
+[18:06:31] ✅ PASS | web_search[fastapi github repos...] | 0ms
+[18:06:31] ✅ PASS | web_search[postgresql tutorial...] | 0ms
+[18:06:31] ✅ PASS | web_search[docker best practice...] | 0ms
+[18:06:31] ✅ PASS | web_search[model context protoc...] | 0ms
+[18:06:31] ✅ PASS | web_search[latest technology ne...] | 0ms
+[18:06:31] ✅ PASS | web_search[open source AI tools...] | 0ms
+[18:06:31] ✅ PASS | web_search[web scraping best pr...] | 0ms
+
+🌐 Testing web_fetch...
+[18:06:32] ✅ PASS | web_fetch[Python Docs] | 1339ms
+[18:06:33] ✅ PASS | web_fetch[FastAPI] | 1464ms
+[18:06:35] ✅ PASS | web_fetch[GitHub MCP] | 1232ms
+[18:06:35] ✅ PASS | web_fetch[PyPI] | 523ms
+[18:07:05] ❌ FAIL | web_fetch[Wikipedia] | 30041ms | Error: Timeout (>30s)
+
+💾 Testing cache_stats / cache_clear...
+[18:07:05] ✅ PASS | cache_stats | 0ms
+[18:07:05] ✅ PASS | cache_clear | 2ms
+
+❤️ Testing search_health...
+[18:07:05] ✅ PASS | search_health | 0ms
+
+📋 Testing metadata_extract...
+[18:07:06] ✅ PASS | metadata_extract | 1083ms
+
+📰 Testing rss_parse...
+[18:07:07] ✅ PASS | rss_parse[https://github.com/wxs-lang/we...] | 905ms
+[18:07:09] ✅ PASS | rss_parse[https://hnrss.org/frontpage...] | 2081ms
+
+✨ Testing content_quality...
+[18:07:10] ✅ PASS | content_quality | 266ms
+
+🔗 Testing broken_links...
+[18:07:10] ✅ PASS | broken_links | 295ms | Error: Found 110 links
+
+🕷️ Testing web_crawl...
+[18:07:11] ✅ PASS | web_crawl | 1036ms
+
+📝 Testing web_extract...
+[18:07:11] ✅ PASS | web_extract | 249ms
+
+────────────────────────────────────────────────────────────────────────────────
+📊 ITERATION 4 SUMMARY
+────────────────────────────────────────────────────────────────────────────────
+  Total: 92 | Passed: 88 | Failed: 4 | Skipped: 0 | Pass Rate: 95.7%
+  Elapsed: 253.6s
+  Memory: 4.0MB (peak: 26.3MB)
+
+⚠️  WARNING: 4 test failures detected!
+Recent errors:
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+
+💤 Sleeping 30s until next iteration...
+
+────────────────────────────────────────────────────────────────────────────────
+📋 TEST ITERATION 5 - 18:07:41
+────────────────────────────────────────────────────────────────────────────────
+
+🔍 Testing web_search...
+[18:07:41] ✅ PASS | web_search[python asyncio docum...] | 0ms
+[18:07:41] ✅ PASS | web_search[fastapi github repos...] | 0ms
+[18:07:41] ✅ PASS | web_search[postgresql tutorial...] | 0ms
+[18:07:41] ✅ PASS | web_search[docker best practice...] | 0ms
+[18:07:41] ✅ PASS | web_search[model context protoc...] | 0ms
+[18:07:41] ✅ PASS | web_search[latest technology ne...] | 0ms
+[18:07:41] ✅ PASS | web_search[open source AI tools...] | 0ms
+[18:07:41] ✅ PASS | web_search[web scraping best pr...] | 0ms
+
+🌐 Testing web_fetch...
+[18:07:42] ✅ PASS | web_fetch[Python Docs] | 989ms
+[18:07:43] ✅ PASS | web_fetch[FastAPI] | 925ms
+[18:07:44] ✅ PASS | web_fetch[GitHub MCP] | 1203ms
+[18:07:45] ✅ PASS | web_fetch[PyPI] | 502ms
+[18:08:15] ❌ FAIL | web_fetch[Wikipedia] | 30042ms | Error: Timeout (>30s)
+
+💾 Testing cache_stats / cache_clear...
+[18:08:15] ✅ PASS | cache_stats | 0ms
+[18:08:15] ✅ PASS | cache_clear | 2ms
+
+❤️ Testing search_health...
+[18:08:15] ✅ PASS | search_health | 0ms
+
+📋 Testing metadata_extract...
+[18:08:16] ✅ PASS | metadata_extract | 1051ms
+
+📰 Testing rss_parse...
+[18:08:17] ✅ PASS | rss_parse[https://github.com/wxs-lang/we...] | 939ms
+[18:08:18] ✅ PASS | rss_parse[https://hnrss.org/frontpage...] | 1315ms
+
+✨ Testing content_quality...
+[18:08:19] ✅ PASS | content_quality | 317ms
+
+🔗 Testing broken_links...
+[18:08:19] ✅ PASS | broken_links | 323ms | Error: Found 110 links
+
+🕷️ Testing web_crawl...
+[18:08:20] ✅ PASS | web_crawl | 1150ms
+
+📝 Testing web_extract...
+[18:08:20] ✅ PASS | web_extract | 263ms
+
+────────────────────────────────────────────────────────────────────────────────
+📊 ITERATION 5 SUMMARY
+────────────────────────────────────────────────────────────────────────────────
+  Total: 115 | Passed: 110 | Failed: 5 | Skipped: 0 | Pass Rate: 95.7%
+  Elapsed: 322.7s
+  Memory: 8.7MB (peak: 26.3MB)
+
+⚠️  WARNING: 5 test failures detected!
+Recent errors:
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+
+💤 Sleeping 30s until next iteration...
+
+────────────────────────────────────────────────────────────────────────────────
+📋 TEST ITERATION 6 - 18:08:50
+────────────────────────────────────────────────────────────────────────────────
+
+🔍 Testing web_search...
+[18:09:06] ✅ PASS | web_search[fastapi github repos...] | 15697ms
+[18:09:06] ✅ PASS | web_search[latest technology ne...] | 15698ms
+[18:09:06] ✅ PASS | web_search[postgresql tutorial...] | 15770ms
+[18:09:06] ✅ PASS | web_search[docker best practice...] | 15785ms
+[18:09:06] ✅ PASS | web_search[web scraping best pr...] | 15807ms
+[18:09:06] ✅ PASS | web_search[open source AI tools...] | 15816ms
+[18:09:06] ✅ PASS | web_search[model context protoc...] | 15839ms
+[18:09:06] ✅ PASS | web_search[python asyncio docum...] | 15930ms
+
+🌐 Testing web_fetch...
+[18:09:07] ✅ PASS | web_fetch[Python Docs] | 1040ms
+[18:09:09] ✅ PASS | web_fetch[FastAPI] | 1261ms
+[18:09:10] ✅ PASS | web_fetch[GitHub MCP] | 1240ms
+[18:09:10] ✅ PASS | web_fetch[PyPI] | 497ms
+[18:09:40] ❌ FAIL | web_fetch[Wikipedia] | 30017ms | Error: Timeout (>30s)
+
+💾 Testing cache_stats / cache_clear...
+[18:09:40] ✅ PASS | cache_stats | 0ms
+[18:09:40] ✅ PASS | cache_clear | 2ms
+
+❤️ Testing search_health...
+[18:09:40] ✅ PASS | search_health | 0ms
+
+📋 Testing metadata_extract...
+[18:09:42] ✅ PASS | metadata_extract | 1477ms
+
+📰 Testing rss_parse...
+[18:09:43] ✅ PASS | rss_parse[https://github.com/wxs-lang/we...] | 891ms
+[18:09:44] ✅ PASS | rss_parse[https://hnrss.org/frontpage...] | 1347ms
+
+✨ Testing content_quality...
+[18:09:44] ✅ PASS | content_quality | 288ms
+
+🔗 Testing broken_links...
+[18:09:45] ✅ PASS | broken_links | 295ms | Error: Found 110 links
+
+🕷️ Testing web_crawl...
+[18:09:46] ✅ PASS | web_crawl | 1013ms
+
+📝 Testing web_extract...
+[18:09:46] ✅ PASS | web_extract | 256ms
+
+────────────────────────────────────────────────────────────────────────────────
+📊 ITERATION 6 SUMMARY
+────────────────────────────────────────────────────────────────────────────────
+  Total: 138 | Passed: 132 | Failed: 6 | Skipped: 0 | Pass Rate: 95.7%
+  Elapsed: 408.4s
+  Memory: 20.6MB (peak: 26.3MB)
+
+⚠️  WARNING: 6 test failures detected!
+Recent errors:
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+
+💤 Sleeping 30s until next iteration...
+
+────────────────────────────────────────────────────────────────────────────────
+📋 TEST ITERATION 7 - 18:10:16
+────────────────────────────────────────────────────────────────────────────────
+
+🔍 Testing web_search...
+[18:10:16] ✅ PASS | web_search[python asyncio docum...] | 0ms
+[18:10:16] ✅ PASS | web_search[fastapi github repos...] | 0ms
+[18:10:16] ✅ PASS | web_search[postgresql tutorial...] | 0ms
+[18:10:16] ✅ PASS | web_search[docker best practice...] | 0ms
+[18:10:16] ✅ PASS | web_search[model context protoc...] | 0ms
+[18:10:16] ✅ PASS | web_search[latest technology ne...] | 0ms
+[18:10:16] ✅ PASS | web_search[open source AI tools...] | 0ms
+[18:10:16] ✅ PASS | web_search[web scraping best pr...] | 0ms
+
+🌐 Testing web_fetch...
+[18:10:17] ✅ PASS | web_fetch[Python Docs] | 1205ms
+[18:10:19] ✅ PASS | web_fetch[FastAPI] | 1307ms
+[18:10:20] ✅ PASS | web_fetch[GitHub MCP] | 1270ms
+[18:10:20] ✅ PASS | web_fetch[PyPI] | 503ms
+[18:10:50] ❌ FAIL | web_fetch[Wikipedia] | 30021ms | Error: Timeout (>30s)
+
+💾 Testing cache_stats / cache_clear...
+[18:10:50] ✅ PASS | cache_stats | 0ms
+[18:10:50] ✅ PASS | cache_clear | 2ms
+
+❤️ Testing search_health...
+[18:10:50] ✅ PASS | search_health | 0ms
+
+📋 Testing metadata_extract...
+[18:10:52] ✅ PASS | metadata_extract | 1404ms
+
+📰 Testing rss_parse...
+[18:10:53] ✅ PASS | rss_parse[https://github.com/wxs-lang/we...] | 861ms
+[18:10:54] ✅ PASS | rss_parse[https://hnrss.org/frontpage...] | 1420ms
+
+✨ Testing content_quality...
+[18:10:54] ✅ PASS | content_quality | 331ms
+
+🔗 Testing broken_links...
+[18:10:55] ✅ PASS | broken_links | 852ms | Error: Found 110 links
+
+🕷️ Testing web_crawl...
+[18:10:56] ✅ PASS | web_crawl | 1088ms
+
+📝 Testing web_extract...
+[18:10:57] ✅ PASS | web_extract | 258ms
+
+────────────────────────────────────────────────────────────────────────────────
+📊 ITERATION 7 SUMMARY
+────────────────────────────────────────────────────────────────────────────────
+  Total: 161 | Passed: 154 | Failed: 7 | Skipped: 0 | Pass Rate: 95.7%
+  Elapsed: 479.0s
+  Memory: 5.4MB (peak: 26.6MB)
+
+⚠️  WARNING: 7 test failures detected!
+Recent errors:
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+
+💤 Sleeping 30s until next iteration...
+
+────────────────────────────────────────────────────────────────────────────────
+📋 TEST ITERATION 8 - 18:11:27
+────────────────────────────────────────────────────────────────────────────────
+
+🔍 Testing web_search...
+[18:11:27] ✅ PASS | web_search[python asyncio docum...] | 0ms
+[18:11:27] ✅ PASS | web_search[fastapi github repos...] | 0ms
+[18:11:27] ✅ PASS | web_search[postgresql tutorial...] | 0ms
+[18:11:27] ✅ PASS | web_search[docker best practice...] | 0ms
+[18:11:27] ✅ PASS | web_search[model context protoc...] | 0ms
+[18:11:27] ✅ PASS | web_search[latest technology ne...] | 0ms
+[18:11:27] ✅ PASS | web_search[open source AI tools...] | 0ms
+[18:11:27] ✅ PASS | web_search[web scraping best pr...] | 0ms
+
+🌐 Testing web_fetch...
+[18:11:28] ✅ PASS | web_fetch[Python Docs] | 1704ms
+[18:11:30] ✅ PASS | web_fetch[FastAPI] | 2086ms
+[18:11:31] ✅ PASS | web_fetch[GitHub MCP] | 570ms
+[18:11:32] ✅ PASS | web_fetch[PyPI] | 500ms
+[18:12:02] ❌ FAIL | web_fetch[Wikipedia] | 30035ms | Error: Timeout (>30s)
+
+💾 Testing cache_stats / cache_clear...
+[18:12:02] ✅ PASS | cache_stats | 0ms
+[18:12:02] ✅ PASS | cache_clear | 2ms
+
+❤️ Testing search_health...
+[18:12:02] ✅ PASS | search_health | 0ms
+
+📋 Testing metadata_extract...
+[18:12:03] ✅ PASS | metadata_extract | 1075ms
+
+📰 Testing rss_parse...
+[18:12:04] ✅ PASS | rss_parse[https://github.com/wxs-lang/we...] | 895ms
+[18:12:05] ✅ PASS | rss_parse[https://hnrss.org/frontpage...] | 1338ms
+
+✨ Testing content_quality...
+[18:12:05] ✅ PASS | content_quality | 271ms
+
+🔗 Testing broken_links...
+[18:12:05] ✅ PASS | broken_links | 306ms | Error: Found 110 links
+
+🕷️ Testing web_crawl...
+[18:12:06] ✅ PASS | web_crawl | 983ms
+
+📝 Testing web_extract...
+[18:12:07] ✅ PASS | web_extract | 264ms
+
+────────────────────────────────────────────────────────────────────────────────
+📊 ITERATION 8 SUMMARY
+────────────────────────────────────────────────────────────────────────────────
+  Total: 184 | Passed: 176 | Failed: 8 | Skipped: 0 | Pass Rate: 95.7%
+  Elapsed: 549.1s
+  Memory: 10.7MB (peak: 26.6MB)
+
+⚠️  WARNING: 8 test failures detected!
+Recent errors:
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+  - web_fetch[Wikipedia]: Timeout (>30s)
+
+💤 Sleeping 30s until next iteration...
+
+────────────────────────────────────────────────────────────────────────────────
+📋 TEST ITERATION 9 - 18:12:37
+────────────────────────────────────────────────────────────────────────────────
+
+🔍 Testing web_search...
+[18:12:37] ✅ PASS | web_search[python asyncio docum...] | 0ms
+[18:12:37] ✅ PASS | web_search[fastapi github repos...] | 0ms
+[18:12:37] ✅ PASS | web_search[postgresql tutorial...] | 0ms
+[18:12:37] ✅ PASS | web_search[docker best practice...] | 0ms
+[18:12:37] ✅ PASS | web_search[model context protoc...] | 0ms
+[18:12:37] ✅ PASS | web_search[latest technology ne...] | 0ms
+[18:12:37] ✅ PASS | web_search[open source AI tools...] | 0ms
+[18:12:37] ✅ PASS | web_search[web scraping best pr...] | 0ms
+
+🌐 Testing web_fetch...
+[18:12:38] ✅ PASS | web_fetch[Python Docs] | 960ms
+[18:12:39] ✅ PASS | web_fetch[FastAPI] | 1064ms
+[18:12:40] ✅ PASS | web_fetch[GitHub MCP] | 1076ms
+[18:12:40] ✅ PASS | web_fetch[PyPI] | 496ms
+[18:13:10] ❌ FAIL | web_fetch[Wikipedia] | 30026ms | Error: Timeout (>30s)
+
+💾 Testing cache_stats / cache_clear...
+[18:13:10] ✅ PASS | cache_stats | 0ms
+[18:13:10] ✅ PASS | cache_clear | 2ms
+
+❤️ Testing search_health...
+[18:13:10] ✅ PASS | search_health | 0ms
+
+📋 Testing metadata_extract...
+[18:13:11] ✅ PASS | metadata_extract | 939ms
+
+📰 Testing rss_parse...
+[18:13:12] ✅ PASS | rss_parse[https://github.com/wxs-lang/we...] | 872ms
+[18:13:27] ❌ FAIL | rss_parse[https://hnrss.org/frontpage...] | 15117ms | Error: 
+
+✨ Testing content_quality...
+[18:13:28] ✅ PASS | content_quality | 243ms
+
+🔗 Testing broken_links...
+[18:13:28] ✅ PASS | broken_links | 288ms | Error: Found 110 links
+
+🕷️ Testing web_crawl...
+[18:13:29] ✅ PASS | web_crawl | 1504ms
+
+📝 Testing web_extract...
+[18:13:30] ✅ PASS | web_extract | 246ms
+
+────────────────────────────────────────────────────────────────────────────────
+📊 ITERATION 9 SUMMARY
+────────────────────────────────────────────────────────────────────────────────
+  Total: 207 | Passed: 197 | Failed: 10 | Skipped: 0 | Pass Rate: 95.2%
+  Elapsed: 632.0s
+  Memory: 16.2MB (peak: 26.6MB)
 
 ================================================================================
 🏁 FINAL TEST SUMMARY
 ================================================================================
-  Total: 69
-  Passed: 65
-  Failed: 4
-  Pass Rate: 94.2%
-  Elapsed: 202.5s
+  Total: 207
+  Passed: 197
+  Failed: 10
+  Pass Rate: 95.2%
+  Elapsed: 632.1s
 ================================================================================
 Traceback (most recent call last):
-  File "/sandboxdata/workspace/file/webscout-mcp/scripts/comprehensive_test.py", line 500, in <module>
+  File "/sandboxdata/workspace/file/webscout-mcp/scripts/comprehensive_test.py", line 504, in <module>
     asyncio.run(run_full_test_suite())
   File "/opt/python3.12/lib/python3.12/asyncio/runners.py", line 195, in run
     return runner.run(main)
@@ -652,7 +1364,7 @@ Traceback (most recent call last):
   File "/opt/python3.12/lib/python3.12/asyncio/base_events.py", line 691, in run_until_complete
     return future.result()
            ^^^^^^^^^^^^^^^
-  File "/sandboxdata/workspace/file/webscout-mcp/scripts/comprehensive_test.py", line 467, in run_full_test_suite
+  File "/sandboxdata/workspace/file/webscout-mcp/scripts/comprehensive_test.py", line 471, in run_full_test_suite
     json.dump(report, f, indent=2, ensure_ascii=False)
   File "/opt/python3.12/lib/python3.12/json/__init__.py", line 179, in dump
     for chunk in iterable:
@@ -672,33 +1384,4 @@ Traceback (most recent call last):
         ^^^^^^^^^^^
   File "/opt/python3.12/lib/python3.12/json/encoder.py", line 180, in default
     raise TypeError(f'Object of type {o.__class__.__name__} '
-TypeError: Object of type ConnectError is not JSON serializable
-
-================================================================================
-🧪 COMPREHENSIVE MCP FUNCTION TEST SUITE
-================================================================================
-Start time: 2026-09-07 13:15:42
-Test interval: 30s
-Search queries: 16
-Fetch URLs: 5
-RSS feeds: 2
-================================================================================
-
-Tavily API key not configured, skipping Tavily backend
-
-────────────────────────────────────────────────────────────────────────────────
-📋 TEST ITERATION 1 - 13:15:42
-────────────────────────────────────────────────────────────────────────────────
-
-🔍 Testing web_search...
-[13:15:43] ✅ PASS | web_search[latest technology ne...] | 643ms
-[13:15:43] ✅ PASS | web_search[model context protoc...] | 673ms
-[13:15:43] ✅ PASS | web_search[docker best practice...] | 676ms
-[13:15:43] ✅ PASS | web_search[web scraping best pr...] | 769ms
-[13:15:43] ✅ PASS | web_search[fastapi github repos...] | 778ms
-[13:15:43] ✅ PASS | web_search[python asyncio docum...] | 988ms
-[13:15:43] ✅ PASS | web_search[open source AI tools...] | 792ms
-[13:15:43] ✅ PASS | web_search[postgresql tutorial...] | 802ms
-
-🌐 Testing web_fetch...
-[13:16:04] ✅ PASS | web_fetch[Python Docs] | 21497ms
+TypeError: Object of type ReadTimeout is not JSON serializable

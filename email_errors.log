@@ -9297,3 +9297,331 @@ Jobs:
 You are receiving this because you are subscribed to this thread.
 Manage your GitHub Actions notifications: https://github.com/settings/notifications?email_
 ================================================================================
+
+================================================================================
+⚠️  ERROR EMAIL DETECTED
+================================================================================
+Time:     2026-09-08 10:44:03
+Email ID: 1749
+Date:     Mon, 07 Sep 2026 00:41:57 -0700
+From:     "wxs-lang" <notifications@github.com>
+Subject:  [wxs-lang/webscout-mcp] Run failed: Automated Release - main
+ (199bc5c)
+
+Body (first 500 chars):
+[wxs-lang/webscout-mcp] Automated Release workflow run
+
+Repository: wxs-lang/webscout-mcp
+Workflow: Automated Release
+Duration: 17.0 seconds
+Finished: 2026-09-07 07:41:37 UTC
+
+View results: https://github.com/wxs-lang/webscout-mcp/actions/runs/34096697070
+
+Jobs:
+  * Check if release is needed succeeded (1 annotation)
+  * Quality Gate (verify required checks) failed (1 annotation)
+  * Create Release skipped (0 annotations)
+
+-- 
+You are receiving this because you are subscribed to t
+================================================================================
+
+================================================================================
+⚠️  ERROR EMAIL DETECTED
+================================================================================
+Time:     2026-09-08 10:44:04
+Email ID: 1750
+Date:     Mon, 07 Sep 2026 00:42:10 -0700
+From:     "dependabot[bot]" <notifications@github.com>
+Subject:  Re: [wxs-lang/webscout-mcp] chore(deps)(deps): update mcp requirement
+ from <2.0.0,>=1.0.0 to >=1.0.0,<3.0.0 in the production-dependencies group
+ across 1 directory (PR #29)
+
+Body (first 500 chars):
+dependabot[bot] left a comment (wxs-lang/webscout-mcp#29)
+
+This pull request was built based on a group rule. Closing it will not ignore any of these versions in future pull requests.
+
+To ignore these dependencies, configure [ignore rules](https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file#ignore) in dependabot.yml
+
+-- 
+Reply to this email directly or view it on GitHub:
+https://github.com/wxs-lang/webscout-mcp/
+================================================================================
+
+================================================================================
+⚠️  ERROR EMAIL DETECTED
+================================================================================
+Time:     2026-09-08 10:44:04
+Email ID: 1751
+Date:     Mon, 07 Sep 2026 00:44:13 -0700
+From:     "wxs-lang" <notifications@github.com>
+Subject:  [wxs-lang/webscout-mcp] Run failed: Code Quality - main (199bc5c)
+
+Body (first 500 chars):
+[wxs-lang/webscout-mcp] Code Quality workflow run
+
+Repository: wxs-lang/webscout-mcp
+Workflow: Code Quality
+Duration: 2 minutes and 33.0 seconds
+Finished: 2026-09-07 07:43:53 UTC
+
+View results: https://github.com/wxs-lang/webscout-mcp/actions/runs/34096697099
+
+Jobs:
+  * Type Check (mypy) succeeded (1 annotation)
+  * Lint (ruff) failed (3 annotations)
+  * CodeQL Analysis (python) succeeded (2 annotations)
+  * Security Scan (bandit) succeeded (1 annotation)
+  * Quality Summary succee
+================================================================================
+
+================================================================================
+⚠️  ERROR EMAIL DETECTED
+================================================================================
+Time:     2026-09-08 10:44:04
+Email ID: 1752
+Date:     Mon, 07 Sep 2026 00:47:38 -0700
+From:     "wxs-lang" <notifications@github.com>
+Subject:  [wxs-lang/webscout-mcp] Run failed: Tests - main (199bc5c)
+
+Body (first 500 chars):
+[wxs-lang/webscout-mcp] Tests workflow run
+
+Repository: wxs-lang/webscout-mcp
+Workflow: Tests
+Duration: 5 minutes and 58.0 seconds
+Finished: 2026-09-07 07:47:18 UTC
+
+View results: https://github.com/wxs-lang/webscout-mcp/actions/runs/34096697137
+
+Jobs:
+  * MCP E2E Tests failed (2 annotations)
+  * Integration Tests (Python 3.10) succeeded (1 annotation)
+  * Unit Tests (Python 3.12) succeeded (1 annotation)
+  * Integration Tests (Python 3.12) succeeded (1 annotation)
+  * Unit Tests (
+================================================================================
+
+================================================================================
+⚠️  ERROR EMAIL DETECTED
+================================================================================
+Time:     2026-09-08 10:44:04
+Email ID: 1753
+Date:     Mon, 07 Sep 2026 00:53:02 -0700
+From:     "wxs-lang" <notifications@github.com>
+Subject:  [wxs-lang/webscout-mcp] Run failed: Automated Release - main
+ (ac66592)
+
+Body (first 500 chars):
+[wxs-lang/webscout-mcp] Automated Release workflow run
+
+Repository: wxs-lang/webscout-mcp
+Workflow: Automated Release
+Duration: 47.0 seconds
+Finished: 2026-09-07 07:52:42 UTC
+
+View results: https://github.com/wxs-lang/webscout-mcp/actions/runs/34097587246
+
+Jobs:
+  * Check if release is needed succeeded (1 annotation)
+  * Quality Gate (verify required checks) failed (1 annotation)
+  * Create Release skipped (0 annotations)
+
+-- 
+You are receiving this because you are subscribed to t
+================================================================================
+
+================================================================================
+⚠️  ERROR EMAIL DETECTED
+================================================================================
+Time:     2026-09-08 10:44:05
+Email ID: 1754
+Date:     Mon, 07 Sep 2026 00:54:44 -0700
+From:     "wxs-lang" <notifications@github.com>
+Subject:  [wxs-lang/webscout-mcp] Run failed: Code Quality - main (ac66592)
+
+Body (first 500 chars):
+[wxs-lang/webscout-mcp] Code Quality workflow run
+
+Repository: wxs-lang/webscout-mcp
+Workflow: Code Quality
+Duration: 2 minutes and 29.0 seconds
+Finished: 2026-09-07 07:54:24 UTC
+
+View results: https://github.com/wxs-lang/webscout-mcp/actions/runs/34097587219
+
+Jobs:
+  * CodeQL Analysis (python) succeeded (2 annotations)
+  * Lint (ruff) failed (3 annotations)
+  * Security Scan (bandit) succeeded (1 annotation)
+  * Type Check (mypy) succeeded (1 annotation)
+  * Quality Summary succee
+================================================================================
+
+================================================================================
+⚠️  ERROR EMAIL DETECTED
+================================================================================
+Time:     2026-09-08 10:44:05
+Email ID: 1755
+Date:     Mon, 07 Sep 2026 00:57:52 -0700
+From:     "wxs-lang" <notifications@github.com>
+Subject:  [wxs-lang/webscout-mcp] Run failed: Tests - main (ac66592)
+
+Body (first 500 chars):
+[wxs-lang/webscout-mcp] Tests workflow run
+
+Repository: wxs-lang/webscout-mcp
+Workflow: Tests
+Duration: 5 minutes and 37.0 seconds
+Finished: 2026-09-07 07:57:32 UTC
+
+View results: https://github.com/wxs-lang/webscout-mcp/actions/runs/34097587351
+
+Jobs:
+  * Fault Injection Tests succeeded (1 annotation)
+  * Unit Tests (Python 3.10) succeeded (1 annotation)
+  * Unit Tests (Python 3.12) succeeded (1 annotation)
+  * Integration Tests (Python 3.10) succeeded (1 annotation)
+  * MCP E2E T
+================================================================================
+
+================================================================================
+⚠️  ERROR EMAIL DETECTED
+================================================================================
+Time:     2026-09-08 10:44:05
+Email ID: 1756
+Date:     Mon, 07 Sep 2026 02:21:10 -0700
+From:     "wxs-lang" <notifications@github.com>
+Subject:  [wxs-lang/webscout-mcp] Run failed: Automated Release - main
+ (5e655e2)
+
+Body (first 500 chars):
+[wxs-lang/webscout-mcp] Automated Release workflow run
+
+Repository: wxs-lang/webscout-mcp
+Workflow: Automated Release
+Duration: 2 minutes and 25.0 seconds
+Finished: 2026-09-07 09:20:49 UTC
+
+View results: https://github.com/wxs-lang/webscout-mcp/actions/runs/34105261134
+
+Jobs:
+  * Check if release is needed succeeded (1 annotation)
+  * Quality Gate (verify required checks) failed (1 annotation)
+  * Create Release skipped (0 annotations)
+
+-- 
+You are receiving this because you are s
+================================================================================
+
+================================================================================
+⚠️  ERROR EMAIL DETECTED
+================================================================================
+Time:     2026-09-08 10:44:05
+Email ID: 1757
+Date:     Mon, 07 Sep 2026 02:34:30 -0700
+From:     "wxs-lang" <notifications@github.com>
+Subject:  [wxs-lang/webscout-mcp] Run failed: Automated Release - main
+ (04ea496)
+
+Body (first 500 chars):
+[wxs-lang/webscout-mcp] Automated Release workflow run
+
+Repository: wxs-lang/webscout-mcp
+Workflow: Automated Release
+Duration: 3 minutes and 19.0 seconds
+Finished: 2026-09-07 09:34:10 UTC
+
+View results: https://github.com/wxs-lang/webscout-mcp/actions/runs/34106440754
+
+Jobs:
+  * Check if release is needed succeeded (1 annotation)
+  * Quality Gate (verify required checks) succeeded (0 annotations)
+  * Create Release failed (2 annotations)
+
+-- 
+You are receiving this because you ar
+================================================================================
+
+================================================================================
+⚠️  ERROR EMAIL DETECTED
+================================================================================
+Time:     2026-09-08 17:57:55
+Email ID: 1761
+Date:     Mon, 07 Sep 2026 21:19:20 -0700
+From:     "wxs-lang" <notifications@github.com>
+Subject:  [wxs-lang/webscout-mcp] Run failed: Live Network Tests - main
+ (bced4a6)
+
+Body (first 500 chars):
+[wxs-lang/webscout-mcp] Live Network Tests workflow run
+
+Repository: wxs-lang/webscout-mcp
+Workflow: Live Network Tests
+Duration: 2 minutes and 16.0 seconds
+Finished: 2026-09-08 04:19:00 UTC
+
+View results: https://github.com/wxs-lang/webscout-mcp/actions/runs/34186429923
+
+Jobs:
+  * Live Network Tests failed (2 annotations)
+
+-- 
+You are receiving this because you are subscribed to this thread.
+Manage your GitHub Actions notifications: https://github.com/settings/notifications?email_
+================================================================================
+
+================================================================================
+⚠️  ERROR EMAIL DETECTED
+================================================================================
+Time:     2026-09-08 17:57:56
+Email ID: 1762
+Date:     Tue, 8 Sep 2026 01:16:09 -0700
+From:     ngrok team <team@m.ngrok.com>
+Subject:  Hey wxs-lang, route multiple internal services behind one ngrok
+ endpoint
+
+Body (first 500 chars):
+Use forward-internal traffic policy to authenticate once and route traffic to private services by path or header
+
+Hey wxs-lang,
+
+If you’re exposing more than one internal service, you’ve probably ended up with:
+
+- multiple public endpoints
+- duplicated auth logic
+- routing handled inside your app or proxy
+
+ngrok’s forward-internal Traffic Policy action (https://d2v8tf04.na1.hubspotlinks.com/Ctc/5F+113/d2v8tf04/VVT2X43CmN6nW7kZM0n22dJ0gW8VsNl15THLj2N70Skv63pyd0W95jsWP6lZ3lyW8j4TLL2hZ8Mf
+================================================================================
+
+================================================================================
+⚠️  ERROR EMAIL DETECTED
+================================================================================
+Time:     2026-09-08 17:57:56
+Email ID: 1763
+Date:     Tue, 08 Sep 2026 01:27:36 -0700
+From:     "wxs-lang" <notifications@github.com>
+Subject:  [wxs-lang/webscout-mcp] Run failed: Automated Release - main
+ (90a5ea6)
+
+Body (first 500 chars):
+[wxs-lang/webscout-mcp] Automated Release workflow run
+
+Repository: wxs-lang/webscout-mcp
+Workflow: Automated Release
+Duration: 2 minutes and 26.0 seconds
+Finished: 2026-09-08 08:27:15 UTC
+
+View results: https://github.com/wxs-lang/webscout-mcp/actions/runs/34204357589
+
+Jobs:
+  * Check if release is needed succeeded (1 annotation)
+  * Quality Gate (verify required checks) failed (1 annotation)
+  * Create Release skipped (0 annotations)
+
+-- 
+You are receiving this because you are s
+================================================================================
