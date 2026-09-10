@@ -1,26 +1,10 @@
 # Dockerfile for webscout-mcp
 # https://github.com/wxs-lang/webscout-mcp
+#
+# IMPORTANT: Version is managed by setuptools-scm (Git tag as single source of truth).
+# The wheel is pre-built in CI (with full .git metadata) and copied into this image.
+# Do NOT build the wheel inside Docker - setuptools-scm cannot detect version without .git.
 
-FROM python:3.12-slim AS builder
-
-WORKDIR /app
-
-# Install build dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    libcurl4-openssl-dev \
-    libssl-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy project files
-COPY pyproject.toml README.md LICENSE ./
-COPY webscout_mcp/ ./webscout_mcp/
-
-# Build the package
-RUN pip install --no-cache-dir --upgrade pip build wheel \
-    && python -m build --wheel --outdir /dist
-
-# Runtime stage
 FROM python:3.12-slim AS runtime
 
 LABEL org.opencontainers.image.title="webscout-mcp" \
@@ -28,8 +12,7 @@ LABEL org.opencontainers.image.title="webscout-mcp" \
       org.opencontainers.image.url="https://github.com/wxs-lang/webscout-mcp" \
       org.opencontainers.image.documentation="https://github.com/wxs-lang/webscout-mcp#readme" \
       org.opencontainers.image.source="https://github.com/wxs-lang/webscout-mcp" \
-      org.opencontainers.image.licenses="MIT" \
-      org.opencontainers.image.version="0.4.0"
+      org.opencontainers.image.licenses="MIT"
 
 WORKDIR /app
 
@@ -39,8 +22,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libcurl4 \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy built wheel from builder stage
-COPY --from=builder /dist/*.whl /tmp/
+# Copy pre-built wheel (built in CI with full Git metadata for setuptools-scm)
+# The wheel is expected to be in dist/ directory of the build context
+COPY dist/*.whl /tmp/
 
 # Install the package
 RUN pip install --no-cache-dir /tmp/*.whl \

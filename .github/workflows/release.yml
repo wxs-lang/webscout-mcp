@@ -85,11 +85,16 @@ jobs:
             "Unit Tests (Python 3.10)"
             "Unit Tests (Python 3.11)"
             "Unit Tests (Python 3.12)"
+            "Integration Tests (Python 3.10)"
+            "Integration Tests (Python 3.11)"
             "Integration Tests (Python 3.12)"
             "MCP E2E Tests"
+            "Fault Injection Tests"
             "Lint (ruff)"
             "Security Scan (bandit)"
+            "CodeQL Analysis (python)"
             "Type Check (mypy)"
+            "build-and-push"
           )
 
           # Poll for up to 10 minutes
