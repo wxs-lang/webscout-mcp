@@ -27,6 +27,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
@@ -80,6 +83,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
@@ -132,6 +138,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -177,6 +186,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -221,6 +233,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -281,15 +296,19 @@ jobs:
               print('   Coverage ratchet prevents regression. Add more tests or fix failing tests.')
               exit(1)
           elif line_rate > baseline + 0.1:
-              # Coverage improved - auto-update baseline (ratchet up)
+              # Coverage improved - output recommendation (do NOT auto-modify file)
+              # Baseline updates should be done via PR, not by CI itself
               print(f'✅ Coverage improved from {baseline:.1f}% to {line_rate:.1f}%')
-              print(f'   Auto-updating baseline to {line_rate:.1f}%')
-              with open(baseline_file, 'w') as f:
-                  f.write(f'# Coverage Baseline - auto-updated when coverage improves\n')
-                  f.write(f'# This file enforces a \"ratchet\": coverage can only stay the same or go up\n')
-                  f.write(f'# Format: MINIMUM_LINE_COVERAGE=<percentage>\n')
-                  f.write(f'MINIMUM_LINE_COVERAGE={line_rate:.1f}\n')
-              print(f'   Baseline updated to {line_rate:.1f}%')
+              print()
+              print('📝 RECOMMENDATION: Update .coverage-baseline')
+              print(f'   Change: MINIMUM_LINE_COVERAGE={baseline:.1f} -> {line_rate:.1f}')
+              print()
+              print('   This should be done via a normal PR/commit, not by CI automatically.')
+              print('   Rationale: CI should only check, not modify the repository.')
+              print('   This avoids: (1) 403 permission errors, (2) circular CI triggers,')
+              print('                 (3) anti-pattern of tests modifying code to pass.')
+              print()
+              print('   To update: edit .coverage-baseline and commit with your PR.')
           else:
               print(f'✅ Coverage {line_rate:.1f}% meets baseline {baseline:.1f}%')
 
@@ -302,20 +321,6 @@ jobs:
                   rate = float(package.get('line-rate', 0)) * 100
                   print(f'  {name}: {rate:.1f}%')
           "
-
-      - name: Commit updated baseline (if coverage improved)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          if git diff --quiet .coverage-baseline; then
-            echo "No baseline update needed"
-          else
-            echo "Baseline improved - committing update"
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add .coverage-baseline
-            git commit -m "chore: auto-update coverage baseline (ratchet up)"
-            git push
-          fi
 
       - name: Upload coverage report
         if: always()

@@ -37,6 +37,9 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+        with:
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Validate version format
         id: check
@@ -191,6 +194,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
         with:
           fetch-depth: 0
           fetch-tags: true

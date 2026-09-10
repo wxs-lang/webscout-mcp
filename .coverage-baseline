@@ -1,4 +1,6 @@
-# Coverage Baseline - auto-updated when coverage improves
+# Coverage Baseline - updated when coverage improves (via PR, NOT auto-updated by CI)
 # This file enforces a "ratchet": coverage can only stay the same or go up
+# CI will FAIL if coverage drops below this baseline
+# CI will output a RECOMMENDATION to update this file if coverage improves
 # Format: MINIMUM_LINE_COVERAGE=<percentage>
-MINIMUM_LINE_COVERAGE=62.0
+MINIMUM_LINE_COVERAGE=66.9
