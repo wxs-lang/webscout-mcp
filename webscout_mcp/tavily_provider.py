@@ -20,6 +20,7 @@ from .search import SearchResult
 from .search_provider import (
     ProviderHealth,
     ProviderHealthStatus,
+    SearchProvider,
     SearchRequest,
     SearchResponse,
     SearchStatus,
@@ -32,7 +33,7 @@ DEFAULT_TIMEOUT = 15.0
 DEFAULT_MAX_RESULTS = 10
 
 
-class TavilySearchProvider:
+class TavilySearchProvider(SearchProvider):
     """Tavily Search API provider.
 
     Provides stable, API-based search as a reliable fallback.
@@ -42,6 +43,7 @@ class TavilySearchProvider:
     name: str = "tavily"
 
     def __init__(self, config: Any, api_key: str | None = None) -> None:
+        super().__init__(config)
         self.config = config
         self.api_key = api_key or getattr(config, "tavily_api_key", None)
         self.timeout = getattr(config, "tavily_timeout", DEFAULT_TIMEOUT)

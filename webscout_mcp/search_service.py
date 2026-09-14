@@ -308,55 +308,30 @@ class SearchService:
 def create_search_service_from_config(
     config: Any,
     cache: Any | None = None,
+    registry: Any | None = None,
 ) -> SearchService:
     """Create a SearchService from the application Config.
 
     This factory function creates SearchProvider instances for all enabled
     backends and wraps them in a SearchService with fallback and circuit
-    breaking.
+    breaking. When a ProviderRegistry is supplied, all search providers are
+    registered with it (capability ``SEARCH``) so the registry becomes the
+    single source of truth for provider state.
 
     Args:
         config: Application Config instance.
         cache: Optional cache instance (for future use).
+        registry: Optional ProviderRegistry to register providers with.
+            If not provided, an internal registry is created.
 
     Returns:
         Configured SearchService instance.
     """
-    from .search import BingBackend, DuckDuckGoHTMLBackend
-    from .search_provider_adapter import SearchBackendAdapter
+    from .provider_registry import ProviderRegistry
+    from .provider_router import ProviderCapability
+    from .search_providers import build_default_search_providers
 
-    providers: list[SearchProvider] = []
-
-    # Bing backend (primary)
-    try:
-        bing = BingBackend(config)
-        providers.append(SearchBackendAdapter(bing, name="bing"))
-    except Exception as e:
-        # Log but continue with other backends
-        print(f"Warning: Could not initialize Bing backend: {e}")
-
-    # DuckDuckGo backend (fallback)
-    try:
-        ddg = DuckDuckGoHTMLBackend(config)
-        providers.append(SearchBackendAdapter(ddg, name="duckduckgo"))
-    except Exception as e:
-        print(f"Warning: Could not initialize DuckDuckGo backend: {e}")
-
-    # Tavily API backend (stable fallback, requires TAVILY_API_KEY)
-    try:
-        from .tavily_provider import TavilySearchProvider
-
-        tavily = TavilySearchProvider(config)
-        if tavily.is_configured:
-            providers.append(tavily)
-            print("Tavily API backend initialized (stable fallback)")
-        else:
-            print("Tavily API key not configured, skipping Tavily backend")
-    except Exception as e:
-        print(f"Warning: Could not initialize Tavily backend: {e}")
-
-    if not providers:
-        raise RuntimeError("No search providers could be initialized")
+    providers = build_default_search_providers(config)
 
     service_config = SearchServiceConfig(
         circuit_failure_threshold=getattr(config, "circuit_failure_threshold", 5),
@@ -364,9 +339,9 @@ def create_search_service_from_config(
         request_timeout=getattr(config, "search_timeout", 30.0),
     )
 
-    # Create dynamic provider router with health-based scoring
+    # Create dynamic provider router with health-based scoring.
     # Free providers (Bing, DDG) are preferred, paid providers (Tavily)
-    # are used only when free providers are degraded or unavailable
+    # are used only when free providers are degraded or unavailable.
     cost_tiers = {
         "bing": ProviderCostTier.FREE,
         "duckduckgo": ProviderCostTier.FREE,
@@ -375,11 +350,27 @@ def create_search_service_from_config(
         "serpapi": ProviderCostTier.PAID,
         "tavily": ProviderCostTier.PAID,
     }
+    capabilities = {p.name: {ProviderCapability.SEARCH} for p in providers}
     router = ProviderRouter(
         provider_names=[p.name for p in providers],
         cost_tiers=cost_tiers,
         prefer_free=True,
         min_score_threshold=30.0,
+        capabilities=capabilities,
     )
+
+    # Register all search providers with the registry (single source of truth).
+    if registry is None:
+        registry = ProviderRegistry(router=router)
+    else:
+        if registry.router is None:
+            registry.router = router
+    for provider in providers:
+        registry.register(
+            provider,
+            capabilities={ProviderCapability.SEARCH},
+            cost_tier=cost_tiers.get(provider.name, ProviderCostTier.FREE),
+            description=f"{provider.name} search provider",
+        )
 
     return SearchService(providers=providers, config=service_config, router=router)

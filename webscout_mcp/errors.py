@@ -641,6 +641,7 @@ class StandardErrorCode(str, Enum):
     FETCH_CONNECTION_ERROR = "FETCH_CONNECTION_ERROR"
     FETCH_CONTENT_TOO_LARGE = "FETCH_CONTENT_TOO_LARGE"
     FETCH_REDIRECT_ERROR = "FETCH_REDIRECT_ERROR"
+    FETCH_FAILED = "FETCH_FAILED"
 
     # --- Search errors ---
     SEARCH_BACKEND_FAILED = "SEARCH_BACKEND_FAILED"
@@ -802,14 +803,18 @@ class StructuredError:
                     provider=provider,
                 )
 
-            if isinstance(exc, httpx.DNSError):
+            # httpx exception names vary across versions: DNSError/SSLError
+            # were removed in newer releases (folded into ConnectError).
+            httpx_dns_error = getattr(httpx, "DNSError", httpx.ConnectError)
+            if isinstance(exc, httpx_dns_error):
                 return cls(
                     code=StandardErrorCode.FETCH_DNS_ERROR,
                     message=message or "DNS resolution failed",
                     provider=provider,
                 )
 
-            if isinstance(exc, httpx.SSLError):
+            httpx_ssl_error = getattr(httpx, "SSLError", httpx.ConnectError)
+            if isinstance(exc, httpx_ssl_error):
                 return cls(
                     code=StandardErrorCode.FETCH_SSL_ERROR,
                     message=message or "SSL error",
