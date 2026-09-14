@@ -18,6 +18,13 @@ WATCHDOG_LOG = PROJECT_DIR / "watchdog.log"
 # Monitors to watch
 MONITORS = [
     {
+        "name": "stability_test_7day",
+        "pattern": "stability_test_7day.py",
+        "command": ["python3", "scripts/stability_test_7day.py", "--duration", "7", "--interval", "1800"],
+        "logfile": "stability-7day-results/stability_test.log",
+        "env": {},
+    },
+    {
         "name": "stability_test",
         "pattern": "stability_test_24h.py",
         "command": ["python3", "scripts/stability_test_24h.py"],
@@ -37,7 +44,8 @@ MONITORS = [
         "command": ["python3", "scripts/qq_email_monitor.py"],
         "logfile": "qq_email_monitor.log",
         "env": {
-            "QQ_EMAIL_USER": os.environ.get("QQ_EMAIL_USER", ""),
+            "QQ_EMAIL_USER": os.environ.get("QQ_EMAIL_USER", "393456156@qq.com"),
+            # Authorization code is injected via environment, never hardcoded
             "QQ_EMAIL_AUTH_CODE": os.environ.get("QQ_EMAIL_AUTH_CODE", ""),
         },
     },

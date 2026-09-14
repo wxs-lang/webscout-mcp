@@ -69,6 +69,54 @@ def calculate_percentile(values: list[float], percentile: float) -> float:
     return sorted_values[index]
 
 
+def _parse_report_time(report: dict[str, Any]) -> datetime | None:
+    """Parse the report timestamp robustly.
+
+    Supports:
+    - float/int epoch timestamps (seconds since 1970-01-01 UTC, as written
+      by ``LiveTestReport.timestamp`` via ``time.time()``)
+    - ISO-8601 strings, with or without a trailing ``Z``
+    - ``datetime`` objects (naive timestamps are assumed to be UTC)
+
+    Returns ``None`` when the field is missing or empty (legacy reports are
+    included best-effort). Raises ``ValueError`` when the field exists but
+    cannot be parsed — a data/code error that must surface instead of being
+    silently swallowed (prevents "green CI, broken monitoring").
+    """
+    raw = report.get("timestamp", report.get("run_time", ""))
+    if raw is None or raw == "":
+        return None
+
+    if isinstance(raw, (int, float)):
+        # Epoch timestamp (seconds since 1970-01-01 UTC)
+        return datetime.fromtimestamp(raw, tz=timezone.utc)
+
+    if isinstance(raw, datetime):
+        if raw.tzinfo is None:
+            return raw.replace(tzinfo=timezone.utc)
+        return raw
+
+    if isinstance(raw, str):
+        text = raw.strip()
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        try:
+            parsed = datetime.fromisoformat(text)
+        except ValueError:
+            # Not ISO — try numeric epoch string
+            try:
+                return datetime.fromtimestamp(float(text), tz=timezone.utc)
+            except ValueError:
+                raise ValueError(f"Cannot parse report timestamp: {raw!r}") from None
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed
+
+    raise ValueError(
+        f"Unsupported report timestamp type: {type(raw).__name__} ({raw!r})"
+    )
+
+
 def aggregate_slo_metrics(
     reports: list[dict[str, Any]], days: int
 ) -> dict[str, Any]:
@@ -78,16 +126,19 @@ def aggregate_slo_metrics(
     # Filter reports by date
     recent_reports = []
     for report in reports:
-        report_time_str = report.get("timestamp", report.get("run_time", ""))
         try:
-            if report_time_str:
-                report_time = datetime.fromisoformat(
-                    report_time_str.replace("Z", "+00:00")
-                )
-                if report_time >= cutoff:
-                    recent_reports.append(report)
-        except (ValueError, TypeError):
-            # If we can't parse the timestamp, include it (best effort)
+            report_time = _parse_report_time(report)
+        except ValueError as e:
+            # Data/code error: fail loudly instead of silently including
+            source = report.get("_source_file", "unknown")
+            raise ValueError(
+                f"Invalid timestamp in report {source}: {e}"
+            ) from e
+        if report_time is None:
+            # Missing/empty timestamp: include best effort (legacy reports)
+            recent_reports.append(report)
+            continue
+        if report_time >= cutoff:
             recent_reports.append(report)
 
     if not recent_reports:

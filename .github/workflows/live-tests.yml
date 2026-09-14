@@ -76,8 +76,13 @@ jobs:
       - name: Generate SLO report (7d/30d metrics)
         if: always()
         run: |
+          set -o pipefail
           echo "Generating SLO report from historical live test data..."
-          python scripts/slo_aggregator.py || echo "SLO aggregation completed with warnings (may be no data yet)"
+          # NOTE: do NOT swallow errors here. The script itself exits 0 for
+          # "no data yet" / warning states, and exits 1 for SLO violations or
+          # code/data errors. A parse failure must turn this job red so we
+          # never get a green CI with a silently broken monitoring pipeline.
+          python scripts/slo_aggregator.py
           echo ""
           echo "## SLO Dashboard" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
