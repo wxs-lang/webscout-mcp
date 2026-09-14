@@ -30,28 +30,16 @@ def main() -> int:
     print("### 7-Day SLO")
     slo7 = report.get("slo_7d", {})
     print(f"- Status: `{slo7.get('status', 'unknown').upper()}`")
-    print(
-        f"- Search Success: **{slo7.get('search', {}).get('success_rate', 'N/A')}%**"
-    )
-    print(
-        f"- Fetch Success: **{slo7.get('fetch', {}).get('success_rate', 'N/A')}%**"
-    )
-    print(
-        f"- Search P95: {slo7.get('search', {}).get('latency_p95_ms', 'N/A')}ms"
-    )
+    print(f"- Search Success: **{slo7.get('search', {}).get('success_rate', 'N/A')}%**")
+    print(f"- Fetch Success: **{slo7.get('fetch', {}).get('success_rate', 'N/A')}%**")
+    print(f"- Search P95: {slo7.get('search', {}).get('latency_p95_ms', 'N/A')}ms")
     print()
     print("### 30-Day SLO")
     slo30 = report.get("slo_30d", {})
     print(f"- Status: `{slo30.get('status', 'unknown').upper()}`")
-    print(
-        f"- Search Success: **{slo30.get('search', {}).get('success_rate', 'N/A')}%**"
-    )
-    print(
-        f"- Fetch Success: **{slo30.get('fetch', {}).get('success_rate', 'N/A')}%**"
-    )
-    print(
-        f"- Search P95: {slo30.get('search', {}).get('latency_p95_ms', 'N/A')}ms"
-    )
+    print(f"- Search Success: **{slo30.get('search', {}).get('success_rate', 'N/A')}%**")
+    print(f"- Fetch Success: **{slo30.get('fetch', {}).get('success_rate', 'N/A')}%**")
+    print(f"- Search P95: {slo30.get('search', {}).get('latency_p95_ms', 'N/A')}ms")
     return 0
 
 

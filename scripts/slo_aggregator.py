@@ -21,7 +21,6 @@ import json
 import math
 import os
 import sys
-import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -65,7 +64,7 @@ def calculate_percentile(values: list[float], percentile: float) -> float:
     if not values:
         return 0.0
     sorted_values = sorted(values)
-    index = int(math.ceil(len(sorted_values) * percentile / 100)) - 1
+    index = math.ceil(len(sorted_values) * percentile / 100) - 1
     index = max(0, min(index, len(sorted_values) - 1))
     return sorted_values[index]
 
@@ -113,9 +112,7 @@ def _parse_report_time(report: dict[str, Any]) -> datetime | None:
             return parsed.replace(tzinfo=timezone.utc)
         return parsed
 
-    raise ValueError(
-        f"Unsupported report timestamp type: {type(raw).__name__} ({raw!r})"
-    )
+    raise ValueError(f"Unsupported report timestamp type: {type(raw).__name__} ({raw!r})")
 
 
 def _extract_stats(section: dict[str, Any]) -> dict[str, Any]:
@@ -138,9 +135,7 @@ def _extract_stats(section: dict[str, Any]) -> dict[str, Any]:
         "p95": section.get("p95_latency_ms", None),
         "fallback_count": section.get("fallback_count", 0),
         "error_types": section.get("error_types", {}),
-        "providers": section.get(
-            "providers", section.get("provider_distribution", {})
-        ),
+        "providers": section.get("providers", section.get("provider_distribution", {})),
     }
 
 
@@ -161,9 +156,7 @@ def _append_latencies(target: list[float], stats: dict[str, Any]) -> None:
             target.append(float(stats["p95"]))
 
 
-def aggregate_slo_metrics(
-    reports: list[dict[str, Any]], days: int
-) -> dict[str, Any]:
+def aggregate_slo_metrics(reports: list[dict[str, Any]], days: int) -> dict[str, Any]:
     """Aggregate SLO metrics for the last N days."""
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
@@ -175,9 +168,7 @@ def aggregate_slo_metrics(
         except ValueError as e:
             # Data/code error: fail loudly instead of silently including
             source = report.get("_source_file", "unknown")
-            raise ValueError(
-                f"Invalid timestamp in report {source}: {e}"
-            ) from e
+            raise ValueError(f"Invalid timestamp in report {source}: {e}") from e
         if report_time is None:
             # Missing/empty timestamp: include best effort (legacy reports)
             recent_reports.append(report)
@@ -206,18 +197,14 @@ def aggregate_slo_metrics(
 
     for report in recent_reports:
         # Search metrics
-        search_stats = _extract_stats(
-            report.get("search_stats", report.get("search", {}))
-        )
+        search_stats = _extract_stats(report.get("search_stats", report.get("search", {})))
         total_searches += search_stats["total"]
         successful_searches += search_stats["successful"]
         _append_latencies(search_latencies, search_stats)
         fallback_count += search_stats["fallback_count"]
 
         # Fetch metrics
-        fetch_stats = _extract_stats(
-            report.get("fetch_stats", report.get("fetch", {}))
-        )
+        fetch_stats = _extract_stats(report.get("fetch_stats", report.get("fetch", {})))
         total_fetches += fetch_stats["total"]
         successful_fetches += fetch_stats["successful"]
         _append_latencies(fetch_latencies, fetch_stats)
@@ -225,9 +212,7 @@ def aggregate_slo_metrics(
         # Fallback section (current layout: top-level "fallback" with count)
         fallback_section = report.get("fallback", {})
         if isinstance(fallback_section, dict):
-            fallback_count += fallback_section.get(
-                "count", fallback_section.get("success_count", 0)
-            )
+            fallback_count += fallback_section.get("count", fallback_section.get("success_count", 0))
 
         # Error types (per-section in current layout, top-level in legacy)
         for section in (search_stats, fetch_stats):
@@ -244,15 +229,9 @@ def aggregate_slo_metrics(
             provider_counts[provider] = provider_counts.get(provider, 0) + count
 
     # Calculate rates
-    search_success_rate = (
-        (successful_searches / total_searches * 100) if total_searches > 0 else 0.0
-    )
-    fetch_success_rate = (
-        (successful_fetches / total_fetches * 100) if total_fetches > 0 else 0.0
-    )
-    fallback_rate = (
-        (fallback_count / total_searches * 100) if total_searches > 0 else 0.0
-    )
+    search_success_rate = (successful_searches / total_searches * 100) if total_searches > 0 else 0.0
+    fetch_success_rate = (successful_fetches / total_fetches * 100) if total_fetches > 0 else 0.0
+    fallback_rate = (fallback_count / total_searches * 100) if total_searches > 0 else 0.0
 
     # Calculate percentiles
     search_p50 = calculate_percentile(search_latencies, 50)
@@ -315,15 +294,11 @@ def aggregate_slo_metrics(
         },
         "error_types": error_types,
         "provider_distribution": provider_counts,
-        "targets": {
-            k: v for k, v in SLO_TARGETS.items() if str(days) in k or "latency" in k
-        },
+        "targets": {k: v for k, v in SLO_TARGETS.items() if str(days) in k or "latency" in k},
     }
 
 
-def generate_slo_report(
-    reports: list[dict[str, Any]], output_dir: Path
-) -> dict[str, Any]:
+def generate_slo_report(reports: list[dict[str, Any]], output_dir: Path) -> dict[str, Any]:
     """Generate complete SLO report with 7d and 30d metrics."""
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -362,8 +337,7 @@ def generate_slo_report(
         f.write("## SLO Targets\n\n")
         f.write("| Metric | Target |\n")
         f.write("|--------|--------|\n")
-        for key, value in SLO_TARGETS.items():
-            f.write(f"| {key} | {value} |\n")
+        f.writelines(f"| {key} | {value} |\n" for key, value in SLO_TARGETS.items())
         f.write("\n")
 
         for period, slo in [("7-Day", slo_7d), ("30-Day", slo_30d)]:
@@ -373,8 +347,7 @@ def generate_slo_report(
 
             if slo.get("violations"):
                 f.write("### ⚠️ SLO Violations\n\n")
-                for violation in slo["violations"]:
-                    f.write(f"- {violation}\n")
+                f.writelines(f"- {violation}\n" for violation in slo["violations"])
                 f.write("\n")
 
             f.write("### Search\n\n")
@@ -405,20 +378,22 @@ def generate_slo_report(
                 f.write("### Error Types\n\n")
                 f.write("| Error Type | Count |\n")
                 f.write("|------------|-------|\n")
-                for error_type, count in sorted(
-                    slo["error_types"].items(), key=lambda x: x[1], reverse=True
-                ):
-                    f.write(f"| {error_type} | {count} |\n")
+                f.writelines(
+                    f"| {error_type} | {count} |\n"
+                    for error_type, count in sorted(slo["error_types"].items(), key=lambda x: x[1], reverse=True)
+                )
                 f.write("\n")
 
             if slo.get("provider_distribution"):
                 f.write("### Provider Distribution\n\n")
                 f.write("| Provider | Count |\n")
                 f.write("|----------|-------|\n")
-                for provider, count in sorted(
-                    slo["provider_distribution"].items(), key=lambda x: x[1], reverse=True
-                ):
-                    f.write(f"| {provider} | {count} |\n")
+                f.writelines(
+                    f"| {provider} | {count} |\n"
+                    for provider, count in sorted(
+                        slo["provider_distribution"].items(), key=lambda x: x[1], reverse=True
+                    )
+                )
                 f.write("\n")
 
     print(f"SLO report generated: {json_path}")

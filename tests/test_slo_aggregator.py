@@ -105,23 +105,17 @@ class TestParseReportTime:
         assert parsed.tzinfo is not None
 
     def test_naive_iso_string(self):
-        parsed = sa._parse_report_time(
-            {"timestamp": datetime.now().isoformat()}
-        )
+        parsed = sa._parse_report_time({"timestamp": datetime.now().isoformat()})
         assert parsed is not None
         # Naive timestamps are assumed to be UTC
         assert parsed.tzinfo is not None
 
     def test_numeric_string_epoch(self):
-        parsed = sa._parse_report_time(
-            {"timestamp": str(time.time())}
-        )
+        parsed = sa._parse_report_time({"timestamp": str(time.time())})
         assert parsed is not None
 
     def test_run_time_fallback(self):
-        parsed = sa._parse_report_time(
-            {"run_time": time.time()}
-        )
+        parsed = sa._parse_report_time({"run_time": time.time()})
         assert parsed is not None
 
     def test_missing_timestamp_returns_none(self):
@@ -172,7 +166,7 @@ class TestAggregateSloMetrics:
 
     def test_mixed_layout_reports(self):
         reports = [
-            _sample_report(time.time()),          # legacy layout
+            _sample_report(time.time()),  # legacy layout
             _current_layout_report(time.time()),  # current layout
         ]
         result = sa.aggregate_slo_metrics(reports, 7)
@@ -184,9 +178,7 @@ class TestAggregateSloMetrics:
     def test_mixed_timestamp_formats(self):
         reports = [
             _sample_report(time.time()),  # float
-            _sample_report(
-                datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-            ),  # ISO Z
+            _sample_report(datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")),  # ISO Z
             _sample_report(datetime.now().isoformat()),  # naive ISO
             _sample_report(""),  # legacy: no usable timestamp
         ]
@@ -216,9 +208,7 @@ class TestGenerateSloReport:
     def test_full_report_generation(self, tmp_path):
         result_dir = tmp_path / "live-test-results"
         result_dir.mkdir()
-        (result_dir / "live_report.json").write_text(
-            __import__("json").dumps(_sample_report(time.time()))
-        )
+        (result_dir / "live_report.json").write_text(__import__("json").dumps(_sample_report(time.time())))
 
         reports = sa.load_live_reports(result_dir)
         assert len(reports) == 1
