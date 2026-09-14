@@ -24,6 +24,7 @@ Content Analysis:
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 # MCP compatibility: support both 1.x (FastMCP) and 2.x (MCPServer)
@@ -52,6 +53,28 @@ log = get_logger(__name__)
 
 # Global startup check instance (initialized in create_server)
 _startup_check: StartupSelfCheck | None = None
+_startup_task: asyncio.Task | None = None
+
+
+def _schedule_startup_check() -> None:
+    """Schedule the startup self-check on the current running loop (if any).
+
+    create_server() is normally called from inside asyncio.run() (see
+    __main__._cmd_serve), so the loop is running and the task executes.
+    When called from a synchronous context (e.g. some tests), we skip the
+    check instead of leaking an unawaited coroutine, which previously
+    produced: RuntimeWarning: coroutine 'StartupSelfCheck.run_all' was
+    never awaited.
+    """
+    global _startup_task
+    if _startup_check is None:
+        return
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        log.warning("No running event loop; startup self-check deferred")
+        return
+    _startup_task = loop.create_task(_startup_check.run_all())
 
 
 def create_server(config: Config | None = None) -> MCPServer:
@@ -106,10 +129,8 @@ def create_server(config: Config | None = None) -> MCPServer:
         fetcher=fetcher,
         cache=cache,
     )
-    # Run startup check in background (non-blocking)
-    import asyncio
-
-    asyncio.ensure_future(_startup_check.run_all())
+    # Run startup check in background (non-blocking; safe in sync contexts)
+    _schedule_startup_check()
 
     mcp = MCPServer(
         name="webscout",
