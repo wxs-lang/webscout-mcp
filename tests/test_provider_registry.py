@@ -6,8 +6,6 @@ filtering / health reporting, and integration with the dynamic router.
 
 from __future__ import annotations
 
-import asyncio
-
 import pytest
 
 from webscout_mcp.provider_registry import ProviderRegistry, RegisteredProvider

@@ -34,17 +34,6 @@ __all__ = [
     "extract_metadata",
     "fetch_and_parse_feed",
     "parse_feed",
-    # v1.2.0 Provider architecture
-    "FetchProvider",
-    "HTTPFetchProvider",
-    "ProviderCapability",
-    "ProviderCostTier",
-    "ProviderRegistry",
-    "ProviderRouter",
-    "SearchProvider",
-    "BingProvider",
-    "DuckDuckGoProvider",
-    "TavilyProvider",
 ]
 
 # Lazy imports to reduce startup time

@@ -15,7 +15,6 @@ from webscout_mcp.search_provider import (
     ProviderHealth,
     SearchProvider,
     SearchRequest,
-    SearchResponse,
 )
 from webscout_mcp.search_providers import (
     BingProvider,

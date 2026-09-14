@@ -29,9 +29,11 @@ class ProviderProtocol(Protocol):
 
     name: str
 
-    async def close(self) -> None: ...
+    async def close(self) -> None:
+        raise NotImplementedError
 
-    def get_health(self) -> Any: ...
+    def get_health(self) -> Any:
+        raise NotImplementedError
 
 
 @dataclass

@@ -184,12 +184,12 @@ class FetchProvider(ABC):
         Returns:
             Standardized fetch response.
         """
-        ...
+        raise NotImplementedError
 
     @abstractmethod
     async def health(self) -> ProviderHealth:
         """Get the current health status of the provider."""
-        ...
+        raise NotImplementedError
 
     async def close(self) -> None:
         """Close any resources held by the provider."""
