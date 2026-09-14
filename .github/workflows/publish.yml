@@ -64,8 +64,6 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
-        with:
-          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -146,8 +144,6 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
-        with:
-          fetch-depth: 0
 
       - name: Generate release notes
         id: release_notes
