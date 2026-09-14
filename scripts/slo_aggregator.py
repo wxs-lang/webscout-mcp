@@ -18,6 +18,7 @@ SLO Metrics:
 """
 
 import json
+import math
 import os
 import sys
 import time
@@ -60,12 +61,12 @@ def load_live_reports(results_dir: Path) -> list[dict[str, Any]]:
 
 
 def calculate_percentile(values: list[float], percentile: float) -> float:
-    """Calculate percentile from a list of values."""
+    """Calculate percentile from a list of values (nearest-rank method)."""
     if not values:
         return 0.0
     sorted_values = sorted(values)
-    index = int(len(sorted_values) * percentile / 100)
-    index = min(index, len(sorted_values) - 1)
+    index = int(math.ceil(len(sorted_values) * percentile / 100)) - 1
+    index = max(0, min(index, len(sorted_values) - 1))
     return sorted_values[index]
 
 
@@ -117,6 +118,49 @@ def _parse_report_time(report: dict[str, Any]) -> datetime | None:
     )
 
 
+def _extract_stats(section: dict[str, Any]) -> dict[str, Any]:
+    """Normalize a report section into a common metric dict.
+
+    Supports both the current layout written by tests/live/test_live_search.py
+    (``search``/``fetch`` with ``count``/``success_count``/``success_rate``/
+    ``p50_latency_ms``/``p95_latency_ms``/``error_types``/``providers``) and
+    the legacy layout (``search_stats``/``fetch_stats`` with ``total``/
+    ``successful``/``latencies_ms``/``fallback_count``).
+    """
+    return {
+        "total": section.get("total", section.get("count", 0)),
+        "successful": section.get(
+            "successful",
+            section.get("success", section.get("success_count", 0)),
+        ),
+        "latencies": section.get("latencies_ms", None),
+        "p50": section.get("p50_latency_ms", None),
+        "p95": section.get("p95_latency_ms", None),
+        "fallback_count": section.get("fallback_count", 0),
+        "error_types": section.get("error_types", {}),
+        "providers": section.get(
+            "providers", section.get("provider_distribution", {})
+        ),
+    }
+
+
+def _append_latencies(target: list[float], stats: dict[str, Any]) -> None:
+    """Collect latency samples, falling back to reported percentiles."""
+    raw = stats["latencies"]
+    if isinstance(raw, (int, float)):
+        target.append(float(raw))
+    elif raw:
+        target.extend(float(v) for v in raw)
+    else:
+        # No raw latency array (current report layout): use the reported
+        # P50 and P95 as representative samples so percentile metrics are
+        # not empty and both percentiles are distinguishable.
+        if stats["p50"] is not None:
+            target.append(float(stats["p50"]))
+        if stats["p95"] is not None:
+            target.append(float(stats["p95"]))
+
+
 def aggregate_slo_metrics(
     reports: list[dict[str, Any]], days: int
 ) -> dict[str, Any]:
@@ -162,23 +206,40 @@ def aggregate_slo_metrics(
 
     for report in recent_reports:
         # Search metrics
-        search_stats = report.get("search_stats", report.get("search", {}))
-        total_searches += search_stats.get("total", 0)
-        successful_searches += search_stats.get("successful", search_stats.get("success", 0))
-        search_latencies.extend(search_stats.get("latencies_ms", []))
-        fallback_count += search_stats.get("fallback_count", 0)
+        search_stats = _extract_stats(
+            report.get("search_stats", report.get("search", {}))
+        )
+        total_searches += search_stats["total"]
+        successful_searches += search_stats["successful"]
+        _append_latencies(search_latencies, search_stats)
+        fallback_count += search_stats["fallback_count"]
 
         # Fetch metrics
-        fetch_stats = report.get("fetch_stats", report.get("fetch", {}))
-        total_fetches += fetch_stats.get("total", 0)
-        successful_fetches += fetch_stats.get("successful", fetch_stats.get("success", 0))
-        fetch_latencies.extend(fetch_stats.get("latencies_ms", []))
+        fetch_stats = _extract_stats(
+            report.get("fetch_stats", report.get("fetch", {}))
+        )
+        total_fetches += fetch_stats["total"]
+        successful_fetches += fetch_stats["successful"]
+        _append_latencies(fetch_latencies, fetch_stats)
 
-        # Error types
+        # Fallback section (current layout: top-level "fallback" with count)
+        fallback_section = report.get("fallback", {})
+        if isinstance(fallback_section, dict):
+            fallback_count += fallback_section.get(
+                "count", fallback_section.get("success_count", 0)
+            )
+
+        # Error types (per-section in current layout, top-level in legacy)
+        for section in (search_stats, fetch_stats):
+            for error_type, count in section["error_types"].items():
+                error_types[error_type] = error_types.get(error_type, 0) + count
         for error_type, count in report.get("error_types", {}).items():
             error_types[error_type] = error_types.get(error_type, 0) + count
 
-        # Provider distribution
+        # Provider distribution (per-section in current layout, top-level in legacy)
+        for section in (search_stats, fetch_stats):
+            for provider, count in section["providers"].items():
+                provider_counts[provider] = provider_counts.get(provider, 0) + count
         for provider, count in report.get("provider_distribution", {}).items():
             provider_counts[provider] = provider_counts.get(provider, 0) + count
 

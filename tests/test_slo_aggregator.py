@@ -43,6 +43,47 @@ def _sample_report(timestamp=None):
     }
 
 
+def _current_layout_report(timestamp=None):
+    """Report in the layout written by tests/live/test_live_search.py."""
+    return {
+        "timestamp": timestamp if timestamp is not None else time.time(),
+        "datetime": "2026-09-13 04:33:20",
+        "search": {
+            "count": 40,
+            "success_count": 40,
+            "failure_count": 0,
+            "success_rate": 100.0,
+            "p50_latency_ms": 162.7,
+            "p95_latency_ms": 271.0,
+            "avg_latency_ms": 182.3,
+            "error_types": {},
+            "providers": {"bing": 39, "duckduckgo": 1},
+        },
+        "fetch": {
+            "count": 10,
+            "success_count": 10,
+            "failure_count": 0,
+            "success_rate": 100.0,
+            "p50_latency_ms": 370.2,
+            "p95_latency_ms": 875.1,
+            "avg_latency_ms": 417.7,
+            "error_types": {},
+            "providers": {"WebScout Fetcher (status=200)": 10},
+        },
+        "fallback": {
+            "count": 2,
+            "success_count": 2,
+            "failure_count": 0,
+            "success_rate": 100.0,
+            "p50_latency_ms": 675.6,
+            "p95_latency_ms": 675.6,
+            "avg_latency_ms": 415.6,
+            "error_types": {},
+            "providers": {"duckduckgo": 1, "all": 1},
+        },
+    }
+
+
 class TestParseReportTime:
     def test_float_epoch_timestamp(self):
         """The real-world format written by test_live_search.py."""
@@ -109,6 +150,36 @@ class TestAggregateSloMetrics:
         assert result["data_points"] == 2
         assert result["search"]["success_rate"] == 100.0
         assert result["fetch"]["success_rate"] == 100.0
+
+    def test_current_layout_report_aggregated(self):
+        """Regression: the real layout (count/success_count/percentiles)
+        must produce 100% rates, not 0% (the silent false-green bug)."""
+        reports = [_current_layout_report(time.time())]
+        result = sa.aggregate_slo_metrics(reports, 7)
+        assert result["status"] == "healthy"
+        assert result["data_points"] == 1
+        assert result["search"]["total"] == 40
+        assert result["search"]["successful"] == 40
+        assert result["search"]["success_rate"] == 100.0
+        assert result["fetch"]["total"] == 10
+        assert result["fetch"]["success_rate"] == 100.0
+        # Percentiles come from the reported p50/p95 when no raw array exists
+        assert result["search"]["latency_p50_ms"] == 162.7
+        assert result["search"]["latency_p95_ms"] == 271.0
+        assert result["fetch"]["latency_p95_ms"] == 875.1
+        # Fallback counted from the top-level fallback section
+        assert result["search"]["fallback_count"] == 2
+
+    def test_mixed_layout_reports(self):
+        reports = [
+            _sample_report(time.time()),          # legacy layout
+            _current_layout_report(time.time()),  # current layout
+        ]
+        result = sa.aggregate_slo_metrics(reports, 7)
+        assert result["data_points"] == 2
+        assert result["search"]["total"] == 45  # 5 + 40
+        assert result["search"]["successful"] == 45
+        assert result["search"]["success_rate"] == 100.0
 
     def test_mixed_timestamp_formats(self):
         reports = [
