@@ -1,0 +1,79 @@
+name: 7-Day Stability Test
+
+on:
+  schedule:
+    # Every 30 minutes — 48 cycles/day over the 7-day window (2026-09-13 22:19 → 2026-09-20 22:19 UTC+8)
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stability-7day
+  cancel-in-progress: false
+
+jobs:
+  stability:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install package
+        run: |
+          pip install -e . --quiet
+
+      - name: Download previous results artifact (if any)
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: stability-7day-results
+          path: stability-7day-results/
+          merge-multiple: true
+
+      - name: Seed from repository data if no artifact yet
+        run: |
+          if [ ! -s stability-7day-results/raw_results.jsonl ]; then
+            echo "No prior artifact — seeding from repository baseline"
+            mkdir -p stability-7day-results
+            cp .github/stability-seed/raw_results.jsonl stability-7day-results/raw_results.jsonl
+            cp .github/stability-seed/summary.json stability-7day-results/summary.json 2>/dev/null || true
+          else
+            echo "Resuming from artifact: $(wc -l < stability-7day-results/raw_results.jsonl) prior cycles"
+          fi
+
+      - name: Run one stability cycle
+        run: |
+          python3 scripts/stability_test_7day.py --duration 7 --interval 1800 --once
+        env:
+          # Fail loudly on cycle errors — no silent green
+          PYTHONUNBUFFERED: '1'
+
+      - name: Show cycle summary
+        run: |
+          echo "=== raw_results.jsonl tail ==="
+          tail -1 stability-7day-results/raw_results.jsonl | python3 -c "import json,sys; r=json.loads(sys.stdin.read()); print(r.get('summary', {}))"
+          echo "=== total cycles ==="
+          wc -l < stability-7day-results/raw_results.jsonl
+          echo "=== summary.json ==="
+          python3 -c "import json; d=json.load(open('stability-7day-results/summary.json')); print(f\"success_rate={d['success_rate']}% passed={d['passed_tests']}/{d['total_tests']} search_p50={d['search']['p50_ms']:.0f}ms p95={d['search']['p95_ms']:.0f}ms fetch_p50={d['fetch']['p50_ms']:.0f}ms p95={d['fetch']['p95_ms']:.0f}ms\")"
+
+      - name: Upload accumulated results artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: stability-7day-results
+          path: |
+            stability-7day-results/raw_results.jsonl
+            stability-7day-results/summary.json
+            stability-7day-results/stability_test.log
+            stability-7day-results/daily-reports/
+          retention-days: 90
+          if-no-files-found: error

@@ -16,14 +16,10 @@ PROJECT_DIR = Path(__file__).parent.parent
 WATCHDOG_LOG = PROJECT_DIR / "watchdog.log"
 
 # Monitors to watch
+# NOTE: stability_test_7day was migrated to GitHub Actions (workflow:
+# .github/workflows/stability-7day.yml) on 2026-09-14. It is intentionally
+# NOT watched here anymore to avoid running it twice (local + CI).
 MONITORS = [
-    {
-        "name": "stability_test_7day",
-        "pattern": "stability_test_7day.py",
-        "command": ["python3", "scripts/stability_test_7day.py", "--duration", "7", "--interval", "1800"],
-        "logfile": "stability-7day-results/stability_test.log",
-        "env": {},
-    },
     {
         "name": "stability_test",
         "pattern": "stability_test_24h.py",
