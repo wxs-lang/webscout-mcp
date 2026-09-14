@@ -34,6 +34,22 @@ class ProviderCostTier(str, Enum):
     PREMIUM = "premium"
 
 
+class ProviderCapability(str, Enum):
+    """Capability flags for provider routing decisions.
+
+    Providers advertise which capabilities they support; the router filters
+    candidates by capability before scoring them. Values are stable strings so
+    they can be used as dictionary keys and in serialized reports.
+    """
+
+    SEARCH = "search"
+    FETCH = "fetch"
+    BROWSER = "browser"
+    EXTRACT = "extract"
+    RSS = "rss"
+    METADATA = "metadata"
+
+
 @dataclass
 class ProviderMetrics:
     """Rolling metrics for a single provider."""
@@ -263,7 +279,9 @@ class ProviderRouter:
     """Dynamic provider router with health-based selection.
 
     Replaces fixed-order fallback with intelligent routing based on
-    real-time provider health metrics.
+    real-time provider health metrics. Providers can additionally advertise
+    capabilities (search / fetch / browser / ...) so that the router can
+    select among providers that actually support the requested operation.
     """
 
     def __init__(
@@ -272,6 +290,7 @@ class ProviderRouter:
         cost_tiers: dict[str, ProviderCostTier] | None = None,
         prefer_free: bool = True,
         min_score_threshold: float = 30.0,
+        capabilities: dict[str, set[ProviderCapability]] | None = None,
     ):
         """Initialize the router.
 
@@ -280,21 +299,67 @@ class ProviderRouter:
             cost_tiers: Mapping of provider name to cost tier.
             prefer_free: If True, prefer free providers when scores are close.
             min_score_threshold: Minimum score to consider a provider healthy.
+            capabilities: Mapping of provider name to the set of capabilities
+                it supports. Providers absent from this mapping are considered
+                to support all capabilities (backward compatible).
         """
         self.metrics: dict[str, ProviderMetrics] = {name: ProviderMetrics(name=name) for name in provider_names}
         self.scorer = ProviderHealthScorer(cost_tiers=cost_tiers)
         self.prefer_free = prefer_free
         self.min_score_threshold = min_score_threshold
         self.cost_tiers = cost_tiers or {}
+        self.capabilities: dict[str, set[ProviderCapability]] = capabilities or {}
 
-    def get_ranked_providers(self) -> list[ProviderScore]:
+    def add_provider(self, name: str, cost_tier: ProviderCostTier | None = None) -> None:
+        """Register a new provider with the router (idempotent).
+
+        Args:
+            name: Provider name.
+            cost_tier: Optional cost tier. Defaults to FREE if not provided.
+        """
+        if name not in self.metrics:
+            self.metrics[name] = ProviderMetrics(name=name)
+        if cost_tier is not None:
+            self.cost_tiers[name] = cost_tier
+            self.scorer.cost_tiers[name] = cost_tier
+
+    def set_capabilities(self, capabilities: dict[str, set[ProviderCapability]]) -> None:
+        """Set the capability mapping for providers.
+
+        Args:
+            capabilities: Mapping of provider name to supported capabilities.
+        """
+        self.capabilities = capabilities
+
+    def _supports_capability(self, name: str, capability: ProviderCapability | None) -> bool:
+        """Check whether a provider supports the requested capability.
+
+        Providers without an explicit capability mapping are treated as
+        supporting everything (backward compatible with v1.x behavior).
+        """
+        if capability is None:
+            return True
+        caps = self.capabilities.get(name)
+        if caps is None:
+            return True
+        return capability in caps
+
+    def get_ranked_providers(self, capability: ProviderCapability | None = None) -> list[ProviderScore]:
         """Get providers ranked by health score (best first).
+
+        Args:
+            capability: Optional capability filter. If provided, only
+                providers that advertise this capability are returned.
 
         Returns:
             List of ProviderScore, sorted by score descending.
             Providers with open circuits are moved to the end.
         """
-        scores = [self.scorer.calculate_score(m) for m in self.metrics.values()]
+        scores = [
+            self.scorer.calculate_score(m)
+            for name, m in self.metrics.items()
+            if self._supports_capability(name, capability)
+        ]
 
         # Sort by score, but put circuit-open providers last
         def sort_key(s: ProviderScore) -> tuple:
@@ -308,17 +373,23 @@ class ProviderRouter:
         scores.sort(key=sort_key)
         return scores
 
-    def get_next_provider(self, exclude: list[str] | None = None) -> str | None:
+    def get_next_provider(
+        self,
+        exclude: list[str] | None = None,
+        capability: ProviderCapability | None = None,
+    ) -> str | None:
         """Get the best available provider.
 
         Args:
             exclude: List of provider names to exclude (already tried).
+            capability: Optional capability filter. If provided, only
+                providers that advertise this capability are considered.
 
         Returns:
             Name of the best available provider, or None if none available.
         """
         exclude = exclude or []
-        ranked = self.get_ranked_providers()
+        ranked = self.get_ranked_providers(capability=capability)
 
         for score in ranked:
             if score.name in exclude:

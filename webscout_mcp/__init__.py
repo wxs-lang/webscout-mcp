@@ -34,6 +34,17 @@ __all__ = [
     "extract_metadata",
     "fetch_and_parse_feed",
     "parse_feed",
+    # v1.2.0 Provider architecture
+    "FetchProvider",
+    "HTTPFetchProvider",
+    "ProviderCapability",
+    "ProviderCostTier",
+    "ProviderRegistry",
+    "ProviderRouter",
+    "SearchProvider",
+    "BingProvider",
+    "DuckDuckGoProvider",
+    "TavilyProvider",
 ]
 
 # Lazy imports to reduce startup time
@@ -58,6 +69,17 @@ _lazy_imports = {
     "extract_metadata": (".metadata_extractor", "extract_metadata"),
     "fetch_and_parse_feed": (".rss_parser", "fetch_and_parse_feed"),
     "parse_feed": (".rss_parser", "parse_feed"),
+    # v1.2.0 Provider architecture
+    "FetchProvider": (".fetch_provider", "FetchProvider"),
+    "HTTPFetchProvider": (".fetch_provider", "HTTPFetchProvider"),
+    "ProviderCapability": (".provider_router", "ProviderCapability"),
+    "ProviderCostTier": (".provider_router", "ProviderCostTier"),
+    "ProviderRegistry": (".provider_registry", "ProviderRegistry"),
+    "ProviderRouter": (".provider_router", "ProviderRouter"),
+    "SearchProvider": (".search_provider", "SearchProvider"),
+    "BingProvider": (".search_providers", "BingProvider"),
+    "DuckDuckGoProvider": (".search_providers", "DuckDuckGoProvider"),
+    "TavilyProvider": (".search_providers", "TavilyProvider"),
 }
 
 _imported = {}

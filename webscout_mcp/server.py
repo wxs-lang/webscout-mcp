@@ -67,12 +67,31 @@ def create_server(config: Config | None = None) -> MCPServer:
     )
     fetcher = Fetcher(cfg, cache)
     search_engine = SearchEngine(cfg, cache)
+
+    # Provider registry: single source of truth for provider state.
+    # Search providers are registered by the factory; the HTTP fetch
+    # provider is registered here since it wraps this server's fetcher.
+    from .fetch_provider import HTTPFetchProvider
+    from .provider_registry import ProviderRegistry
+    from .provider_router import ProviderCapability, ProviderCostTier
+
+    registry = ProviderRegistry()
     try:
-        search_service = create_search_service_from_config(cfg, cache)
+        search_service = create_search_service_from_config(cfg, cache, registry=registry)
         log.info("SearchService initialized with new SearchProvider architecture")
     except Exception as e:
         log.warning(f"Could not initialize SearchService, falling back to SearchEngine: {e}")
         search_service = None
+    try:
+        registry.register(
+            HTTPFetchProvider(fetcher),
+            capabilities={ProviderCapability.FETCH},
+            cost_tier=ProviderCostTier.FREE,
+            description="HTTP fetch provider (smart Fetcher)",
+        )
+    except Exception as e:  # pragma: no cover - defensive
+        log.warning(f"Could not register HTTP fetch provider: {e}")
+
     robots_checker = RobotsChecker(cfg, respect_robots=cfg.respect_robots)
     crawler = Crawler(cfg, fetcher, robots_checker)
     extractor = DataExtractor(cfg, fetcher)
@@ -279,6 +298,12 @@ def create_server(config: Config | None = None) -> MCPServer:
             unified_report["legacy_engine"] = engine_report
         except Exception as exc:
             unified_report["legacy_engine"] = {"error": f"Failed to get engine health: {exc}"}
+
+        # Provider registry overview (registered providers + health, v1.2.0)
+        try:
+            unified_report["provider_registry"] = registry.health_report()
+        except Exception as exc:
+            unified_report["provider_registry"] = {"error": f"Failed to get registry health: {exc}"}
 
         # Include startup self-check report if available
         if _startup_check is not None and _startup_check.report is not None:
