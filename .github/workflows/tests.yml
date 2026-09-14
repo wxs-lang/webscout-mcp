@@ -60,7 +60,7 @@ jobs:
 
       - name: Upload unit test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: unit-tests-${{ matrix.python-version }}
           path: |
@@ -110,7 +110,7 @@ jobs:
 
       - name: Upload integration test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: integration-tests-${{ matrix.python-version }}
           path: |
@@ -167,7 +167,7 @@ jobs:
 
       - name: Upload MCP E2E test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mcp-e2e-tests-mcp-${{ matrix.mcp-version }}
           path: |
@@ -213,7 +213,7 @@ jobs:
 
       - name: Upload fault injection test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fault-injection-tests
           path: |
@@ -324,7 +324,7 @@ jobs:
 
       - name: Upload coverage report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: |
