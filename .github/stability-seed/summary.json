@@ -1,0 +1,26 @@
+{
+  "start_time": "2026-09-13T14:19:28.523785+00:00",
+  "current_time": "2026-09-14T14:52:39.452853+00:00",
+  "end_time": "2026-09-20T14:19:28.523785+00:00",
+  "duration_days": 7,
+  "total_tests": 666,
+  "passed_tests": 660,
+  "failed_tests": 6,
+  "success_rate": 99.1,
+  "search": {
+    "total": 185,
+    "p50_ms": 560.93,
+    "p95_ms": 881.06
+  },
+  "fetch": {
+    "total": 105,
+    "p50_ms": 1126.15,
+    "p95_ms": 2402.28
+  },
+  "error_types": {
+    "Failed after 3 retries: ": 6
+  },
+  "provider_distribution": {
+    "bing": 185
+  }
+}

@@ -55,7 +55,7 @@ SEARCH_QUERIES = [
 
 FETCH_URLS = [
     "https://docs.python.org/3/library/asyncio.html",
-    "https://en.wikipedia.org/wiki/Python_(programming_language)",
+    "https://docs.python.org/3/tutorial/introduction.html",
     "https://github.com/modelcontextprotocol",
     "https://developer.mozilla.org/en-US/docs/Web/JavaScript",
     "https://www.postgresql.org/docs/current/tutorial.html",
@@ -510,8 +510,13 @@ class StabilityTestRunner:
         with open(self.summary_file, "w") as f:
             json.dump(summary, f, indent=2, default=str)
 
-    def run(self):
-        """Main run loop for 7 days."""
+    def run(self, single_cycle: bool = False):
+        """Main run loop for 7 days.
+
+        Args:
+            single_cycle: If True, run exactly one test cycle then exit
+                (used for GitHub Actions scheduled runs where each run is one cycle).
+        """
         self.log("=" * 70)
         self.log("7-Day Continuous Stability Test Starting")
         self.log("=" * 70)
@@ -519,6 +524,7 @@ class StabilityTestRunner:
         self.log(f"Interval: {self.interval_seconds} seconds ({self.interval_seconds/3600:.1f} hours)")
         self.log(f"Start: {self.start_time}")
         self.log(f"End: {self.end_time}")
+        self.log(f"Single-cycle mode: {single_cycle}")
         self.log(f"Results directory: {self.results_dir}")
         self.log("=" * 70)
 
@@ -547,6 +553,11 @@ class StabilityTestRunner:
                 # Calculate remaining time
                 remaining = self.end_time - datetime.now(timezone.utc)
                 self.log(f"Remaining time: {remaining}")
+
+                # Single-cycle mode: exit after exactly one cycle
+                if single_cycle:
+                    self.log("Single-cycle mode: cycle complete, exiting")
+                    break
 
                 # Sleep until next cycle (but check every 60 seconds for early termination)
                 sleep_end = time.time() + self.interval_seconds
@@ -601,13 +612,18 @@ def main():
         default=3600,
         help="Test interval in seconds (default: 3600 = 1 hour)",
     )
+    parser.add_argument(
+        "--once",
+        action="store_true",
+        help="Run exactly one test cycle then exit (for CI scheduled runs)",
+    )
     args = parser.parse_args()
 
     runner = StabilityTestRunner(
         duration_days=args.duration,
         interval_seconds=args.interval,
     )
-    runner.run()
+    runner.run(single_cycle=args.once)
 
 
 if __name__ == "__main__":
