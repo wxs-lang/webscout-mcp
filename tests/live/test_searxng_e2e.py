@@ -28,8 +28,7 @@ pytestmark = pytest.mark.skipif(
 
 def _config(base_url: str | None = None) -> Config:
     cfg = Config()
-    if base_url is not None:
-        cfg.searxng_base_url = base_url
+    cfg.searxng_base_url = base_url or os.environ.get("SEARXNG_BASE_URL", "")
     cfg.searxng_timeout = 10.0
     return cfg
 
