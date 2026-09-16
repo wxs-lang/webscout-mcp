@@ -81,6 +81,12 @@ class Config:
     searxng_base_url: str = ""  # e.g. https://searx.be or your self-hosted instance
     searxng_timeout: float = 15.0  # Request timeout in seconds
 
+    # --- Crawl4AI sidecar (optional browser render fallback) ---
+    crawl4ai_enabled: bool = False  # Master switch; off unless base_url set
+    crawl4ai_base_url: str = ""  # e.g. http://localhost:11235
+    crawl4ai_api_token: str = ""  # Bearer token if sidecar enforces auth
+    crawl4ai_timeout: float = 30.0  # Request timeout in seconds
+
     # --- Crawler ---
     crawler_max_depth: int = 2
     crawler_max_pages: int = 20
@@ -233,6 +239,10 @@ class Config:
             "TAVILY_TIMEOUT": ("tavily_timeout", float),
             "SEARXNG_BASE_URL": ("searxng_base_url", str),
             "SEARXNG_TIMEOUT": ("searxng_timeout", float),
+            "CRAWL4AI_ENABLED": ("crawl4ai_enabled", lambda v: v.lower() in ("1", "true", "yes")),
+            "CRAWL4AI_BASE_URL": ("crawl4ai_base_url", str),
+            "CRAWL4AI_API_TOKEN": ("crawl4ai_api_token", str),
+            "CRAWL4AI_TIMEOUT": ("crawl4ai_timeout", float),
             "WEBSCOUT_CRAWLER_MAX_DEPTH": ("crawler_max_depth", int),
             "WEBSCOUT_CRAWLER_MAX_PAGES": ("crawler_max_pages", int),
             "WEBSCOUT_CRAWLER_CONCURRENCY": ("crawler_concurrency", int),

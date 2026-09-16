@@ -115,6 +115,26 @@ def create_server(config: Config | None = None) -> MCPServer:
     except Exception as e:  # pragma: no cover - defensive
         log.warning(f"Could not register HTTP fetch provider: {e}")
 
+    # Optional browser-fetch sidecar (Crawl4AI). Wired in only when
+    # CRAWL4AI_BASE_URL + CRAWL4AI_ENABLED are set; otherwise the
+    # web_fetch fast path is unchanged from v1.2.1.
+    from .crawl4ai_backend import Crawl4AIBrowserBackend
+
+    browser_backend = Crawl4AIBrowserBackend(cfg)
+    if browser_backend.is_available:
+        try:
+            registry.register(
+                browser_backend,
+                capabilities={ProviderCapability.FETCH},
+                cost_tier=ProviderCostTier.PAID,
+                description="Crawl4AI browser render sidecar (escalation only)",
+            )
+            log.info("Crawl4AI browser sidecar registered at %s", browser_backend.base_url)
+        except Exception as e:  # pragma: no cover - defensive
+            log.warning(f"Could not register Crawl4AI backend: {e}")
+    else:
+        log.info("Crawl4AI sidecar not configured; web_fetch uses fast path only")
+
     robots_checker = RobotsChecker(cfg, respect_robots=cfg.respect_robots)
     crawler = Crawler(cfg, fetcher, robots_checker)
     extractor = DataExtractor(cfg, fetcher)
@@ -227,6 +247,9 @@ def create_server(config: Config | None = None) -> MCPServer:
         bypass_cache: bool = False,
     ) -> str:
         """Fetch a URL and return its content, optionally extracting the main article."""
+        from .fetch_escalation import should_escalate_to_browser
+        from .fetch_provider import FetchRequest
+
         result = await fetcher.fetch(
             url=url,
             extract=extract,
@@ -234,7 +257,50 @@ def create_server(config: Config | None = None) -> MCPServer:
             max_chars=max_chars,
             bypass_cache=bypass_cache,
         )
-        return json.dumps(result.to_dict(), ensure_ascii=False, indent=2)
+        out = result.to_dict()
+
+        # Escalation path: only when the fast fetch looks inadequate AND a
+        # browser sidecar is configured. We never replace the original
+        # response — on browser failure we keep the fast-fetch result and
+        # annotate it so the caller can see what happened.
+        if browser_backend.is_available:
+            from .fetch_provider import FetchResponse
+
+            fast_resp = FetchResponse.from_fetch_result(result, provider="http", latency_ms=0.0)
+            decision = should_escalate_to_browser(fast_resp)
+            out["escalation"] = decision.to_dict()
+            if decision.escalate:
+                try:
+                    browser_resp = await browser_backend.fetch(
+                        FetchRequest(
+                            url=url,
+                            extract=extract,
+                            output_format=output_format,
+                            max_chars=max_chars,
+                            bypass_cache=bypass_cache,
+                        )
+                    )
+                    out["browser_attempted"] = True
+                    out["browser_backend"] = "crawl4ai"
+                    out["browser_reason"] = decision.reason_code.value if decision.reason_code else None
+                    if browser_resp.is_success and browser_resp.content:
+                        # Browser succeeded: prefer its rendered content, but keep
+                        # the fast-fetch metadata for transparency.
+                        out["content"] = browser_resp.content[:max_chars]
+                        out["title"] = browser_resp.title or out.get("title", "")
+                        out["extracted"] = True
+                        out["browser_success"] = True
+                    else:
+                        out["browser_success"] = False
+                        out["browser_error"] = browser_resp.error
+                except Exception as exc:  # pragma: no cover - defensive
+                    log.warning("Crawl4AI escalation failed for %s: %s", url, exc)
+                    out["browser_attempted"] = True
+                    out["browser_success"] = False
+                    out["browser_error"] = f"{type(exc).__name__}: {exc}"
+                out.setdefault("browser_success", False)
+
+        return json.dumps(out, ensure_ascii=False, indent=2)
 
     @mcp.tool()
     async def web_crawl(
