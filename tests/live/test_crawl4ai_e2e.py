@@ -37,6 +37,7 @@ def _config(base_url: str | None = None) -> Config:
     cfg = Config()
     cfg.crawl4ai_enabled = True
     cfg.crawl4ai_base_url = base_url or os.environ.get("CRAWL4AI_BASE_URL", "")
+    cfg.crawl4ai_api_token = os.environ.get("CRAWL4AI_API_TOKEN", "")
     cfg.crawl4ai_timeout = 60.0
     return cfg
 

@@ -38,7 +38,7 @@ jobs:
         run: |
           docker run -d --name crawl4ai \
             -p 11235:11235 \
-            -e CRAWL4AI_DISABLE_AUTH=true \
+            -e CRAWL4AI_API_TOKEN=ci-test-token \
             --shm-size=2g \
             unclecode/crawl4ai:latest
           echo "Waiting for Crawl4AI to come up (may download Chromium on first run)..."
@@ -60,6 +60,7 @@ jobs:
       - name: Run real Crawl4AI E2E tests
         env:
           CRAWL4AI_BASE_URL: "http://localhost:11235"
+          CRAWL4AI_API_TOKEN: "ci-test-token"
         run: python -m pytest tests/live/test_crawl4ai_e2e.py -v --tb=short
 
       - name: Dump container logs on failure
