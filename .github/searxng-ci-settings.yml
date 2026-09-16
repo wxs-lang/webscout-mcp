@@ -1,0 +1,20 @@
+use_default_settings: true
+server:
+  bind_address: "0.0.0.0"
+  port: 8080
+  secret_key: "ci-smoketest"
+  public_instance: false
+  image_proxy: false
+search:
+  safe_search: 0
+  formats:
+    - html
+    - json
+ui:
+  default_locale: "zh-Hans-CN"
+outgoing:
+  request_timeout: 5.0
+  max_request_timeout: 10.0
+  pool_maxsize: 10
+redis:
+  url: false
