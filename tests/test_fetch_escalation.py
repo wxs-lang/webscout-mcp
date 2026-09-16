@@ -63,7 +63,9 @@ def test_401_never_escalates():
 
 
 def test_challenge_page_escalates():
-    html = "<html><head><title>Just a moment...</title></head><body>Checking your browser before accessing</body></html>"
+    html = (
+        "<html><head><title>Just a moment...</title></head><body>Checking your browser before accessing</body></html>"
+    )
     d = should_escalate_to_browser(_resp(content="", raw_html=html))
     assert d.escalate is True
     assert d.reason_code == EscalationReason.SOFT_BLOCK
@@ -93,24 +95,18 @@ def test_short_text_but_small_html_does_not_escalate():
 
 def test_low_quality_with_non_trivial_html_escalates():
     big = "<p>filler</p>" * 200
-    d = should_escalate_to_browser(
-        _resp(content="x", raw_html=f"<html>{big}</html>", content_quality="low")
-    )
+    d = should_escalate_to_browser(_resp(content="x", raw_html=f"<html>{big}</html>", content_quality="low"))
     assert d.escalate is True
     assert d.reason_code == EscalationReason.LOW_QUALITY
 
 
 def test_pdf_content_type_never_escalates():
-    d = should_escalate_to_browser(
-        _resp(content="", content_type="application/pdf", raw_html="garbage")
-    )
+    d = should_escalate_to_browser(_resp(content="", content_type="application/pdf", raw_html="garbage"))
     assert d.escalate is False
 
 
 def test_json_content_type_never_escalates():
-    d = should_escalate_to_browser(
-        _resp(content="", content_type="application/json", raw_html="[]")
-    )
+    d = should_escalate_to_browser(_resp(content="", content_type="application/json", raw_html="[]"))
     assert d.escalate is False
 
 

@@ -115,7 +115,9 @@ def _looks_like_js_placeholder(html: str) -> bool:
 def _script_ratio(html: str) -> float:
     if not html:
         return 0.0
-    script_len = sum(len(m.group(0)) for m in re.finditer(r"<script[^>]*>.*?</script>", html, re.DOTALL | re.IGNORECASE))
+    script_len = sum(
+        len(m.group(0)) for m in re.finditer(r"<script[^>]*>.*?</script>", html, re.DOTALL | re.IGNORECASE)
+    )
     return script_len / max(len(html), 1)
 
 
@@ -184,10 +186,7 @@ def should_escalate_to_browser(response: FetchResponse) -> FetchEscalationDecisi
 
         # Low content density: very little extracted text, but the HTML is
         # non-trivial. This is the classic "JS-rendered SPA" signature.
-        if (
-            len(body) < _MIN_TEXT_CHARS_FOR_REAL_PAGE
-            and len(raw_html) > _MIN_HTML_BYTES_FOR_LOW_DENSITY
-        ):
+        if len(body) < _MIN_TEXT_CHARS_FOR_REAL_PAGE and len(raw_html) > _MIN_HTML_BYTES_FOR_LOW_DENSITY:
             sr = _script_ratio(raw_html)
             if sr > 0.2 or _looks_like_js_placeholder(raw_html):
                 return FetchEscalationDecision(

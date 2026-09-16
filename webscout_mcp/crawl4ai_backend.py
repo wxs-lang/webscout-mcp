@@ -156,7 +156,10 @@ class Crawl4AIBrowserBackend(BrowserFetchProvider):
                 content_type="text/markdown",
                 extracted=True,
                 latency_ms=self._measure_latency(start),
-                metadata={"browser": "crawl4ai", **{k: v for k, v in metadata.items() if isinstance(v, (str, int, float, bool))}},
+                metadata={
+                    "browser": "crawl4ai",
+                    **{k: v for k, v in metadata.items() if isinstance(v, (str, int, float, bool))},
+                },
             )
 
         except httpx.TimeoutException:

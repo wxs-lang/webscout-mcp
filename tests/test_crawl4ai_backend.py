@@ -21,9 +21,7 @@ class Cfg:
 
 
 def _make(base_url: str = "http://localhost:11235", enabled: bool = True) -> Crawl4AIBrowserBackend:
-    return Crawl4AIBrowserBackend(
-        Cfg(crawl4ai_enabled=enabled, crawl4ai_base_url=base_url)
-    )
+    return Crawl4AIBrowserBackend(Cfg(crawl4ai_enabled=enabled, crawl4ai_base_url=base_url))
 
 
 class _Resp:
