@@ -1,0 +1,61 @@
+name: SearXNG E2E
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "webscout_mcp/searxng_provider.py"
+      - "tests/live/test_searxng_e2e.py"
+      - ".github/workflows/searxng-e2e.yml"
+
+concurrency:
+  group: searxng-e2e
+  cancel-in-progress: false
+
+jobs:
+  searxng-e2e:
+    name: Real SearXNG container E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e . pytest pytest-asyncio anyio
+
+      - name: Start SearXNG container
+        run: |
+          docker run -d --name searxng \
+            -p 8080:8080 \
+            -v ${{ github.workspace }}/.github/searxng-ci-settings.yml:/etc/searxng/settings.yml:ro \
+            searxng/searxng:latest
+          echo "Waiting for SearXNG to come up..."
+          for i in $(seq 1 60); do
+            if curl -sf -o /dev/null "http://localhost:8080/"; then
+              echo "SearXNG is up after ${i}s"
+              break
+            fi
+            sleep 2
+          done
+          echo "--- probe JSON endpoint ---"
+          curl -s "http://localhost:8080/search?q=test&format=json" | head -c 300
+          echo
+
+      - name: Run real SearXNG E2E tests
+        env:
+          SEARXNG_BASE_URL: "http://localhost:8080"
+        run: python -m pytest tests/live/test_searxng_e2e.py -v --tb=short
+
+      - name: Dump container logs on failure
+        if: failure()
+        run: docker logs searxng || true
