@@ -116,7 +116,7 @@ def _script_ratio(html: str) -> float:
     if not html:
         return 0.0
     script_len = sum(
-        len(m.group(0)) for m in re.finditer(r"<script[^>]*>.*?</script>", html, re.DOTALL | re.IGNORECASE)
+        len(m.group(0)) for m in re.finditer(r"<script[^>]*>.*?</script\s*>", html, re.DOTALL | re.IGNORECASE)
     )
     return script_len / max(len(html), 1)
 

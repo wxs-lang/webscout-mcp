@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from webscout_mcp.errors import StandardErrorCode
 from webscout_mcp.fetch_escalation import (
     EscalationReason,
     should_escalate_to_browser,
