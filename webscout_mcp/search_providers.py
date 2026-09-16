@@ -20,6 +20,7 @@ from .logging_config import get_logger
 from .search import BingBackend, DuckDuckGoHTMLBackend
 from .search_provider import SearchProvider
 from .search_provider_adapter import SearchBackendAdapter
+from .searxng_provider import SearXNGSearchProvider
 from .tavily_provider import TavilySearchProvider
 
 log = get_logger(__name__)
@@ -54,6 +55,15 @@ class TavilyProvider(TavilySearchProvider):
     """
 
 
+class SearXNGProvider(SearXNGSearchProvider):
+    """Standard SearXNG search provider (self-hosted metasearch, FREE).
+
+    Registered only when SEARXNG_BASE_URL is configured. Sits between the
+    free HTML backends (Bing/DDG) and the paid Tavily fallback so the
+    dynamic router can promote it once it proves reliable.
+    """
+
+
 def build_default_search_providers(config: Any) -> list[SearchProvider]:
     """Build the default search provider list in priority order.
 
@@ -78,6 +88,16 @@ def build_default_search_providers(config: Any) -> list[SearchProvider]:
         providers.append(DuckDuckGoProvider(config))
     except Exception as e:  # pragma: no cover - defensive
         log.warning("Could not initialize DuckDuckGo provider: %s", e)
+
+    try:
+        searxng = SearXNGProvider(config)
+        if searxng.is_configured:
+            providers.append(searxng)
+            log.info("SearXNG provider initialized (base_url=%s)", searxng.base_url)
+        else:
+            log.info("SEARXNG_BASE_URL not set, skipping SearXNG provider")
+    except Exception as e:  # pragma: no cover - defensive
+        log.warning("Could not initialize SearXNG provider: %s", e)
 
     try:
         tavily = TavilyProvider(config)
