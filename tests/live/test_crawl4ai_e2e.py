@@ -70,8 +70,11 @@ async def test_dead_sidecar_returns_retryable_error():
 def test_escalation_403_triggers():
     d = should_escalate_to_browser(
         FetchResponse(
-            url="https://x", final_url="https://x", status_code=403,
-            provider="http", content="",
+            url="https://x",
+            final_url="https://x",
+            status_code=403,
+            provider="http",
+            content="",
         )
     )
     assert d.escalate is True
@@ -81,8 +84,11 @@ def test_escalation_403_triggers():
 def test_escalation_451_does_not_trigger():
     d = should_escalate_to_browser(
         FetchResponse(
-            url="https://x", final_url="https://x", status_code=451,
-            provider="http", content="blocked",
+            url="https://x",
+            final_url="https://x",
+            status_code=451,
+            provider="http",
+            content="blocked",
         )
     )
     assert d.escalate is False
@@ -91,8 +97,12 @@ def test_escalation_451_does_not_trigger():
 def test_escalation_pdf_does_not_trigger():
     d = should_escalate_to_browser(
         FetchResponse(
-            url="https://x", final_url="https://x", status_code=200,
-            provider="http", content="%PDF-1.4", content_type="application/pdf",
+            url="https://x",
+            final_url="https://x",
+            status_code=200,
+            provider="http",
+            content="%PDF-1.4",
+            content_type="application/pdf",
         )
     )
     assert d.escalate is False
