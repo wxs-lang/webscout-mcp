@@ -77,6 +77,10 @@ class Config:
     tavily_api_key: str = ""  # Tavily API key (optional, stable AI-focused search)
     tavily_timeout: float = 15.0  # Request timeout in seconds
 
+    # --- SearXNG (optional self-hosted metasearch backend) ---
+    searxng_base_url: str = ""  # e.g. https://searx.be or your self-hosted instance
+    searxng_timeout: float = 15.0  # Request timeout in seconds
+
     # --- Crawler ---
     crawler_max_depth: int = 2
     crawler_max_pages: int = 20
@@ -227,6 +231,8 @@ class Config:
             "SERPAPI_TIMEOUT": ("serpapi_timeout", float),
             "TAVILY_API_KEY": ("tavily_api_key", str),
             "TAVILY_TIMEOUT": ("tavily_timeout", float),
+            "SEARXNG_BASE_URL": ("searxng_base_url", str),
+            "SEARXNG_TIMEOUT": ("searxng_timeout", float),
             "WEBSCOUT_CRAWLER_MAX_DEPTH": ("crawler_max_depth", int),
             "WEBSCOUT_CRAWLER_MAX_PAGES": ("crawler_max_pages", int),
             "WEBSCOUT_CRAWLER_CONCURRENCY": ("crawler_concurrency", int),

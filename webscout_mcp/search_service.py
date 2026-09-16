@@ -347,6 +347,7 @@ def create_search_service_from_config(
         "duckduckgo": ProviderCostTier.FREE,
         "google": ProviderCostTier.FREE,
         "brave": ProviderCostTier.FREE,
+        "searxng": ProviderCostTier.FREE,
         "serpapi": ProviderCostTier.PAID,
         "tavily": ProviderCostTier.PAID,
     }
