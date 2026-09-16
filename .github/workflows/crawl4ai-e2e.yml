@@ -1,0 +1,67 @@
+name: Crawl4AI E2E
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "webscout_mcp/crawl4ai_backend.py"
+      - "webscout_mcp/fetch_escalation.py"
+      - "tests/live/test_crawl4ai_e2e.py"
+      - ".github/workflows/crawl4ai-e2e.yml"
+
+concurrency:
+  group: crawl4ai-e2e
+  cancel-in-progress: false
+
+jobs:
+  crawl4ai-e2e:
+    name: Real Crawl4AI container E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e . pytest pytest-asyncio anyio
+
+      - name: Start Crawl4AI container
+        run: |
+          docker run -d --name crawl4ai \
+            -p 11235:11235 \
+            -e CRAWL4AI_DISABLE_AUTH=true \
+            --shm-size=2g \
+            unclecode/crawl4ai:latest
+          echo "Waiting for Crawl4AI to come up (may download Chromium on first run)..."
+          for i in $(seq 1 120); do
+            if curl -sf -o /dev/null "http://localhost:11235/health" 2>/dev/null \
+               || curl -sf -o /dev/null "http://localhost:11235/" 2>/dev/null; then
+              echo "Crawl4AI is up after $((i*2))s"
+              break
+            fi
+            sleep 2
+          done
+          echo "--- /health probe ---"
+          curl -s -m 5 "http://localhost:11235/health" || echo "(no /health route)"
+          echo
+          echo "--- root probe ---"
+          curl -s -m 5 "http://localhost:11235/" | head -c 300
+          echo
+
+      - name: Run real Crawl4AI E2E tests
+        env:
+          CRAWL4AI_BASE_URL: "http://localhost:11235"
+        run: python -m pytest tests/live/test_crawl4ai_e2e.py -v --tb=short
+
+      - name: Dump container logs on failure
+        if: failure()
+        run: docker logs crawl4ai || true
