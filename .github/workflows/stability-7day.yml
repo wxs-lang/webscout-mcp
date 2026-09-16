@@ -67,7 +67,7 @@ jobs:
           python3 -c "import json; d=json.load(open('stability-7day-results/summary.json')); print(f\"success_rate={d['success_rate']}% passed={d['passed_tests']}/{d['total_tests']} search_p50={d['search']['p50_ms']:.0f}ms p95={d['search']['p95_ms']:.0f}ms fetch_p50={d['fetch']['p50_ms']:.0f}ms p95={d['fetch']['p95_ms']:.0f}ms\")"
 
       - name: Upload accumulated results artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: stability-7day-results
           path: |
