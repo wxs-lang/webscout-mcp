@@ -3,13 +3,24 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
 
 from webscout_mcp.crawl4ai_backend import Crawl4AIBrowserBackend
 from webscout_mcp.fetch_provider import FetchRequest
+
+
+@pytest.fixture(autouse=True)
+def _bypass_ssrf_guard():
+    # Unit tests focus on backend behavior, not SSRF. The SSRF guard is
+    # covered in test_url_safety.py and tests/live/test_crawl4ai_e2e.py.
+    with patch(
+        "webscout_mcp.crawl4ai_backend.assert_redirect_chain_safe",
+        new=AsyncMock(return_value=type("R", (), {"safe": True, "reason": ""})()),
+    ):
+        yield
 
 
 @dataclass
