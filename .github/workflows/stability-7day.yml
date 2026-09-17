@@ -2,8 +2,9 @@ name: 7-Day Stability Test
 
 on:
   schedule:
-    # Every 30 minutes — 48 cycles/day over the 7-day window (2026-09-13 22:19 → 2026-09-20 22:19 UTC+8)
-    - cron: '*/30 * * * *'
+    # Every 2 hours — 12 cycles/day over the 7-day window (2026-09-13 22:19 → 2026-09-20 22:19 UTC+8).
+    # Daemon task (doubao) backfills with dispatch if a run is older than 150 min.
+    - cron: '0 */2 * * *'
   workflow_dispatch:
 
 permissions:
