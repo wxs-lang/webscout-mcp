@@ -125,15 +125,21 @@ def create_server(config: Config | None = None) -> MCPServer:
         try:
             registry.register(
                 browser_backend,
-                capabilities={ProviderCapability.FETCH},
+                capabilities={ProviderCapability.BROWSER},
                 cost_tier=ProviderCostTier.PAID,
-                description="Crawl4AI browser render sidecar (escalation only)",
+                description="Crawl4AI browser render sidecar (escalation only, BROWSER capability)",
             )
             log.info("Crawl4AI browser sidecar registered at %s", browser_backend.base_url)
         except Exception as e:  # pragma: no cover - defensive
             log.warning(f"Could not register Crawl4AI backend: {e}")
     else:
         log.info("Crawl4AI sidecar not configured; web_fetch uses fast path only")
+
+    # Phase 2: FetchService owns fast-fetch selection + browser escalation.
+    # server.py no longer makes routing decisions.
+    from .fetch_service import FetchService
+
+    fetch_service = FetchService(registry=registry)
 
     robots_checker = RobotsChecker(cfg, respect_robots=cfg.respect_robots)
     crawler = Crawler(cfg, fetcher, robots_checker)
@@ -247,86 +253,18 @@ def create_server(config: Config | None = None) -> MCPServer:
         bypass_cache: bool = False,
     ) -> str:
         """Fetch a URL and return its content, optionally extracting the main article."""
-        from .fetch_escalation import should_escalate_to_browser
         from .fetch_provider import FetchRequest
-        from .observability import record_escalation, record_fetch_attempt
 
-        result = await fetcher.fetch(
-            url=url,
-            extract=extract,
-            output_format=output_format,
-            max_chars=max_chars,
-            bypass_cache=bypass_cache,
-        )
-        out = result.to_dict()
-
-        # Observability: classify the fast-http attempt.
-        try:
-            status = out.get("status_code", 0) or 0
-            if out.get("error"):
-                if status in (401, 403, 451):
-                    fast_result = "forbidden"
-                elif "timeout" in (out.get("error") or "").lower():
-                    fast_result = "timeout"
-                else:
-                    fast_result = "failure"
-            elif status >= 400:
-                fast_result = "forbidden" if status in (401, 403, 451) else "failure"
-            else:
-                fast_result = "success"
-            record_fetch_attempt(
-                "fast-http",
-                result=fast_result,
-                latency_ms=float(out.get("latency_ms", 0.0)),
+        route = await fetch_service.fetch(
+            FetchRequest(
+                url=url,
+                extract=extract,
+                output_format=output_format,
+                max_chars=max_chars,
+                bypass_cache=bypass_cache,
             )
-        except Exception:  # pragma: no cover - observability must not break fetch
-            log.exception("observability record fast-http failed")
-
-        # Escalation path: only when the fast fetch looks inadequate AND a
-        # browser sidecar is configured. We never replace the original
-        # response — on browser failure we keep the fast-fetch result and
-        # annotate it so the caller can see what happened.
-        if browser_backend.is_available:
-            from .fetch_provider import FetchResponse
-
-            fast_resp = FetchResponse.from_fetch_result(result, provider="http", latency_ms=0.0)
-            decision = should_escalate_to_browser(fast_resp)
-            out["escalation"] = decision.to_dict()
-            if decision.escalate:
-                try:
-                    record_escalation(decision.reason_code.value if decision.reason_code else "unknown")
-                except Exception:  # pragma: no cover
-                    log.exception("observability record_escalation failed")
-                try:
-                    browser_resp = await browser_backend.fetch(
-                        FetchRequest(
-                            url=url,
-                            extract=extract,
-                            output_format=output_format,
-                            max_chars=max_chars,
-                            bypass_cache=bypass_cache,
-                        )
-                    )
-                    out["browser_attempted"] = True
-                    out["browser_backend"] = "crawl4ai"
-                    out["browser_reason"] = decision.reason_code.value if decision.reason_code else None
-                    if browser_resp.is_success and browser_resp.content:
-                        # Browser succeeded: prefer its rendered content, but keep
-                        # the fast-fetch metadata for transparency.
-                        out["content"] = browser_resp.content[:max_chars]
-                        out["title"] = browser_resp.title or out.get("title", "")
-                        out["extracted"] = True
-                        out["browser_success"] = True
-                    else:
-                        out["browser_success"] = False
-                        out["browser_error"] = browser_resp.error
-                except Exception as exc:  # pragma: no cover - defensive
-                    log.warning("Crawl4AI escalation failed for %s: %s", url, exc)
-                    out["browser_attempted"] = True
-                    out["browser_success"] = False
-                    out["browser_error"] = f"{type(exc).__name__}: {exc}"
-                out.setdefault("browser_success", False)
-
+        )
+        out = route.legacy_out(max_chars=max_chars)
         return json.dumps(out, ensure_ascii=False, indent=2)
 
     @mcp.tool()
