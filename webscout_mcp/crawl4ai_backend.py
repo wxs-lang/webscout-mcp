@@ -32,6 +32,7 @@ from .fetch_provider import (
     FetchResponse,
 )
 from .logging_config import get_logger
+from .observability import record_fetch_attempt, record_ssrf_block
 from .url_safety import assert_redirect_chain_safe
 
 log = get_logger(__name__)
@@ -85,6 +86,10 @@ class Crawl4AIBrowserBackend(BrowserFetchProvider):
         allow_private = bool(getattr(self.config, "crawl4ai_allow_private", False))
         safety = await assert_redirect_chain_safe(request.url, allow_private=allow_private, timeout=5.0)
         if not safety.safe:
+            try:
+                record_ssrf_block(safety.reason or "unknown")
+            except Exception:  # pragma: no cover - observability must not break fetch
+                log.exception("observability record_ssrf_block failed")
             return FetchResponse(
                 url=request.url,
                 final_url=request.url,
@@ -107,52 +112,71 @@ class Crawl4AIBrowserBackend(BrowserFetchProvider):
             resp = await client.post(f"{self.base_url}/crawl", json=payload)
 
             if resp.status_code == 401 or resp.status_code == 403:
-                return FetchResponse(
-                    url=request.url,
-                    final_url=request.url,
-                    status_code=resp.status_code,
-                    provider=self.name,
-                    error=f"Crawl4AI auth error: {resp.status_code}",
-                    latency_ms=self._measure_latency(start),
-                    error_code=StandardErrorCode.FETCH_FORBIDDEN,
-                    retryable=False,
+                return self._record_and_return(
+                    start,
+                    FetchResponse(
+                        url=request.url,
+                        final_url=request.url,
+                        status_code=resp.status_code,
+                        provider=self.name,
+                        error=f"Crawl4AI auth error: {resp.status_code}",
+                        latency_ms=self._measure_latency(start),
+                        error_code=StandardErrorCode.FETCH_FORBIDDEN,
+                        retryable=False,
+                    ),
+                    result="forbidden",
                 )
             if resp.status_code == 429:
-                return FetchResponse(
-                    url=request.url,
-                    final_url=request.url,
-                    status_code=429,
-                    provider=self.name,
-                    error="Crawl4AI rate limited",
-                    latency_ms=self._measure_latency(start),
-                    error_code=StandardErrorCode.FETCH_RATE_LIMITED,
-                    retryable=True,
+                return self._record_and_return(
+                    start,
+                    FetchResponse(
+                        url=request.url,
+                        final_url=request.url,
+                        status_code=429,
+                        provider=self.name,
+                        error="Crawl4AI rate limited",
+                        latency_ms=self._measure_latency(start),
+                        error_code=StandardErrorCode.FETCH_RATE_LIMITED,
+                        retryable=True,
+                    ),
+                    result="failure",
+                    reason="rate_limited",
                 )
             if resp.status_code >= 500:
-                return FetchResponse(
-                    url=request.url,
-                    final_url=request.url,
-                    status_code=resp.status_code,
-                    provider=self.name,
-                    error=f"Crawl4AI server error: {resp.status_code}",
-                    latency_ms=self._measure_latency(start),
-                    error_code=StandardErrorCode.FETCH_SERVER_ERROR,
-                    retryable=True,
+                return self._record_and_return(
+                    start,
+                    FetchResponse(
+                        url=request.url,
+                        final_url=request.url,
+                        status_code=resp.status_code,
+                        provider=self.name,
+                        error=f"Crawl4AI server error: {resp.status_code}",
+                        latency_ms=self._measure_latency(start),
+                        error_code=StandardErrorCode.FETCH_SERVER_ERROR,
+                        retryable=True,
+                    ),
+                    result="failure",
+                    reason="server_error",
                 )
             resp.raise_for_status()
             data = resp.json()
 
             results = data.get("results") or []
             if not results:
-                return FetchResponse(
-                    url=request.url,
-                    final_url=request.url,
-                    status_code=200,
-                    provider=self.name,
-                    error="Crawl4AI returned no results",
-                    latency_ms=self._measure_latency(start),
-                    error_code=StandardErrorCode.FETCH_FAILED,
-                    retryable=True,
+                return self._record_and_return(
+                    start,
+                    FetchResponse(
+                        url=request.url,
+                        final_url=request.url,
+                        status_code=200,
+                        provider=self.name,
+                        error="Crawl4AI returned no results",
+                        latency_ms=self._measure_latency(start),
+                        error_code=StandardErrorCode.FETCH_FAILED,
+                        retryable=True,
+                    ),
+                    result="failure",
+                    reason="no_results",
                 )
 
             r = results[0]
@@ -163,56 +187,94 @@ class Crawl4AIBrowserBackend(BrowserFetchProvider):
             content = str(content)[:MAX_RESPONSE_BYTES]
             metadata = r.get("metadata") or {}
 
-            return FetchResponse(
-                url=request.url,
-                final_url=metadata.get("url") or request.url,
-                status_code=200,
-                provider=self.name,
-                title=metadata.get("title", ""),
-                content=content,
-                content_type="text/markdown",
-                extracted=True,
-                latency_ms=self._measure_latency(start),
-                metadata={
-                    "browser": "crawl4ai",
-                    **{k: v for k, v in metadata.items() if isinstance(v, (str, int, float, bool))},
-                },
+            return self._record_and_return(
+                start,
+                FetchResponse(
+                    url=request.url,
+                    final_url=metadata.get("url") or request.url,
+                    status_code=200,
+                    provider=self.name,
+                    title=metadata.get("title", ""),
+                    content=content,
+                    content_type="text/markdown",
+                    extracted=True,
+                    latency_ms=self._measure_latency(start),
+                    metadata={
+                        "browser": "crawl4ai",
+                        **{k: v for k, v in metadata.items() if isinstance(v, (str, int, float, bool))},
+                    },
+                ),
+                result="success",
             )
 
         except httpx.TimeoutException:
-            return FetchResponse(
-                url=request.url,
-                final_url=request.url,
-                status_code=0,
-                provider=self.name,
-                error=f"Crawl4AI timed out after {self.timeout}s",
-                latency_ms=self._measure_latency(start),
-                error_code=StandardErrorCode.FETCH_TIMEOUT,
-                retryable=True,
+            return self._record_and_return(
+                start,
+                FetchResponse(
+                    url=request.url,
+                    final_url=request.url,
+                    status_code=0,
+                    provider=self.name,
+                    error=f"Crawl4AI timed out after {self.timeout}s",
+                    latency_ms=self._measure_latency(start),
+                    error_code=StandardErrorCode.FETCH_TIMEOUT,
+                    retryable=True,
+                ),
+                result="timeout",
             )
         except httpx.ConnectError:
-            return FetchResponse(
-                url=request.url,
-                final_url=request.url,
-                status_code=0,
-                provider=self.name,
-                error="Could not connect to Crawl4AI sidecar",
-                latency_ms=self._measure_latency(start),
-                error_code=StandardErrorCode.FETCH_CONNECTION_ERROR,
-                retryable=True,
+            return self._record_and_return(
+                start,
+                FetchResponse(
+                    url=request.url,
+                    final_url=request.url,
+                    status_code=0,
+                    provider=self.name,
+                    error="Could not connect to Crawl4AI sidecar",
+                    latency_ms=self._measure_latency(start),
+                    error_code=StandardErrorCode.FETCH_CONNECTION_ERROR,
+                    retryable=True,
+                ),
+                result="failure",
+                reason="connect_error",
             )
         except Exception as e:  # noqa: BLE001
             log.exception("Crawl4AI fetch error")
-            return FetchResponse(
-                url=request.url,
-                final_url=request.url,
-                status_code=0,
-                provider=self.name,
-                error=f"{type(e).__name__}: {e}",
-                latency_ms=self._measure_latency(start),
-                error_code=StandardErrorCode.FETCH_FAILED,
-                retryable=True,
+            return self._record_and_return(
+                start,
+                FetchResponse(
+                    url=request.url,
+                    final_url=request.url,
+                    status_code=0,
+                    provider=self.name,
+                    error=f"{type(e).__name__}: {e}",
+                    latency_ms=self._measure_latency(start),
+                    error_code=StandardErrorCode.FETCH_FAILED,
+                    retryable=True,
+                ),
+                result="failure",
+                reason="exception",
             )
+
+    def _record_and_return(
+        self,
+        start: float,
+        response: FetchResponse,
+        *,
+        result: str,
+        reason: str | None = None,
+    ) -> FetchResponse:
+        """Observability wrapper. Never raises."""
+        try:
+            record_fetch_attempt(
+                "crawl4ai",
+                result=result,
+                latency_ms=response.latency_ms,
+                reason=reason,
+            )
+        except Exception:  # pragma: no cover
+            log.exception("observability record_fetch_attempt failed")
+        return response
 
     async def health(self):  # type: ignore[override]
         from .search_provider import ProviderHealthStatus

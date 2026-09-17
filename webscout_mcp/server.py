@@ -249,6 +249,7 @@ def create_server(config: Config | None = None) -> MCPServer:
         """Fetch a URL and return its content, optionally extracting the main article."""
         from .fetch_escalation import should_escalate_to_browser
         from .fetch_provider import FetchRequest
+        from .observability import record_escalation, record_fetch_attempt
 
         result = await fetcher.fetch(
             url=url,
@@ -258,6 +259,28 @@ def create_server(config: Config | None = None) -> MCPServer:
             bypass_cache=bypass_cache,
         )
         out = result.to_dict()
+
+        # Observability: classify the fast-http attempt.
+        try:
+            status = out.get("status_code", 0) or 0
+            if out.get("error"):
+                if status in (401, 403, 451):
+                    fast_result = "forbidden"
+                elif "timeout" in (out.get("error") or "").lower():
+                    fast_result = "timeout"
+                else:
+                    fast_result = "failure"
+            elif status >= 400:
+                fast_result = "forbidden" if status in (401, 403, 451) else "failure"
+            else:
+                fast_result = "success"
+            record_fetch_attempt(
+                "fast-http",
+                result=fast_result,
+                latency_ms=float(out.get("latency_ms", 0.0)),
+            )
+        except Exception:  # pragma: no cover - observability must not break fetch
+            log.exception("observability record fast-http failed")
 
         # Escalation path: only when the fast fetch looks inadequate AND a
         # browser sidecar is configured. We never replace the original
@@ -270,6 +293,10 @@ def create_server(config: Config | None = None) -> MCPServer:
             decision = should_escalate_to_browser(fast_resp)
             out["escalation"] = decision.to_dict()
             if decision.escalate:
+                try:
+                    record_escalation(decision.reason_code.value if decision.reason_code else "unknown")
+                except Exception:  # pragma: no cover
+                    log.exception("observability record_escalation failed")
                 try:
                     browser_resp = await browser_backend.fetch(
                         FetchRequest(
