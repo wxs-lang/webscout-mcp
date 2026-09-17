@@ -32,6 +32,7 @@ from .fetch_provider import (
     FetchResponse,
 )
 from .logging_config import get_logger
+from .url_safety import assert_redirect_chain_safe
 
 log = get_logger(__name__)
 
@@ -76,6 +77,22 @@ class Crawl4AIBrowserBackend(BrowserFetchProvider):
                 error="Crawl4AI sidecar not configured",
                 latency_ms=self._measure_latency(start),
                 error_code=StandardErrorCode.SYSTEM_CONFIG_ERROR,
+                retryable=False,
+            )
+
+        # SSRF guard: refuse to drive the sidecar at loopback / private /
+        # link-local / metadata targets unless explicitly opted in.
+        allow_private = bool(getattr(self.config, "crawl4ai_allow_private", False))
+        safety = await assert_redirect_chain_safe(request.url, allow_private=allow_private, timeout=5.0)
+        if not safety.safe:
+            return FetchResponse(
+                url=request.url,
+                final_url=request.url,
+                status_code=403,
+                provider=self.name,
+                error=f"Blocked by SSRF guard: {safety.reason}",
+                latency_ms=self._measure_latency(start),
+                error_code=StandardErrorCode.FETCH_FORBIDDEN,
                 retryable=False,
             )
 
