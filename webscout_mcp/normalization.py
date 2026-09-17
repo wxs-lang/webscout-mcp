@@ -16,6 +16,7 @@ from typing import Any
 
 from .fetch_provider import FetchResponse
 from .logging_config import get_logger
+from .metadata_sanitize import sanitize_metadata
 from .search_provider import SearchResponse, SearchStatus
 from .web_result import (
     BACKEND_CRAWL4AI,
@@ -114,10 +115,13 @@ def fetch_response_to_web_result(response: FetchResponse) -> WebResult:
         "extraction_failed": bool(response.error),
         "kind": "fetch",
     }
-    # Carry through only scalar metadata from the backend (no PII / cookies).
+    # Carry through only scalar metadata from the backend, and run it
+    # through the sanitizer so credentials never reach WebResult.
+    carried: dict[str, Any] = {}
     for k, v in (response.metadata or {}).items():
         if isinstance(v, (str, int, float, bool)) and k not in metadata:
-            metadata[k] = v
+            carried[k] = v
+    metadata.update(sanitize_metadata(carried))
 
     return WebResult(
         url=response.final_url or response.url,

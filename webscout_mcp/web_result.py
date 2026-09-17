@@ -19,6 +19,8 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
+from .metadata_sanitize import sanitize_metadata
+
 
 class WebResultStatus(str, Enum):
     SUCCESS = "success"
@@ -69,6 +71,8 @@ class WebResult:
         return not bool(self.metadata.get("extraction_failed", False))
 
     def to_dict(self) -> dict[str, Any]:
+        # Second line of defense: even if someone constructs WebResult
+        # directly with sensitive keys, serialization drops them.
         return {
             "url": self.url,
             "title": self.title,
@@ -79,5 +83,5 @@ class WebResult:
             "retrieved_at": self.retrieved_at,
             "published_at": self.published_at,
             "status": self.status.value,
-            "metadata": dict(self.metadata),
+            "metadata": sanitize_metadata(self.metadata),
         }
