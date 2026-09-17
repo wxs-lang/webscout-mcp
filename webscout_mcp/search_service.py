@@ -22,7 +22,7 @@ from typing import Any
 
 from .errors import StandardErrorCode
 from .logging_config import get_logger
-from .provider_router import ProviderCostTier, ProviderRouter
+from .provider_router import ProviderCapability, ProviderCostTier, ProviderRouter
 from .search_health import SearchHealthManager
 from .search_provider import (
     SearchProvider,
@@ -164,8 +164,14 @@ class SearchService:
         while True:
             # Select next provider
             if self.router is not None:
-                # Dynamic routing: select best available provider
-                next_name = self.router.get_next_provider(exclude=tried_providers)
+                # Dynamic routing: select best available provider, but ONLY
+                # among providers that advertise SEARCH capability. After the
+                # registry starts also owning FETCH/BROWSER providers (Phase 2),
+                # this filter prevents HTTP/Crawl4AI from leaking into search.
+                next_name = self.router.get_next_provider(
+                    exclude=tried_providers,
+                    capability=ProviderCapability.SEARCH,
+                )
                 if next_name is None:
                     break
                 provider = provider_map.get(next_name)
