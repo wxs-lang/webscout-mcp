@@ -206,14 +206,14 @@ def load_summary(provider: str | None = None) -> dict[str, Any]:
         where = " WHERE jev_provider = ?"
         params.append(provider)
     with _conn() as c:
-        total = c.execute(f"SELECT COUNT(*) AS n FROM jev_records{where}", params).fetchone()["n"]
+        total = c.execute(f"SELECT COUNT(*) AS n FROM jev_records{where}", params).fetchone()["n"]  # nosec B608
         success = c.execute(
-            f"SELECT COUNT(*) AS n FROM jev_records{where + (' AND' if where else ' WHERE')} (jev_error IS NULL OR jev_error = '')",
+            f"SELECT COUNT(*) AS n FROM jev_records{where + (' AND' if where else ' WHERE')} (jev_error IS NULL OR jev_error = '')",  # nosec B608
             params,
         ).fetchone()["n"]
         failure = total - success
         latency_rows = c.execute(
-            f"SELECT jev_latency_ms FROM jev_records{where} AND jev_latency_ms IS NOT NULL"
+            f"SELECT jev_latency_ms FROM jev_records{where} AND jev_latency_ms IS NOT NULL"  # nosec B608
             if where
             else "SELECT jev_latency_ms FROM jev_records WHERE jev_latency_ms IS NOT NULL",
             params,
@@ -227,7 +227,7 @@ def load_summary(provider: str | None = None) -> dict[str, Any]:
                   AND jev_decision IS NOT NULL
                   AND jev_error IS NULL
                   {("AND jev_provider = ?" + " ") if provider else ""}
-                GROUP BY rule_decision, jev_decision""",
+                GROUP BY rule_decision, jev_decision""",  # nosec B608
             params,
         ).fetchall()
         provider_rows = c.execute(
@@ -236,7 +236,7 @@ def load_summary(provider: str | None = None) -> dict[str, Any]:
         tok = c.execute(
             """SELECT COALESCE(SUM(input_tokens),0) AS it, COALESCE(SUM(output_tokens),0) AS ot
                FROM jev_records"""
-            + (where if provider else ""),
+            + (where if provider else ""),  # nosec B608
             params,
         ).fetchone()
     provider_dist = {r["jev_provider"] or "unknown": r["n"] for r in provider_rows}
