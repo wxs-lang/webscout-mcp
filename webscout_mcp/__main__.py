@@ -320,12 +320,19 @@ def build_parser() -> argparse.ArgumentParser:
     cache_clear_parser.set_defaults(func=_cmd_cache)
 
     jev_parser = subparsers.add_parser("jev-report", help="Read-only report of Jev shadow decisions")
-    jev_group = jev_parser.add_mutually_exclusive_group(required=True)
+    jev_group = jev_parser.add_mutually_exclusive_group(required=False)
     jev_group.add_argument("--last", type=int, metavar="N", help="Show N most recent shadow decisions")
     jev_group.add_argument("--summary", action="store_true", help="Show aggregate summary")
     jev_group.add_argument("--disagreements", type=int, metavar="N", help="Show N rule/Jev disagreements")
     jev_group.add_argument("--errors", action="store_true", help="Show Jev API errors/timeouts")
     jev_parser.add_argument("--provider", default=None, help="Filter by jev_provider (e.g. typesafe/fake)")
+    jev_parser.add_argument("--schema-version", default=None, help="Filter by decision_schema_version (e.g. 1)")
+    jev_parser.add_argument("--all", action="store_true", help="Include all providers/schema versions")
+    jev_parser.add_argument(
+        "--smoke",
+        action="store_true",
+        help="Run a live TypeSafe smoke test (requires TYPESAFE_API_KEY; does not write to DB)",
+    )
     jev_parser.set_defaults(func=_cmd_jev_report)
 
     return parser
@@ -343,31 +350,58 @@ async def _cmd_jev_report(args: argparse.Namespace) -> None:
         load_summary,
     )
 
+    # Live smoke first — does not touch DB.
+    if getattr(args, "smoke", False):
+        await _jev_smoke()
+        return
+
     db = configure()
     print(f"Jev shadow DB: {db}")
     provider = getattr(args, "provider", None)
+    schema_ver = getattr(args, "schema_version", None)
+    show_all = getattr(args, "all", False)
+    # Default: only typesafe + current schema. Explicit --all shows everything.
+    if not show_all and provider is None and schema_ver is None:
+        provider = "typesafe"
+        schema_ver = "1"
     if provider:
         print(f"Provider filter: {provider}")
+    if schema_ver:
+        print(f"Schema filter:   {schema_ver}")
+
     if args.summary:
-        s = load_summary(provider=provider)
+        s = load_summary(provider=provider, schema_version=schema_ver)
         print()
-        print("=== Summary ===")
+        print("=== Jev Shadow Summary ===")
+        print(f"provider:          {provider or 'all'}")
+        print(f"schema:            {schema_ver or 'all'}")
+        print(f"valid decisions:   {s['valid_decisions']}")
+        print(f"invalid decisions: {s['invalid_decisions']}")
+        print(f"confidence available: {s['confidence_available']}")
+        print(f"confidence missing:   {s['confidence_missing']}")
+        print(f"usage available:   {s['usage_available']}")
+        print(f"usage missing:     {s['usage_missing']}")
+        dist = s.get("provider_distribution") or {}
+        if dist:
+            print("providers seen:")
+            for p, n in sorted(dist.items()):
+                print(f"  {p}: {n}")
+        sv = s.get("schema_versions") or {}
+        if sv:
+            print("schema versions:")
+            for k, n in sorted(sv.items()):
+                print(f"  {k}: {n}")
         if s["calls"] == 0:
-            print("No TypeSafe Jev records yet.")
+            print("\nNo matching records yet.")
             return
-        print(f"calls:        {s['calls']}")
-        print(f"success:      {s['success']}")
-        print(f"failure:      {s['failure']}")
-        if s.get("input_tokens"):
+        print(f"\ncalls:   {s['calls']}")
+        print(f"success: {s['success']}")
+        print(f"failure: {s['failure']}")
+        if s.get("input_tokens") is not None:
             print(f"tokens in/out: {s['input_tokens']} / {s['output_tokens']}")
         if s["latency_p50_ms"] is not None:
             print(f"latency p50:  {s['latency_p50_ms']} ms")
             print(f"latency p95:  {s['latency_p95_ms']} ms")
-        dist = s.get("provider_distribution") or {}
-        if dist:
-            print("providers:")
-            for p, n in sorted(dist.items()):
-                print(f"  {p}: {n}")
         q = s["quadrants"]
         print()
         print("rule vs Jev (needs_escalation):")
@@ -380,7 +414,7 @@ async def _cmd_jev_report(args: argparse.Namespace) -> None:
         return
 
     if args.last:
-        rows = load_recent(args.last, provider=provider)
+        rows = load_recent(args.last, provider=provider, schema_version=schema_ver)
         print(f"\n=== Last {len(rows)} records ===")
         for r in rows:
             ts = datetime.fromtimestamp(r["timestamp"]).strftime("%Y-%m-%d %H:%M:%S")
@@ -388,14 +422,14 @@ async def _cmd_jev_report(args: argparse.Namespace) -> None:
             err = r.get("jev_error") or ""
             print(
                 f"{ts}  op={r['operation']:<6} q={r['jev_question']:<18} "
-                f"prov={r.get('jev_provider') or '?':<8} jev={jev:<1} p={r.get('jev_probability')} "
-                f"rule={r.get('rule_decision')} reason={r.get('rule_reason')} "
-                f"backend={r.get('backend') or r.get('search_provider')} {err}"
+                f"prov={r.get('jev_provider') or '?':<8} v={r.get('schema_version') or '-':<3} "
+                f"jev={jev:<1} p={r.get('jev_probability')} "
+                f"rule={r.get('rule_decision')} {err}"
             )
         return
 
     if args.disagreements:
-        rows = load_disagreements(args.disagreements, provider=provider)
+        rows = load_disagreements(args.disagreements, provider=provider, schema_version=schema_ver)
         print(f"\n=== {len(rows)} disagreements (rule != Jev) ===")
         for r in rows:
             ts = datetime.fromtimestamp(r["timestamp"]).strftime("%Y-%m-%d %H:%M:%S")
@@ -407,12 +441,63 @@ async def _cmd_jev_report(args: argparse.Namespace) -> None:
         return
 
     if args.errors:
-        rows = load_errors(100, provider=provider)
+        rows = load_errors(100, provider=provider, schema_version=schema_ver)
         print(f"\n=== {len(rows)} Jev errors/timeouts ===")
         for r in rows:
             ts = datetime.fromtimestamp(r["timestamp"]).strftime("%Y-%m-%d %H:%M:%S")
             print(f"{ts}  q={r['jev_question']:<18} error={r.get('jev_error')}")
         return
+
+
+async def _jev_smoke() -> None:
+    """Run a live TypeSafe Jev smoke test. Requires TYPESAFE_API_KEY.
+
+    Does NOT write to the shadow database.
+    """
+    import os
+
+    api_key = os.environ.get("TYPESAFE_API_KEY", "")
+    if not api_key:
+        print("Live Jev smoke skipped: TYPESAFE_API_KEY not configured")
+        return
+    from .jev_client import TypeSafeJevClient
+
+    client = TypeSafeJevClient(api_key=api_key, model="jev-latest", timeout_ms=5000)
+    print("Running live TypeSafe Jev smoke...")
+    try:
+        # needs_escalation + result_usable on a synthetic state.
+        fetch_state = {
+            "title": "Example Domain",
+            "content_excerpt": "Example domain. This domain is for use in illustrative examples in documents.",
+            "content_length": 90,
+            "content_type": "text/html",
+            "http_status": 200,
+            "extracted": True,
+            "empty_content": False,
+            "truncated": False,
+            "backend": "fast-http",
+            "host": "example.com",
+        }
+        answers = await client.ask_many(["needs_escalation", "result_usable"], fetch_state)
+        for q, d in answers.items():
+            print(f"  {q}: decision={d.decision} p={d.probability_yes} latency={d.latency_ms:.0f}ms err={d.error}")
+        # result_relevant
+        search_state = {
+            "query": "python asyncio docs",
+            "title": "asyncio — Asynchronous I/O",
+            "snippet": "Source code for asyncio.",
+            "source": "Bing",
+            "host": "docs.python.org",
+        }
+        r = await client.ask("result_relevant", search_state)
+        print(
+            f"  result_relevant: decision={r.decision} p={r.probability_yes} latency={r.latency_ms:.0f}ms err={r.error}"
+        )
+        print("Smoke OK (not written to DB).")
+    except Exception as exc:  # pragma: no cover
+        print(f"Smoke FAILED: {type(exc).__name__}: {exc}")
+    finally:
+        await client.aclose()
 
 
 def main() -> None:

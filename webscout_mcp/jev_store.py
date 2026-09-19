@@ -154,12 +154,20 @@ def _rows_to_dicts(rows: list[sqlite3.Row]) -> list[dict[str, Any]]:
     return out
 
 
-def load_recent(limit: int = 30, provider: str | None = None) -> list[dict[str, Any]]:
+def load_recent(
+    limit: int = 30, provider: str | None = None, schema_version: str | None = None
+) -> list[dict[str, Any]]:
     sql = "SELECT * FROM jev_records"
+    where: list[str] = []
     params: list[Any] = []
     if provider:
-        sql += " WHERE jev_provider = ?"
+        where.append("jev_provider = ?")
         params.append(provider)
+    if schema_version:
+        where.append("schema_version = ?")
+        params.append(schema_version)
+    if where:
+        sql += " WHERE " + " AND ".join(where)
     sql += " ORDER BY timestamp DESC LIMIT ?"
     params.append(limit)
     with _conn() as c:
@@ -167,7 +175,9 @@ def load_recent(limit: int = 30, provider: str | None = None) -> list[dict[str, 
     return _rows_to_dicts(rows)
 
 
-def load_disagreements(limit: int = 50, provider: str | None = None) -> list[dict[str, Any]]:
+def load_disagreements(
+    limit: int = 50, provider: str | None = None, schema_version: str | None = None
+) -> list[dict[str, Any]]:
     """Rows where rule_decision is not null and differs from jev_decision."""
     sql = """SELECT * FROM jev_records
              WHERE rule_decision IS NOT NULL
@@ -178,6 +188,9 @@ def load_disagreements(limit: int = 50, provider: str | None = None) -> list[dic
     if provider:
         sql += " AND jev_provider = ?"
         params.append(provider)
+    if schema_version:
+        sql += " AND schema_version = ?"
+        params.append(schema_version)
     sql += " ORDER BY timestamp DESC LIMIT ?"
     params.append(limit)
     with _conn() as c:
@@ -185,12 +198,17 @@ def load_disagreements(limit: int = 50, provider: str | None = None) -> list[dic
     return _rows_to_dicts(rows)
 
 
-def load_errors(limit: int = 50, provider: str | None = None) -> list[dict[str, Any]]:
+def load_errors(
+    limit: int = 100, provider: str | None = None, schema_version: str | None = None
+) -> list[dict[str, Any]]:
     sql = "SELECT * FROM jev_records WHERE jev_error IS NOT NULL AND jev_error != ''"
     params: list[Any] = []
     if provider:
         sql += " AND jev_provider = ?"
         params.append(provider)
+    if schema_version:
+        sql += " AND schema_version = ?"
+        params.append(schema_version)
     sql += " ORDER BY timestamp DESC LIMIT ?"
     params.append(limit)
     with _conn() as c:
@@ -198,24 +216,32 @@ def load_errors(limit: int = 50, provider: str | None = None) -> list[dict[str, 
     return _rows_to_dicts(rows)
 
 
-def load_summary(provider: str | None = None) -> dict[str, Any]:
-    """Aggregate stats over rows (optionally filtered by provider)."""
-    where = ""
+def load_summary(provider: str | None = None, schema_version: str | None = None) -> dict[str, Any]:
+    """Aggregate stats over rows (optionally filtered by provider + schema)."""
+    where_clauses: list[str] = []
     params: list[Any] = []
     if provider:
-        where = " WHERE jev_provider = ?"
+        where_clauses.append("jev_provider = ?")
         params.append(provider)
+    if schema_version:
+        where_clauses.append("schema_version = ?")
+        params.append(schema_version)
+    where = (" WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+
     with _conn() as c:
         total = c.execute(f"SELECT COUNT(*) AS n FROM jev_records{where}", params).fetchone()["n"]  # nosec B608
         success = c.execute(
-            f"SELECT COUNT(*) AS n FROM jev_records{where + (' AND' if where else ' WHERE')} (jev_error IS NULL OR jev_error = '')",  # nosec B608
+            f"SELECT COUNT(*) AS n FROM jev_records{where} AND (jev_error IS NULL OR jev_error = '')"  # nosec B608
+            if where_clauses
+            else "SELECT COUNT(*) AS n FROM jev_records WHERE jev_error IS NULL OR jev_error = ''",
             params,
         ).fetchone()["n"]
         failure = total - success
+        latency_where = (
+            f"{where} AND jev_latency_ms IS NOT NULL" if where_clauses else " WHERE jev_latency_ms IS NOT NULL"
+        )
         latency_rows = c.execute(
-            f"SELECT jev_latency_ms FROM jev_records{where} AND jev_latency_ms IS NOT NULL"  # nosec B608
-            if where
-            else "SELECT jev_latency_ms FROM jev_records WHERE jev_latency_ms IS NOT NULL",
+            f"SELECT jev_latency_ms FROM jev_records{latency_where}",  # nosec B608
             params,
         ).fetchall()
         latencies = sorted(r["jev_latency_ms"] for r in latency_rows)
@@ -226,20 +252,37 @@ def load_summary(provider: str | None = None) -> dict[str, Any]:
                   AND rule_decision IS NOT NULL
                   AND jev_decision IS NOT NULL
                   AND jev_error IS NULL
-                  {("AND jev_provider = ?" + " ") if provider else ""}
+                  {("AND " + " AND ".join(where_clauses)) if where_clauses else ""}
                 GROUP BY rule_decision, jev_decision""",  # nosec B608
             params,
         ).fetchall()
         provider_rows = c.execute(
             "SELECT jev_provider, COUNT(*) AS n FROM jev_records GROUP BY jev_provider"
         ).fetchall()
+        schema_rows = c.execute(
+            "SELECT schema_version, COUNT(*) AS n FROM jev_records GROUP BY schema_version"
+        ).fetchall()
         tok = c.execute(
-            """SELECT COALESCE(SUM(input_tokens),0) AS it, COALESCE(SUM(output_tokens),0) AS ot
-               FROM jev_records"""
-            + (where if provider else ""),  # nosec B608
+            f"""SELECT COUNT(input_tokens) AS it_n, COUNT(output_tokens) AS ot_n,
+                       SUM(input_tokens) AS it, SUM(output_tokens) AS ot
+                FROM jev_records{where}""",  # nosec B608
             params,
         ).fetchone()
+        # Data quality: confidence/usage availability among valid decisions.
+        dq = c.execute(
+            f"""SELECT
+                  SUM(CASE WHEN jev_error IS NULL OR jev_error='' THEN 1 ELSE 0 END) AS valid,
+                  SUM(CASE WHEN jev_error IS NOT NULL AND jev_error!='' THEN 1 ELSE 0 END) AS invalid,
+                  SUM(CASE WHEN jev_confidence IS NOT NULL THEN 1 ELSE 0 END) AS conf_ok,
+                  SUM(CASE WHEN jev_confidence IS NULL THEN 1 ELSE 0 END) AS conf_missing,
+                  SUM(CASE WHEN input_tokens IS NOT NULL THEN 1 ELSE 0 END) AS usage_ok,
+                  SUM(CASE WHEN input_tokens IS NULL THEN 1 ELSE 0 END) AS usage_missing
+                FROM jev_records{where}""",  # nosec B608
+            params,
+        ).fetchone()
+
     provider_dist = {r["jev_provider"] or "unknown": r["n"] for r in provider_rows}
+    schema_dist = {r["schema_version"] or "unknown": r["n"] for r in schema_rows}
     quadrants = {
         "rule_no/jev_no": 0,
         "rule_no/jev_yes": 0,
@@ -265,8 +308,15 @@ def load_summary(provider: str | None = None) -> dict[str, Any]:
         "agreement_rate": round(agree / judged, 4) if judged else None,
         "judged_pairs": judged,
         "provider_distribution": provider_dist,
-        "input_tokens": tok["it"] or 0,
-        "output_tokens": tok["ot"] or 0,
+        "schema_versions": schema_dist,
+        "input_tokens": tok["it"],  # None when no usage rows
+        "output_tokens": tok["ot"],
+        "valid_decisions": dq["valid"] or 0,
+        "invalid_decisions": dq["invalid"] or 0,
+        "confidence_available": dq["conf_ok"] or 0,
+        "confidence_missing": dq["conf_missing"] or 0,
+        "usage_available": dq["usage_ok"] or 0,
+        "usage_missing": dq["usage_missing"] or 0,
     }
 
 

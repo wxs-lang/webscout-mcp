@@ -288,7 +288,10 @@ async def maybe_record_fetch(
 
     Uses ask_many so needs_escalation + result_usable are answered in one
     TypeSafe system_one call (one RTT, one state payload).
+    Noop client: nothing is recorded (no fake decisions pollute the DB).
     """
+    if getattr(client, "name", "") in ("noop", ""):
+        return
     try:
         state = build_fetch_state(response, rule_decision, max_state_chars)
         rule_bool = bool(rule_decision and rule_decision.escalate)
@@ -335,7 +338,10 @@ async def maybe_record_search(
     blocks the MCP response. A single batched system_one call over all N
     results would require a shared-state schema; deferred until TypeSafe
     cookbook guidance is available.
+    Noop client: nothing is recorded.
     """
+    if getattr(client, "name", "") in ("noop", ""):
+        return
     try:
         for pos, result in enumerate(results[:max_results], start=1):
             state = build_search_state(query, result, max_state_chars)

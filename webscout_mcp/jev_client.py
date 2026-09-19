@@ -266,8 +266,43 @@ class TypeSafeJevClient(JevClient):
                         error="missing_answer",
                     )
                     continue
-                noul = float(getattr(ans, "noul", 0.0))
-                noul = max(0.0, min(1.0, noul))
+                noul_raw = getattr(ans, "noul", None)
+                if noul_raw is None:
+                    result[q] = JevDecision(
+                        question=q,
+                        decision=False,
+                        probability_yes=0.0,
+                        confidence=None,
+                        latency_ms=latency_ms,
+                        provider=self.name,
+                        error="malformed_response",
+                    )
+                    continue
+                try:
+                    noul = float(noul_raw)
+                except (TypeError, ValueError):
+                    result[q] = JevDecision(
+                        question=q,
+                        decision=False,
+                        probability_yes=0.0,
+                        confidence=None,
+                        latency_ms=latency_ms,
+                        provider=self.name,
+                        error="malformed_response",
+                    )
+                    continue
+                if not (0.0 <= noul <= 1.0):
+                    # Strict: out-of-range is malformed, not clamped.
+                    result[q] = JevDecision(
+                        question=q,
+                        decision=False,
+                        probability_yes=0.0,
+                        confidence=None,
+                        latency_ms=latency_ms,
+                        provider=self.name,
+                        error="malformed_response",
+                    )
+                    continue
                 result[q] = JevDecision(
                     question=q,
                     decision=noul >= 0.5,
