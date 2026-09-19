@@ -61,16 +61,30 @@ def test_noop_when_disabled():
     assert isinstance(client, NoopJevClient)
 
 
-def test_fake_when_enabled():
+def test_fake_only_when_provider_explicit():
+    # JEV_PROVIDER=fake is required; no silent fake fallback.
     cfg = SimpleNamespace(
         jev_enabled=True,
         jev_shadow_mode=True,
+        jev_provider="fake",
         jev_base_url="",
         jev_api_key="",
         jev_timeout_ms=1000,
     )
     client = make_jev_client(cfg)
     assert isinstance(client, FakeJevClient)
+
+    # Default provider=typesafe + no key -> Noop, never Fake.
+    cfg2 = SimpleNamespace(
+        jev_enabled=True,
+        jev_shadow_mode=True,
+        jev_provider="typesafe",
+        jev_base_url="",
+        jev_api_key="",
+        jev_timeout_ms=1000,
+    )
+    client2 = make_jev_client(cfg2)
+    assert isinstance(client2, NoopJevClient)
 
 
 @pytest.mark.asyncio

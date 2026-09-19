@@ -35,6 +35,7 @@ dependencies = [
     "trafilatura>=1.6.0",
     "readability-lxml>=0.8.0",
     "tomli>=2.0.0; python_version < '3.11'",
+    "typesafe-sdk>=0.6.0,<0.7.0",
 ]
 
 [project.urls]

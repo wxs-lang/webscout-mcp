@@ -325,6 +325,7 @@ def build_parser() -> argparse.ArgumentParser:
     jev_group.add_argument("--summary", action="store_true", help="Show aggregate summary")
     jev_group.add_argument("--disagreements", type=int, metavar="N", help="Show N rule/Jev disagreements")
     jev_group.add_argument("--errors", action="store_true", help="Show Jev API errors/timeouts")
+    jev_parser.add_argument("--provider", default=None, help="Filter by jev_provider (e.g. typesafe/fake)")
     jev_parser.set_defaults(func=_cmd_jev_report)
 
     return parser
@@ -344,16 +345,29 @@ async def _cmd_jev_report(args: argparse.Namespace) -> None:
 
     db = configure()
     print(f"Jev shadow DB: {db}")
+    provider = getattr(args, "provider", None)
+    if provider:
+        print(f"Provider filter: {provider}")
     if args.summary:
-        s = load_summary()
+        s = load_summary(provider=provider)
         print()
         print("=== Summary ===")
+        if s["calls"] == 0:
+            print("No TypeSafe Jev records yet.")
+            return
         print(f"calls:        {s['calls']}")
         print(f"success:      {s['success']}")
         print(f"failure:      {s['failure']}")
+        if s.get("input_tokens"):
+            print(f"tokens in/out: {s['input_tokens']} / {s['output_tokens']}")
         if s["latency_p50_ms"] is not None:
             print(f"latency p50:  {s['latency_p50_ms']} ms")
             print(f"latency p95:  {s['latency_p95_ms']} ms")
+        dist = s.get("provider_distribution") or {}
+        if dist:
+            print("providers:")
+            for p, n in sorted(dist.items()):
+                print(f"  {p}: {n}")
         q = s["quadrants"]
         print()
         print("rule vs Jev (needs_escalation):")
@@ -366,7 +380,7 @@ async def _cmd_jev_report(args: argparse.Namespace) -> None:
         return
 
     if args.last:
-        rows = load_recent(args.last)
+        rows = load_recent(args.last, provider=provider)
         print(f"\n=== Last {len(rows)} records ===")
         for r in rows:
             ts = datetime.fromtimestamp(r["timestamp"]).strftime("%Y-%m-%d %H:%M:%S")
@@ -374,14 +388,14 @@ async def _cmd_jev_report(args: argparse.Namespace) -> None:
             err = r.get("jev_error") or ""
             print(
                 f"{ts}  op={r['operation']:<6} q={r['jev_question']:<18} "
-                f"jev={jev:<1} p={r.get('jev_probability')} conf={r.get('jev_confidence')} "
+                f"prov={r.get('jev_provider') or '?':<8} jev={jev:<1} p={r.get('jev_probability')} "
                 f"rule={r.get('rule_decision')} reason={r.get('rule_reason')} "
                 f"backend={r.get('backend') or r.get('search_provider')} {err}"
             )
         return
 
     if args.disagreements:
-        rows = load_disagreements(args.disagreements)
+        rows = load_disagreements(args.disagreements, provider=provider)
         print(f"\n=== {len(rows)} disagreements (rule != Jev) ===")
         for r in rows:
             ts = datetime.fromtimestamp(r["timestamp"]).strftime("%Y-%m-%d %H:%M:%S")
@@ -393,7 +407,7 @@ async def _cmd_jev_report(args: argparse.Namespace) -> None:
         return
 
     if args.errors:
-        rows = load_errors(100)
+        rows = load_errors(100, provider=provider)
         print(f"\n=== {len(rows)} Jev errors/timeouts ===")
         for r in rows:
             ts = datetime.fromtimestamp(r["timestamp"]).strftime("%Y-%m-%d %H:%M:%S")
