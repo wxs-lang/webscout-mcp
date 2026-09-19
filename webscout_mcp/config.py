@@ -93,6 +93,8 @@ class Config:
     # JEV_SHADOW_MODE must stay true in this phase.
     jev_enabled: bool = False
     jev_shadow_mode: bool = True
+    jev_provider: str = "typesafe"  # typesafe | fake | noop
+    jev_model: str = "jev-latest"
     jev_api_key: str = ""
     jev_base_url: str = ""
     jev_timeout_ms: int = 1000
@@ -258,6 +260,8 @@ class Config:
             "CRAWL4AI_ALLOW_PRIVATE": ("crawl4ai_allow_private", lambda v: v.lower() in ("1", "true", "yes")),
             "JEV_ENABLED": ("jev_enabled", lambda v: v.lower() in ("1", "true", "yes")),
             "JEV_SHADOW_MODE": ("jev_shadow_mode", lambda v: v.lower() in ("1", "true", "yes")),
+            "JEV_PROVIDER": ("jev_provider", str),
+            "JEV_MODEL": ("jev_model", str),
             "JEV_API_KEY": ("jev_api_key", str),
             "JEV_BASE_URL": ("jev_base_url", str),
             "JEV_TIMEOUT_MS": ("jev_timeout_ms", int),

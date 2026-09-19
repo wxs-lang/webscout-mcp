@@ -92,6 +92,7 @@ class SearchService:
         self.jev_client = None
         self.jev_max_results = 10
         self.jev_max_state_chars = 6000
+        self._pending_jev_tasks: set = set()
 
         # Statistics
         self.total_requests = 0
@@ -327,7 +328,7 @@ class SearchService:
 
             from . import jev_shadow
 
-            asyncio.create_task(
+            task = asyncio.create_task(
                 jev_shadow.maybe_record_search(
                     self.jev_client,
                     query=request.query,
@@ -336,6 +337,8 @@ class SearchService:
                     max_state_chars=self.jev_max_state_chars,
                 )
             )
+            self._pending_jev_tasks.add(task)
+            task.add_done_callback(self._pending_jev_tasks.discard)
         except Exception:  # pragma: no cover
             log.debug("Jev search shadow fire failed", exc_info=True)
 

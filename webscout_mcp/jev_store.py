@@ -66,6 +66,8 @@ CREATE TABLE IF NOT EXISTS jev_records (
     jev_latency_ms REAL,
     jev_provider TEXT,
     jev_error TEXT,
+    input_tokens INTEGER,
+    output_tokens INTEGER,
     rule_decision INTEGER,
     rule_reason TEXT,
     backend TEXT,
@@ -75,10 +77,12 @@ CREATE TABLE IF NOT EXISTS jev_records (
     browser_success INTEGER,
     error_code TEXT,
     position INTEGER,
-    search_provider TEXT
+    search_provider TEXT,
+    schema_version TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_jev_ts ON jev_records(timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_jev_q ON jev_records(jev_question, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_jev_provider ON jev_records(jev_provider, timestamp DESC);
 """
 
 
@@ -97,10 +101,11 @@ def append_record(rec: dict[str, Any]) -> None:
                     timestamp, trace_id, operation, jev_question,
                     jev_decision, jev_probability, jev_confidence,
                     jev_latency_ms, jev_provider, jev_error,
+                    input_tokens, output_tokens,
                     rule_decision, rule_reason, backend, content_length,
                     actual_route, browser_attempted, browser_success,
-                    error_code, position, search_provider
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    error_code, position, search_provider, schema_version
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     rec.get("timestamp"),
                     rec.get("trace_id"),
@@ -112,6 +117,8 @@ def append_record(rec: dict[str, Any]) -> None:
                     rec.get("jev_latency_ms"),
                     rec.get("jev_provider"),
                     rec.get("jev_error"),
+                    rec.get("input_tokens"),
+                    rec.get("output_tokens"),
                     _int(rec.get("rule_decision")),
                     rec.get("rule_reason"),
                     rec.get("backend"),
@@ -122,6 +129,7 @@ def append_record(rec: dict[str, Any]) -> None:
                     rec.get("error_code"),
                     rec.get("position"),
                     rec.get("search_provider"),
+                    rec.get("schema_version"),
                 ),
             )
             c.commit()
@@ -146,58 +154,92 @@ def _rows_to_dicts(rows: list[sqlite3.Row]) -> list[dict[str, Any]]:
     return out
 
 
-def load_recent(limit: int = 30) -> list[dict[str, Any]]:
+def load_recent(limit: int = 30, provider: str | None = None) -> list[dict[str, Any]]:
+    sql = "SELECT * FROM jev_records"
+    params: list[Any] = []
+    if provider:
+        sql += " WHERE jev_provider = ?"
+        params.append(provider)
+    sql += " ORDER BY timestamp DESC LIMIT ?"
+    params.append(limit)
     with _conn() as c:
-        rows = c.execute("SELECT * FROM jev_records ORDER BY timestamp DESC LIMIT ?", (limit,)).fetchall()
+        rows = c.execute(sql, params).fetchall()
     return _rows_to_dicts(rows)
 
 
-def load_disagreements(limit: int = 50) -> list[dict[str, Any]]:
+def load_disagreements(limit: int = 50, provider: str | None = None) -> list[dict[str, Any]]:
     """Rows where rule_decision is not null and differs from jev_decision."""
+    sql = """SELECT * FROM jev_records
+             WHERE rule_decision IS NOT NULL
+               AND jev_decision IS NOT NULL
+               AND jev_error IS NULL
+               AND rule_decision != jev_decision"""
+    params: list[Any] = []
+    if provider:
+        sql += " AND jev_provider = ?"
+        params.append(provider)
+    sql += " ORDER BY timestamp DESC LIMIT ?"
+    params.append(limit)
     with _conn() as c:
-        rows = c.execute(
-            """SELECT * FROM jev_records
-               WHERE rule_decision IS NOT NULL
-                 AND jev_decision IS NOT NULL
-                 AND jev_error IS NULL
-                 AND rule_decision != jev_decision
-               ORDER BY timestamp DESC LIMIT ?""",
-            (limit,),
-        ).fetchall()
+        rows = c.execute(sql, params).fetchall()
     return _rows_to_dicts(rows)
 
 
-def load_errors(limit: int = 50) -> list[dict[str, Any]]:
+def load_errors(limit: int = 50, provider: str | None = None) -> list[dict[str, Any]]:
+    sql = "SELECT * FROM jev_records WHERE jev_error IS NOT NULL AND jev_error != ''"
+    params: list[Any] = []
+    if provider:
+        sql += " AND jev_provider = ?"
+        params.append(provider)
+    sql += " ORDER BY timestamp DESC LIMIT ?"
+    params.append(limit)
     with _conn() as c:
-        rows = c.execute(
-            """SELECT * FROM jev_records
-               WHERE jev_error IS NOT NULL OR jev_error != ''
-               ORDER BY timestamp DESC LIMIT ?""",
-            (limit,),
-        ).fetchall()
+        rows = c.execute(sql, params).fetchall()
     return _rows_to_dicts(rows)
 
 
-def load_summary() -> dict[str, Any]:
-    """Aggregate stats over all rows."""
+def load_summary(provider: str | None = None) -> dict[str, Any]:
+    """Aggregate stats over rows (optionally filtered by provider)."""
+    where = ""
+    params: list[Any] = []
+    if provider:
+        where = " WHERE jev_provider = ?"
+        params.append(provider)
     with _conn() as c:
-        total = c.execute("SELECT COUNT(*) AS n FROM jev_records").fetchone()["n"]
+        total = c.execute(f"SELECT COUNT(*) AS n FROM jev_records{where}", params).fetchone()["n"]
         success = c.execute(
-            "SELECT COUNT(*) AS n FROM jev_records WHERE jev_error IS NULL OR jev_error = ''"
+            f"SELECT COUNT(*) AS n FROM jev_records{where + (' AND' if where else ' WHERE')} (jev_error IS NULL OR jev_error = '')",
+            params,
         ).fetchone()["n"]
         failure = total - success
-        latency_rows = c.execute("SELECT jev_latency_ms FROM jev_records WHERE jev_latency_ms IS NOT NULL").fetchall()
-        latencies = sorted(r["jev_latency_ms"] for r in latency_rows)
-        # Four-quadrant on needs_escalation only.
-        q = c.execute(
-            """SELECT rule_decision, jev_decision, COUNT(*) AS n
-               FROM jev_records
-               WHERE jev_question='needs_escalation'
-                 AND rule_decision IS NOT NULL
-                 AND jev_decision IS NOT NULL
-                 AND jev_error IS NULL
-               GROUP BY rule_decision, jev_decision"""
+        latency_rows = c.execute(
+            f"SELECT jev_latency_ms FROM jev_records{where} AND jev_latency_ms IS NOT NULL"
+            if where
+            else "SELECT jev_latency_ms FROM jev_records WHERE jev_latency_ms IS NOT NULL",
+            params,
         ).fetchall()
+        latencies = sorted(r["jev_latency_ms"] for r in latency_rows)
+        q = c.execute(
+            f"""SELECT rule_decision, jev_decision, COUNT(*) AS n
+                FROM jev_records
+                WHERE jev_question='needs_escalation'
+                  AND rule_decision IS NOT NULL
+                  AND jev_decision IS NOT NULL
+                  AND jev_error IS NULL
+                  {("AND jev_provider = ?" + " ") if provider else ""}
+                GROUP BY rule_decision, jev_decision""",
+            params,
+        ).fetchall()
+        provider_rows = c.execute(
+            "SELECT jev_provider, COUNT(*) AS n FROM jev_records GROUP BY jev_provider"
+        ).fetchall()
+        tok = c.execute(
+            """SELECT COALESCE(SUM(input_tokens),0) AS it, COALESCE(SUM(output_tokens),0) AS ot
+               FROM jev_records"""
+            + (where if provider else ""),
+            params,
+        ).fetchone()
+    provider_dist = {r["jev_provider"] or "unknown": r["n"] for r in provider_rows}
     quadrants = {
         "rule_no/jev_no": 0,
         "rule_no/jev_yes": 0,
@@ -222,6 +264,9 @@ def load_summary() -> dict[str, Any]:
         "quadrants": quadrants,
         "agreement_rate": round(agree / judged, 4) if judged else None,
         "judged_pairs": judged,
+        "provider_distribution": provider_dist,
+        "input_tokens": tok["it"] or 0,
+        "output_tokens": tok["ot"] or 0,
     }
 
 

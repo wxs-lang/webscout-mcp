@@ -23,7 +23,12 @@ from typing import Any
 
 from .fetch_escalation import FetchEscalationDecision
 from .fetch_provider import FetchResponse
-from .jev_client import JevClient, JevDecision, stable_hash
+from .jev_client import (
+    JEV_DECISION_SCHEMA_VERSION,
+    JevClient,
+    JevDecision,
+    stable_hash,
+)
 from .jev_store import append_record
 from .logging_config import get_logger
 from .observability import safe_host
@@ -95,6 +100,7 @@ class ShadowRecord:
         "browser_success",
         "content_length",
         "error_code",
+        "input_tokens",
         "jev_confidence",
         "jev_decision",
         "jev_error",
@@ -103,9 +109,11 @@ class ShadowRecord:
         "jev_provider",
         "jev_question",
         "operation",
+        "output_tokens",
         "position",
         "rule_decision",
         "rule_reason",
+        "schema_version",
         "search_provider",
         "timestamp",
         "trace_id",
@@ -157,6 +165,7 @@ class JevShadowRecorder:
         position: int | None = None,
         search_provider: str | None = None,
         trace_id: str | None = None,
+        schema_version: str | None = None,
     ) -> None:
         rec = ShadowRecord(
             timestamp=time.time(),
@@ -169,6 +178,8 @@ class JevShadowRecorder:
             jev_latency_ms=decision.latency_ms if decision else 0.0,
             jev_provider=decision.provider if decision else None,
             jev_error=decision.error if decision else None,
+            input_tokens=getattr(decision, "input_tokens", None) if decision else None,
+            output_tokens=getattr(decision, "output_tokens", None) if decision else None,
             rule_decision=rule_decision,
             rule_reason=rule_reason,
             backend=backend,
@@ -179,6 +190,7 @@ class JevShadowRecorder:
             error_code=error_code,
             position=position,
             search_provider=search_provider,
+            schema_version=schema_version,
         )
         with self._lock:
             self._records.append(rec)
@@ -272,31 +284,23 @@ async def maybe_record_fetch(
     max_state_chars: int,
     trace_id: str | None = None,
 ) -> None:
-    """Best-effort shadow call after a fetch completes. Never raises."""
+    """Best-effort shadow call after a fetch completes. Never raises.
+
+    Uses ask_many so needs_escalation + result_usable are answered in one
+    TypeSafe system_one call (one RTT, one state payload).
+    """
     try:
         state = build_fetch_state(response, rule_decision, max_state_chars)
-        # Two questions: needs_escalation and result_usable.
         rule_bool = bool(rule_decision and rule_decision.escalate)
         rule_reason = rule_decision.reason_code.value if rule_decision and rule_decision.reason_code else None
-        for q in ("needs_escalation", "result_usable"):
-            try:
-                decision = await client.ask(q, state)
-            except Exception as exc:  # pragma: no cover - defensive
-                log.debug("Jev ask failed (%s): %s", q, exc)
-                _recorder.record(
-                    operation="fetch",
-                    jev_question=q,
-                    decision=None,
-                    rule_decision=rule_bool if q == "needs_escalation" else None,
-                    rule_reason=rule_reason if q == "needs_escalation" else None,
-                    backend=backend,
-                    content_length=state.get("content_length"),
-                    actual_route=actual_route,
-                    browser_attempted=browser_attempted,
-                    browser_success=browser_success,
-                    trace_id=trace_id,
-                )
-                continue
+        questions = ["needs_escalation", "result_usable"]
+        try:
+            answers = await client.ask_many(questions, state)
+        except Exception as exc:  # pragma: no cover - defensive
+            log.debug("Jev ask_many failed: %s", exc)
+            answers = {}
+        for q in questions:
+            decision = answers.get(q)
             _recorder.record(
                 operation="fetch",
                 jev_question=q,
@@ -309,6 +313,7 @@ async def maybe_record_fetch(
                 browser_attempted=browser_attempted,
                 browser_success=browser_success,
                 trace_id=trace_id,
+                schema_version=JEV_DECISION_SCHEMA_VERSION,
             )
     except Exception:  # pragma: no cover - absolute safety net
         log.exception("Jev shadow fetch recording failed; swallowed")
@@ -323,12 +328,20 @@ async def maybe_record_search(
     max_state_chars: int,
     trace_id: str | None = None,
 ) -> None:
-    """Best-effort shadow call for top-N search results. Never raises."""
+    """Best-effort shadow call for top-N search results. Never raises.
+
+    Each result has its own state (title/snippet/host), so we issue one
+    ask_many(question) per result — but it runs fire-and-forget and never
+    blocks the MCP response. A single batched system_one call over all N
+    results would require a shared-state schema; deferred until TypeSafe
+    cookbook guidance is available.
+    """
     try:
         for pos, result in enumerate(results[:max_results], start=1):
             state = build_search_state(query, result, max_state_chars)
             try:
-                decision = await client.ask("result_relevant", state)
+                answers = await client.ask_many(["result_relevant"], state)
+                decision = answers.get("result_relevant")
             except Exception as exc:  # pragma: no cover
                 log.debug("Jev result_relevant failed: %s", exc)
                 decision = None
@@ -339,8 +352,9 @@ async def maybe_record_search(
                 rule_decision=None,
                 rule_reason=None,
                 position=pos,
-                search_provider=getattr(result, "source", "") or None,
+                search_provider=getattr(result, "backend", "") or None,
                 trace_id=trace_id,
+                schema_version=JEV_DECISION_SCHEMA_VERSION,
             )
     except Exception:  # pragma: no cover
         log.exception("Jev shadow search recording failed; swallowed")

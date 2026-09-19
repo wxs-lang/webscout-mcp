@@ -135,6 +135,7 @@ class FetchService:
         # Jev shadow client. Noop when disabled; errors are swallowed.
         self._jev_client = None
         self._jev_max_state_chars = 6000
+        self._pending_jev_tasks: set = set()
         if _JEV_AVAILABLE and config is not None:
             try:
                 self._jev_client = make_jev_client(config)
@@ -260,7 +261,7 @@ class FetchService:
             try:
                 import asyncio
 
-                asyncio.create_task(
+                task = asyncio.create_task(
                     jev_shadow.maybe_record_fetch(
                         self._jev_client,
                         response=primary,
@@ -272,6 +273,8 @@ class FetchService:
                         max_state_chars=self._jev_max_state_chars,
                     )
                 )
+                self._pending_jev_tasks.add(task)
+                task.add_done_callback(self._pending_jev_tasks.discard)
             except Exception:  # pragma: no cover
                 log.debug("Jev shadow fire failed", exc_info=True)
 
@@ -287,6 +290,26 @@ class FetchService:
             route_trace=route_trace,
             used_legacy_fast_path=used_legacy,
         )
+
+    async def flush_pending_jev_tasks(self, timeout: float = 2.0) -> None:
+        """Best-effort wait for in-flight Jev shadow tasks at shutdown."""
+        if not self._pending_jev_tasks:
+            return
+        import asyncio
+
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*self._pending_jev_tasks, return_exceptions=True),
+                timeout=timeout,
+            )
+        except (asyncio.TimeoutError, Exception):
+            pass
+        self._pending_jev_tasks.clear()
+        if self._jev_client is not None:
+            try:
+                await self._jev_client.aclose()
+            except Exception:  # pragma: no cover
+                log.debug("Jev client close failed", exc_info=True)
 
 
 def _router_error_type(resp: FetchResponse) -> str | None:
