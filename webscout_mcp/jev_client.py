@@ -197,5 +197,5 @@ def make_jev_client(config: Any) -> JevClient:
 
 def stable_hash(*parts: str) -> str:
     """Short stable hash for trace ids / pseudo-ids (no PII)."""
-    h = hashlib.sha1("|".join(parts).encode("utf-8")).hexdigest()[:12]
+    h = hashlib.sha1("|".join(parts).encode("utf-8"), usedforsecurity=False).hexdigest()[:12]
     return h
