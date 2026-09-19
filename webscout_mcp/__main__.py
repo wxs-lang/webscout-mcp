@@ -319,7 +319,86 @@ def build_parser() -> argparse.ArgumentParser:
     cache_clear_parser = cache_subparsers.add_parser("clear", help="Clear the cache")
     cache_clear_parser.set_defaults(func=_cmd_cache)
 
+    jev_parser = subparsers.add_parser("jev-report", help="Read-only report of Jev shadow decisions")
+    jev_group = jev_parser.add_mutually_exclusive_group(required=True)
+    jev_group.add_argument("--last", type=int, metavar="N", help="Show N most recent shadow decisions")
+    jev_group.add_argument("--summary", action="store_true", help="Show aggregate summary")
+    jev_group.add_argument("--disagreements", type=int, metavar="N", help="Show N rule/Jev disagreements")
+    jev_group.add_argument("--errors", action="store_true", help="Show Jev API errors/timeouts")
+    jev_parser.set_defaults(func=_cmd_jev_report)
+
     return parser
+
+
+async def _cmd_jev_report(args: argparse.Namespace) -> None:
+    """Read-only human-readable Jev shadow report."""
+    from datetime import datetime
+
+    from .jev_store import (
+        configure,
+        load_disagreements,
+        load_errors,
+        load_recent,
+        load_summary,
+    )
+
+    db = configure()
+    print(f"Jev shadow DB: {db}")
+    if args.summary:
+        s = load_summary()
+        print()
+        print("=== Summary ===")
+        print(f"calls:        {s['calls']}")
+        print(f"success:      {s['success']}")
+        print(f"failure:      {s['failure']}")
+        if s["latency_p50_ms"] is not None:
+            print(f"latency p50:  {s['latency_p50_ms']} ms")
+            print(f"latency p95:  {s['latency_p95_ms']} ms")
+        q = s["quadrants"]
+        print()
+        print("rule vs Jev (needs_escalation):")
+        print(f"  rule_no  / jev_no : {q['rule_no/jev_no']}")
+        print(f"  rule_no  / jev_yes: {q['rule_no/jev_yes']}")
+        print(f"  rule_yes / jev_no : {q['rule_yes/jev_no']}")
+        print(f"  rule_yes / jev_yes: {q['rule_yes/jev_yes']}")
+        if s["agreement_rate"] is not None:
+            print(f"agreement rate: {s['agreement_rate']}  (n={s['judged_pairs']})")
+        return
+
+    if args.last:
+        rows = load_recent(args.last)
+        print(f"\n=== Last {len(rows)} records ===")
+        for r in rows:
+            ts = datetime.fromtimestamp(r["timestamp"]).strftime("%Y-%m-%d %H:%M:%S")
+            jev = "Y" if r.get("jev_decision") else "N"
+            err = r.get("jev_error") or ""
+            print(
+                f"{ts}  op={r['operation']:<6} q={r['jev_question']:<18} "
+                f"jev={jev:<1} p={r.get('jev_probability')} conf={r.get('jev_confidence')} "
+                f"rule={r.get('rule_decision')} reason={r.get('rule_reason')} "
+                f"backend={r.get('backend') or r.get('search_provider')} {err}"
+            )
+        return
+
+    if args.disagreements:
+        rows = load_disagreements(args.disagreements)
+        print(f"\n=== {len(rows)} disagreements (rule != Jev) ===")
+        for r in rows:
+            ts = datetime.fromtimestamp(r["timestamp"]).strftime("%Y-%m-%d %H:%M:%S")
+            print(
+                f"{ts}  q={r['jev_question']:<18} rule={r.get('rule_decision')} "
+                f"jev={r.get('jev_decision')} reason={r.get('rule_reason')} "
+                f"backend={r.get('backend')}"
+            )
+        return
+
+    if args.errors:
+        rows = load_errors(100)
+        print(f"\n=== {len(rows)} Jev errors/timeouts ===")
+        for r in rows:
+            ts = datetime.fromtimestamp(r["timestamp"]).strftime("%Y-%m-%d %H:%M:%S")
+            print(f"{ts}  q={r['jev_question']:<18} error={r.get('jev_error')}")
+        return
 
 
 def main() -> None:
