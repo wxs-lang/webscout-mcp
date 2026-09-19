@@ -97,9 +97,10 @@ class Config:
     jev_model: str = "jev-latest"
     jev_api_key: str = ""
     jev_base_url: str = ""
-    jev_timeout_ms: int = 1000
+    jev_timeout_ms: int = 8000
     jev_max_state_chars: int = 6000
     jev_search_shadow_max_results: int = 10
+    jev_run_id: str = ""  # set from JEV_RUN_ID env; auto-generated per process if empty
 
     # --- Crawler ---
     crawler_max_depth: int = 2
@@ -267,6 +268,7 @@ class Config:
             "JEV_TIMEOUT_MS": ("jev_timeout_ms", int),
             "JEV_MAX_STATE_CHARS": ("jev_max_state_chars", int),
             "JEV_SEARCH_SHADOW_MAX_RESULTS": ("jev_search_shadow_max_results", int),
+            "JEV_RUN_ID": ("jev_run_id", str),
             "WEBSCOUT_CRAWLER_MAX_DEPTH": ("crawler_max_depth", int),
             "WEBSCOUT_CRAWLER_MAX_PAGES": ("crawler_max_pages", int),
             "WEBSCOUT_CRAWLER_CONCURRENCY": ("crawler_concurrency", int),

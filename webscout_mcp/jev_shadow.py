@@ -16,8 +16,10 @@ Hard guarantees:
 
 from __future__ import annotations
 
+import os
 import threading
 import time
+import uuid
 from collections import deque
 from typing import Any
 
@@ -37,6 +39,15 @@ from .search_provider import SearchResult
 log = get_logger(__name__)
 
 _MAX_RECORDS = 5000  # in-memory ring buffer; never unbounded
+
+
+def _process_run_id() -> str:
+    """Per-process run id. Override with JEV_RUN_ID env; otherwise a random
+    hex id that isolates one sampling batch from another."""
+    return os.environ.get("JEV_RUN_ID") or f"run-{uuid.uuid4().hex[:10]}"
+
+
+PROCESS_RUN_ID: str = _process_run_id()
 
 
 def _truncate(text: str, max_chars: int) -> str:
@@ -101,6 +112,7 @@ class ShadowRecord:
         "content_length",
         "error_code",
         "input_tokens",
+        "jev_call_id",
         "jev_confidence",
         "jev_decision",
         "jev_error",
@@ -108,11 +120,14 @@ class ShadowRecord:
         "jev_probability",
         "jev_provider",
         "jev_question",
+        "model_requested",
+        "model_resolved",
         "operation",
         "output_tokens",
         "position",
         "rule_decision",
         "rule_reason",
+        "run_id",
         "schema_version",
         "search_provider",
         "timestamp",
@@ -166,6 +181,7 @@ class JevShadowRecorder:
         search_provider: str | None = None,
         trace_id: str | None = None,
         schema_version: str | None = None,
+        run_id: str | None = None,
     ) -> None:
         rec = ShadowRecord(
             timestamp=time.time(),
@@ -180,6 +196,10 @@ class JevShadowRecorder:
             jev_error=decision.error if decision else None,
             input_tokens=getattr(decision, "input_tokens", None) if decision else None,
             output_tokens=getattr(decision, "output_tokens", None) if decision else None,
+            jev_call_id=getattr(decision, "jev_call_id", None) if decision else None,
+            model_requested=getattr(decision, "model_requested", None) if decision else None,
+            model_resolved=getattr(decision, "model_resolved", None) if decision else None,
+            run_id=run_id or PROCESS_RUN_ID,
             rule_decision=rule_decision,
             rule_reason=rule_reason,
             backend=backend,
@@ -293,6 +313,7 @@ async def maybe_record_fetch(
     if getattr(client, "name", "") in ("noop", ""):
         return
     try:
+        trace_id = trace_id or stable_hash(str(time.time()), "fetch")
         state = build_fetch_state(response, rule_decision, max_state_chars)
         rule_bool = bool(rule_decision and rule_decision.escalate)
         rule_reason = rule_decision.reason_code.value if rule_decision and rule_decision.reason_code else None
@@ -343,6 +364,7 @@ async def maybe_record_search(
     if getattr(client, "name", "") in ("noop", ""):
         return
     try:
+        trace_id = trace_id or stable_hash(str(time.time()), "search", query[:64])
         for pos, result in enumerate(results[:max_results], start=1):
             state = build_search_state(query, result, max_state_chars)
             try:

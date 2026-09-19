@@ -19,6 +19,7 @@ import asyncio
 import hashlib
 import os
 import time
+import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -29,7 +30,9 @@ log = get_logger(__name__)
 
 # Bump this when the English wording of any question changes. ShadowRecord
 # stores it so old and new data remain comparable.
-JEV_DECISION_SCHEMA_VERSION = "1"
+# v2: adds jev_call_id, run_id, model_requested, model_resolved columns and
+#     per-call-id dedup in reports.
+JEV_DECISION_SCHEMA_VERSION = "2"
 
 JevQuestion = Literal["needs_escalation", "result_usable", "result_relevant"]
 
@@ -68,6 +71,11 @@ class JevDecision:
     error: str | None = None
     input_tokens: int | None = None
     output_tokens: int | None = None
+    # v2: one TypeSafe system_one call may produce several JevDecisions (one
+    # per question). They share jev_call_id so reports can dedup usage/latency.
+    jev_call_id: str | None = None
+    model_requested: str | None = None
+    model_resolved: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -211,7 +219,7 @@ class TypeSafeJevClient(JevClient):
         api_key: str,
         *,
         model: str = "jev-latest",
-        timeout_ms: int = 1000,
+        timeout_ms: int = 8000,
         base_url: str = "",
     ) -> None:
         if not api_key:
@@ -236,6 +244,8 @@ class TypeSafeJevClient(JevClient):
         from typesafe_sdk import Noul
 
         start = time.time()
+        call_id = uuid.uuid4().hex[:16]
+        model_resolved: str | None = None
         result: dict[JevQuestion, JevDecision] = {}
         try:
             client = self._ensure_client()
@@ -249,6 +259,7 @@ class TypeSafeJevClient(JevClient):
                 ),
                 timeout=self.timeout_s + 0.5,
             )
+            model_resolved = getattr(resp, "model", None) or None
             usage = getattr(resp, "usage", None)
             in_tok = getattr(usage, "input_tokens", None) if usage else None
             out_tok = getattr(usage, "output_tokens", None) if usage else None
@@ -264,6 +275,9 @@ class TypeSafeJevClient(JevClient):
                         latency_ms=latency_ms,
                         provider=self.name,
                         error="missing_answer",
+                        jev_call_id=call_id,
+                        model_requested=self.model,
+                        model_resolved=model_resolved,
                     )
                     continue
                 noul_raw = getattr(ans, "noul", None)
@@ -276,6 +290,9 @@ class TypeSafeJevClient(JevClient):
                         latency_ms=latency_ms,
                         provider=self.name,
                         error="malformed_response",
+                        jev_call_id=call_id,
+                        model_requested=self.model,
+                        model_resolved=model_resolved,
                     )
                     continue
                 try:
@@ -289,6 +306,9 @@ class TypeSafeJevClient(JevClient):
                         latency_ms=latency_ms,
                         provider=self.name,
                         error="malformed_response",
+                        jev_call_id=call_id,
+                        model_requested=self.model,
+                        model_resolved=model_resolved,
                     )
                     continue
                 if not (0.0 <= noul <= 1.0):
@@ -301,6 +321,9 @@ class TypeSafeJevClient(JevClient):
                         latency_ms=latency_ms,
                         provider=self.name,
                         error="malformed_response",
+                        jev_call_id=call_id,
+                        model_requested=self.model,
+                        model_resolved=model_resolved,
                     )
                     continue
                 result[q] = JevDecision(
@@ -312,6 +335,9 @@ class TypeSafeJevClient(JevClient):
                     provider=self.name,
                     input_tokens=in_tok,
                     output_tokens=out_tok,
+                    jev_call_id=call_id,
+                    model_requested=self.model,
+                    model_resolved=model_resolved,
                 )
         except asyncio.TimeoutError:
             for q in questions:
@@ -323,6 +349,9 @@ class TypeSafeJevClient(JevClient):
                     latency_ms=(time.time() - start) * 1000,
                     provider=self.name,
                     error="timeout",
+                    jev_call_id=call_id,
+                    model_requested=self.model,
+                    model_resolved=model_resolved,
                 )
         except Exception as exc:
             safe = _sanitize_error(exc, self._api_key)
@@ -335,6 +364,9 @@ class TypeSafeJevClient(JevClient):
                     latency_ms=(time.time() - start) * 1000,
                     provider=self.name,
                     error=safe,
+                    jev_call_id=call_id,
+                    model_requested=self.model,
+                    model_resolved=model_resolved,
                 )
         return result
 
@@ -387,7 +419,7 @@ def make_jev_client(config: Any) -> JevClient:
         return TypeSafeJevClient(
             api_key=api_key,
             model=getattr(config, "jev_model", "jev-latest"),
-            timeout_ms=int(getattr(config, "jev_timeout_ms", 1000)),
+            timeout_ms=int(getattr(config, "jev_timeout_ms", 8000)),
             base_url=getattr(config, "jev_base_url", "") or "",
         )
     except Exception:  # pragma: no cover

@@ -326,7 +326,8 @@ def build_parser() -> argparse.ArgumentParser:
     jev_group.add_argument("--disagreements", type=int, metavar="N", help="Show N rule/Jev disagreements")
     jev_group.add_argument("--errors", action="store_true", help="Show Jev API errors/timeouts")
     jev_parser.add_argument("--provider", default=None, help="Filter by jev_provider (e.g. typesafe/fake)")
-    jev_parser.add_argument("--schema-version", default=None, help="Filter by decision_schema_version (e.g. 1)")
+    jev_parser.add_argument("--schema-version", default=None, help="Filter by decision_schema_version (e.g. 1 or 2)")
+    jev_parser.add_argument("--run-id", default=None, help="Filter by run_id (batch isolation)")
     jev_parser.add_argument("--all", action="store_true", help="Include all providers/schema versions")
     jev_parser.add_argument(
         "--smoke",
@@ -359,28 +360,33 @@ async def _cmd_jev_report(args: argparse.Namespace) -> None:
     print(f"Jev shadow DB: {db}")
     provider = getattr(args, "provider", None)
     schema_ver = getattr(args, "schema_version", None)
+    run_id = getattr(args, "run_id", None)
     show_all = getattr(args, "all", False)
-    # Default: only typesafe + current schema. Explicit --all shows everything.
-    if not show_all and provider is None and schema_ver is None:
+    # Default: only typesafe + current schema (v2). Explicit --all shows everything.
+    if not show_all and provider is None and schema_ver is None and run_id is None:
         provider = "typesafe"
-        schema_ver = "1"
+        schema_ver = "2"
     if provider:
         print(f"Provider filter: {provider}")
     if schema_ver:
         print(f"Schema filter:   {schema_ver}")
+    if run_id:
+        print(f"Run filter:      {run_id}")
 
     if args.summary:
-        s = load_summary(provider=provider, schema_version=schema_ver)
+        s = load_summary(provider=provider, schema_version=schema_ver, run_id=run_id)
         print()
         print("=== Jev Shadow Summary ===")
-        print(f"provider:          {provider or 'all'}")
-        print(f"schema:            {schema_ver or 'all'}")
-        print(f"valid decisions:   {s['valid_decisions']}")
-        print(f"invalid decisions: {s['invalid_decisions']}")
+        print(f"provider:           {provider or 'all'}")
+        print(f"schema:             {schema_ver or 'all'}")
+        if run_id:
+            print(f"run_id:             {run_id}")
+        print(f"valid decisions:    {s['valid_decisions']}")
+        print(f"invalid decisions:  {s['invalid_decisions']}")
         print(f"confidence available: {s['confidence_available']}")
         print(f"confidence missing:   {s['confidence_missing']}")
-        print(f"usage available:   {s['usage_available']}")
-        print(f"usage missing:     {s['usage_missing']}")
+        print(f"usage available:     {s['usage_available']}")
+        print(f"usage missing:      {s['usage_missing']}")
         dist = s.get("provider_distribution") or {}
         if dist:
             print("providers seen:")
@@ -391,17 +397,30 @@ async def _cmd_jev_report(args: argparse.Namespace) -> None:
             print("schema versions:")
             for k, n in sorted(sv.items()):
                 print(f"  {k}: {n}")
-        if s["calls"] == 0:
+        rv = s.get("run_versions") or {}
+        if rv:
+            print("runs seen:")
+            for k, n in sorted(rv.items(), key=lambda x: -x[1])[:10]:
+                print(f"  {k}: {n}")
+        mp = s.get("model_pairs") or []
+        if mp:
+            print("model requested->resolved:")
+            for pair in mp:
+                print(f"  {pair}")
+        if s["decision_records"] == 0:
             print("\nNo matching records yet.")
             return
-        print(f"\ncalls:   {s['calls']}")
-        print(f"success: {s['success']}")
-        print(f"failure: {s['failure']}")
+        print()
+        print(f"webscout_requests: {s['webscout_requests']}")
+        print(f"jev_api_calls:     {s['jev_api_calls']}")
+        print(f"decision_records:  {s['decision_records']}")
+        print(f"api success/timeout/failed: {s['api_success']} / {s['api_timeout']} / {s['api_failed']}")
         if s.get("input_tokens") is not None:
-            print(f"tokens in/out: {s['input_tokens']} / {s['output_tokens']}")
+            print(f"tokens in/out (call-level dedup): {s['input_tokens']} / {s['output_tokens']}")
         if s["latency_p50_ms"] is not None:
-            print(f"latency p50:  {s['latency_p50_ms']} ms")
-            print(f"latency p95:  {s['latency_p95_ms']} ms")
+            print(f"api latency p50:  {s['latency_p50_ms']} ms")
+            print(f"api latency p95:  {s['latency_p95_ms']} ms")
+        print(f"browser attempted/success: {s.get('browser_attempted', 0)} / {s.get('browser_success', 0)}")
         q = s["quadrants"]
         print()
         print("rule vs Jev (needs_escalation):")
@@ -410,7 +429,7 @@ async def _cmd_jev_report(args: argparse.Namespace) -> None:
         print(f"  rule_yes / jev_no : {q['rule_yes/jev_no']}")
         print(f"  rule_yes / jev_yes: {q['rule_yes/jev_yes']}")
         if s["agreement_rate"] is not None:
-            print(f"agreement rate: {s['agreement_rate']}  (n={s['judged_pairs']})")
+            print(f"agreement rate: {s['agreement_rate']}  (n={s['judged_pairs']})  (agreement, not accuracy)")
         return
 
     if args.last:
