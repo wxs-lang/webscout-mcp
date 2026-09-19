@@ -28,6 +28,18 @@ from .web_result import WebResult
 
 log = get_logger(__name__)
 
+# Lazy Jev shadow wiring. A broken Jev module must never prevent the main
+# system from starting. When JEV_ENABLED=false, make_jev_client returns
+# Noop and maybe_record_fetch is a cheap no-op.
+_JEV_AVAILABLE = True
+try:
+    from . import jev_shadow
+    from .jev_client import make_jev_client
+except Exception:  # pragma: no cover
+    _JEV_AVAILABLE = False
+    jev_shadow = None  # type: ignore[assignment]
+    make_jev_client = None  # type: ignore[assignment]
+
 
 @dataclass
 class FetchRouteResult:
@@ -112,6 +124,7 @@ class FetchService:
         self,
         registry: ProviderRegistry,
         fallback_http_provider: FetchProvider | None = None,
+        config: Any = None,
     ):
         self.registry = registry
         self.router: ProviderRouter | None = registry.router
@@ -119,6 +132,16 @@ class FetchService:
         # allow an explicit one. In production the HTTPFetchProvider is
         # always registered.
         self._fallback_http = fallback_http_provider
+        # Jev shadow client. Noop when disabled; errors are swallowed.
+        self._jev_client = None
+        self._jev_max_state_chars = 6000
+        if _JEV_AVAILABLE and config is not None:
+            try:
+                self._jev_client = make_jev_client(config)
+                self._jev_max_state_chars = int(getattr(config, "jev_max_state_chars", 6000))
+            except Exception:  # pragma: no cover
+                log.debug("Jev client init failed; shadow disabled")
+                self._jev_client = None
 
     async def fetch(self, request: FetchRequest) -> FetchRouteResult:
         # 1) Select fast FETCH provider.
@@ -231,6 +254,26 @@ class FetchService:
 
         # 4) Normalize to WebResult as the internal unified result.
         web_result = fetch_response_to_web_result(final)
+
+        # 5) Jev shadow (best-effort, non-blocking). Never changes routing.
+        if self._jev_client is not None and getattr(self._jev_client, "name", "") != "noop":
+            try:
+                import asyncio
+
+                asyncio.create_task(
+                    jev_shadow.maybe_record_fetch(
+                        self._jev_client,
+                        response=primary,
+                        rule_decision=decision if decision.escalate else None,
+                        backend=primary_name,
+                        actual_route="browser" if browser_success else "fast",
+                        browser_attempted=browser_attempted,
+                        browser_success=browser_success,
+                        max_state_chars=self._jev_max_state_chars,
+                    )
+                )
+            except Exception:  # pragma: no cover
+                log.debug("Jev shadow fire failed", exc_info=True)
 
         return FetchRouteResult(
             primary_response=primary,

@@ -87,6 +87,12 @@ class SearchService:
         else:
             log.info("SearchService initialized with fixed-order fallback")
 
+        # Jev shadow client (optional, injected from server.py). When None
+        # or Noop, shadow recording is a no-op. Never affects ranking.
+        self.jev_client = None
+        self.jev_max_results = 10
+        self.jev_max_state_chars = 6000
+
         # Statistics
         self.total_requests = 0
         self.total_fallbacks = 0
@@ -220,6 +226,9 @@ class SearchService:
                         self.total_fallbacks += 1
                     # Store in cache for future repeated queries
                     self._put_in_cache(request, response)
+                    # Jev shadow: best-effort, non-blocking, never affects
+                    # ranking or result set.
+                    self._fire_jev_shadow(request, response)
                     return response
                 else:
                     # Provider returned an error response
@@ -302,6 +311,34 @@ class SearchService:
         self.total_errors = 0
         self.last_used_provider = None
 
+    def _fire_jev_shadow(self, request: SearchRequest, response: SearchResponse) -> None:
+        """Kick off a non-blocking Jev shadow recording for top-N results.
+
+        Never raises; never mutates ranking or the result set.
+        """
+        if self.jev_client is None:
+            return
+        if getattr(self.jev_client, "name", "") == "noop":
+            return
+        if not getattr(response, "results", None):
+            return
+        try:
+            import asyncio
+
+            from . import jev_shadow
+
+            asyncio.create_task(
+                jev_shadow.maybe_record_search(
+                    self.jev_client,
+                    query=request.query,
+                    results=response.results,
+                    max_results=self.jev_max_results,
+                    max_state_chars=self.jev_max_state_chars,
+                )
+            )
+        except Exception:  # pragma: no cover
+            log.debug("Jev search shadow fire failed", exc_info=True)
+
     async def close(self) -> None:
         """Close all providers and release resources."""
         for provider in self.providers:
@@ -380,4 +417,16 @@ def create_search_service_from_config(
             description=f"{provider.name} search provider",
         )
 
-    return SearchService(providers=providers, config=service_config, router=router)
+    svc = SearchService(providers=providers, config=service_config, router=router)
+
+    # Wire Jev shadow client (no-op when JEV_ENABLED=false).
+    try:
+        from .jev_client import make_jev_client
+
+        svc.jev_client = make_jev_client(config)
+        svc.jev_max_results = int(getattr(config, "jev_search_shadow_max_results", 10))
+        svc.jev_max_state_chars = int(getattr(config, "jev_max_state_chars", 6000))
+    except Exception:  # pragma: no cover
+        log.debug("Jev search shadow wiring failed", exc_info=True)
+
+    return svc

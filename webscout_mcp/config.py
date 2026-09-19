@@ -88,6 +88,17 @@ class Config:
     crawl4ai_timeout: float = 30.0  # Request timeout in seconds
     crawl4ai_allow_private: bool = False  # Allow private/loopback/metadata targets (SSRF guard; default off)
 
+    # --- Jev Shadow Evaluator (Phase 2.5) ---
+    # Shadow only: never changes production routing. Even when enabled,
+    # JEV_SHADOW_MODE must stay true in this phase.
+    jev_enabled: bool = False
+    jev_shadow_mode: bool = True
+    jev_api_key: str = ""
+    jev_base_url: str = ""
+    jev_timeout_ms: int = 1000
+    jev_max_state_chars: int = 6000
+    jev_search_shadow_max_results: int = 10
+
     # --- Crawler ---
     crawler_max_depth: int = 2
     crawler_max_pages: int = 20
@@ -245,6 +256,13 @@ class Config:
             "CRAWL4AI_API_TOKEN": ("crawl4ai_api_token", str),
             "CRAWL4AI_TIMEOUT": ("crawl4ai_timeout", float),
             "CRAWL4AI_ALLOW_PRIVATE": ("crawl4ai_allow_private", lambda v: v.lower() in ("1", "true", "yes")),
+            "JEV_ENABLED": ("jev_enabled", lambda v: v.lower() in ("1", "true", "yes")),
+            "JEV_SHADOW_MODE": ("jev_shadow_mode", lambda v: v.lower() in ("1", "true", "yes")),
+            "JEV_API_KEY": ("jev_api_key", str),
+            "JEV_BASE_URL": ("jev_base_url", str),
+            "JEV_TIMEOUT_MS": ("jev_timeout_ms", int),
+            "JEV_MAX_STATE_CHARS": ("jev_max_state_chars", int),
+            "JEV_SEARCH_SHADOW_MAX_RESULTS": ("jev_search_shadow_max_results", int),
             "WEBSCOUT_CRAWLER_MAX_DEPTH": ("crawler_max_depth", int),
             "WEBSCOUT_CRAWLER_MAX_PAGES": ("crawler_max_pages", int),
             "WEBSCOUT_CRAWLER_CONCURRENCY": ("crawler_concurrency", int),

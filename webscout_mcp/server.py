@@ -139,7 +139,7 @@ def create_server(config: Config | None = None) -> MCPServer:
     # server.py no longer makes routing decisions.
     from .fetch_service import FetchService
 
-    fetch_service = FetchService(registry=registry)
+    fetch_service = FetchService(registry=registry, config=cfg)
 
     robots_checker = RobotsChecker(cfg, respect_robots=cfg.respect_robots)
     crawler = Crawler(cfg, fetcher, robots_checker)
