@@ -165,17 +165,77 @@ def test_pending_task_strong_reference_and_flush():
     asyncio.run(main())
 
 
-@pytest.mark.asyncio
-async def test_cli_provider_filter(tmp_path, monkeypatch):
-    """jev-report CLI accepts --provider and passes it through."""
-    import argparse
+@pytest.fixture
+def tmp_db(tmp_path, monkeypatch):
+    monkeypatch.setenv("WEBSCOUT_JEV_DB", str(tmp_path / "jev.db"))
+    from webscout_mcp import jev_store
 
+    jev_store.configure()
+
+
+@pytest.mark.asyncio
+async def test_noop_does_not_record(tmp_db):
+    """Noop client must not pollute the shadow DB."""
+    from webscout_mcp import jev_shadow, jev_store
+    from webscout_mcp.fetch_provider import FetchResponse
+
+    jev_shadow.reset_for_tests()
+    resp = FetchResponse(
+        url="https://example.com",
+        final_url="https://example.com",
+        status_code=200,
+        provider="http",
+        content="x" * 500,
+    )
+    client = NoopJevClient()
+    before = jev_store.load_summary()["calls"]
+    await jev_shadow.maybe_record_fetch(
+        client,
+        response=resp,
+        rule_decision=None,
+        backend="http",
+        actual_route="fast",
+        browser_attempted=False,
+        browser_success=False,
+        max_state_chars=600,
+    )
+    after = jev_store.load_summary()["calls"]
+    assert before == after
+
+
+@pytest.mark.asyncio
+async def test_probability_out_of_range_is_malformed():
+    fake_answer = MagicMock()
+    fake_answer.noul = 1.5  # out of [0,1]
+    fake_resp = MagicMock()
+    fake_resp.answers = {"needs_escalation": fake_answer}
+    fake_resp.usage = None
+    fake_client = AsyncMock()
+    fake_client.system_one = AsyncMock(return_value=fake_resp)
+    fake_client.aclose = AsyncMock()
+    adapter = TypeSafeJevClient("sk-x", timeout_ms=500)
+    adapter._client = fake_client
+    out = await adapter.ask_many(["needs_escalation"], {})
+    assert out["needs_escalation"].error == "malformed_response"
+
+
+def test_smoke_without_key_skips(monkeypatch, capsys):
+    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+    from webscout_mcp.__main__ import _jev_smoke
+
+    asyncio.run(_jev_smoke())
+    out = capsys.readouterr().out
+    assert "skipped" in out and "TYPESAFE_API_KEY" in out
+
+
+def test_cli_new_flags():
     from webscout_mcp.__main__ import build_parser
 
     parser = build_parser()
-    ns = parser.parse_args(["jev-report", "--summary", "--provider", "typesafe"])
-    assert ns.provider == "typesafe"
-    ns2 = parser.parse_args(["jev-report", "--last", "10", "--provider", "fake"])
-    assert ns2.provider == "fake"
-    ns3 = parser.parse_args(["jev-report", "--summary"])
-    assert ns3.provider is None
+    ns = parser.parse_args(["jev-report", "--summary", "--schema-version", "1", "--all"])
+    assert ns.schema_version == "1"
+    assert ns.all is True
+    ns2 = parser.parse_args(["jev-report", "--smoke"])
+    assert ns2.smoke is True
+    ns3 = parser.parse_args(["jev-report", "--last", "10", "--provider", "fake"])
+    assert ns3.provider == "fake"
