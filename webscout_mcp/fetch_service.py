@@ -17,7 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from .fetch_escalation import FetchEscalationDecision, should_escalate_to_browser
+from .fetch_escalation import FetchEscalationDecision
 from .fetch_provider import FetchProvider, FetchRequest, FetchResponse
 from .logging_config import get_logger
 from .normalization import fetch_response_to_web_result
@@ -26,10 +26,17 @@ from .observability import (
     record_escalation,
     record_fetch_attempt,
     record_recovery_classification,
+    record_recovery_execution,
 )
 from .provider_registry import ProviderRegistry
 from .provider_router import ProviderCapability, ProviderRouter
-from .recovery import classify_recovery
+from .recovery import (
+    RecoveryAction,
+    RecoveryDecision,
+    RecoveryReason,
+    classify_recovery,
+    recovery_to_legacy_escalation,
+)
 from .web_result import WebResult
 
 log = get_logger(__name__)
@@ -61,10 +68,14 @@ class FetchRouteResult:
     final_response: FetchResponse
     web_result: WebResult
     escalation_decision: FetchEscalationDecision | None = None
+    recovery_decision: RecoveryDecision | None = None
+    recovery_outcome: str | None = None
     primary_provider: str = ""
     browser_provider: str | None = None
+    fallback_provider: str | None = None
     browser_attempted: bool = False
     browser_success: bool = False
+    fallback_used: bool = False
     route_trace: list[dict[str, Any]] = field(default_factory=list)
     used_legacy_fast_path: bool = False  # registry had no FETCH provider
 
@@ -266,75 +277,90 @@ class FetchService:
             except Exception:  # pragma: no cover
                 log.exception("observability record fast fetch failed")
 
-        # 3) Escalation decision.
-        decision = should_escalate_to_browser(primary)
+        # 3) Unified recovery classification — the single high-level decision.
+        # The low-level browser detector (should_escalate_to_browser) runs
+        # exactly once, *inside* classify_recovery. FetchService never calls it
+        # directly for production routing, so there is no second parallel judge.
+        try:
+            recovery = classify_recovery(primary)
+        except Exception:  # pragma: no cover - defensive
+            log.exception("recovery classification failed; accepting primary")
+            recovery = RecoveryDecision(
+                reason=RecoveryReason.COMPLETE_CONTENT,
+                action=RecoveryAction.ACCEPT,
+                confidence=0.0,
+                details={"status_code": primary.status_code, "classification_error": True},
+            )
+        try:
+            record_recovery_classification(recovery.reason.value, recovery.action.value)
+        except Exception:  # pragma: no cover
+            log.exception("observability recovery classification failed")
+        route_trace.append(
+            {
+                "stage": "recovery_classification",
+                "reason": recovery.reason.value,
+                "action": recovery.action.value,
+            }
+        )
+
+        action = recovery.action
+        # Legacy escalation contract is *derived* from the single recovery
+        # decision (no second detector run); only a BROWSER action yields it.
+        legacy_escalation = recovery_to_legacy_escalation(recovery)
+
         final = primary
         browser_provider_name: str | None = None
         browser_attempted = False
         browser_success = False
+        fallback_provider_name: str | None = None
+        fallback_used = False
 
-        if decision.escalate:
-            route_trace.append(
-                {
-                    "action": "escalate",
-                    "reason": decision.reason_code.value if decision.reason_code else "unknown",
-                }
-            )
-            try:
-                record_escalation(decision.reason_code.value if decision.reason_code else "unknown")
-            except Exception:  # pragma: no cover
-                log.exception("observability record_escalation failed")
+        if action is RecoveryAction.BROWSER:
+            (
+                final,
+                browser_provider_name,
+                browser_attempted,
+                browser_success,
+                recovery_outcome,
+            ) = await self._execute_browser_recovery(request, primary, recovery, legacy_escalation, route_trace)
+        elif action is RecoveryAction.PROVIDER_FALLBACK:
+            (
+                final,
+                fallback_provider_name,
+                fallback_used,
+                recovery_outcome,
+            ) = await self._execute_provider_fallback(request, primary, primary_name, route_trace)
+        elif action is RecoveryAction.CONTINUE_CONTENT:
+            # The current window + continuation block is already served; the
+            # agent decides whether to read the next chunk. Never browser.
+            recovery_outcome = "continuation_ready"
+        elif action is RecoveryAction.RETRY:
+            # Fetcher already owns retries (max_retries, default 3); by the
+            # time we classify, retries are exhausted. No second retry loop.
+            recovery_outcome = "retry_delegated_to_fetcher"
+        elif action is RecoveryAction.RETRY_LATER:
+            # 429: never sleep-and-retry inside the MCP request.
+            recovery_outcome = "deferred"
+        elif action is RecoveryAction.REQUIRE_AUTH:
+            recovery_outcome = "user_action_required"
+        elif action is RecoveryAction.STOP:
+            recovery_outcome = "terminal"
+        elif action is RecoveryAction.ACCEPT:
+            recovery_outcome = "accepted"
+        else:  # RecoveryAction.NONE (AMBIGUOUS)
+            recovery_outcome = "no_action"
 
-            browser_name = self.registry.select(ProviderCapability.BROWSER)
-            browser_provider = self.registry.get(browser_name) if browser_name else None
-            if browser_provider is not None:
-                browser_attempted = True
-                browser_provider_name = browser_name
-                try:
-                    browser_resp = await browser_provider.fetch(request)
-                    route_trace.append(
-                        {
-                            "capability": "browser",
-                            "provider": browser_name,
-                            "result": "success" if browser_resp.is_success and browser_resp.content else "failure",
-                        }
-                    )
-                    if self.router is not None and browser_name:
-                        self.router.record_result(
-                            browser_name,
-                            bool(browser_resp.is_success and browser_resp.content),
-                            browser_resp.latency_ms,
-                            error_type=_router_error_type(browser_resp),
-                        )
-                    if browser_resp.is_success and browser_resp.content:
-                        # Keep the fast response as primary; prefer browser content.
-                        final = browser_resp
-                        browser_success = True
-                except Exception as exc:  # pragma: no cover - defensive
-                    log.warning("Browser escalation failed: %s", exc)
-                    route_trace.append(
-                        {
-                            "capability": "browser",
-                            "provider": browser_name,
-                            "result": "failure",
-                            "error": type(exc).__name__,
-                        }
-                    )
-                    # final stays = primary (fast result preserved).
-
-        # 4) Deterministic recovery classification (Phase 2.7B).
-        # Observability only: it never executes the recommended action and
-        # never changes routing, escalation, or the returned content.
         try:
-            recovery = classify_recovery(primary)
-            record_recovery_classification(recovery.reason.value, recovery.action.value)
-        except Exception:  # pragma: no cover - defensive
-            log.exception("observability recovery classification failed")
+            record_recovery_execution(action.value, recovery_outcome)
+        except Exception:  # pragma: no cover
+            log.exception("observability recovery execution failed")
+        route_trace.append({"stage": "recovery_execution", "action": action.value, "outcome": recovery_outcome})
 
-        # 5) Normalize to WebResult as the internal unified result.
+        # 4) Normalize to WebResult as the internal unified result.
         web_result = fetch_response_to_web_result(final)
 
-        # 6) Jev shadow (best-effort, non-blocking). Never changes routing.
+        # 5) Jev shadow (best-effort, non-blocking). Never changes routing.
+        actual_route = "fallback" if fallback_used else ("browser" if browser_success else "fast")
         if self._jev_client is not None and getattr(self._jev_client, "name", "") != "noop":
             try:
                 import asyncio
@@ -343,9 +369,9 @@ class FetchService:
                     jev_shadow.maybe_record_fetch(
                         self._jev_client,
                         response=primary,
-                        rule_decision=decision if decision.escalate else None,
+                        rule_decision=legacy_escalation,
                         backend=primary_name,
-                        actual_route="browser" if browser_success else "fast",
+                        actual_route=actual_route,
                         browser_attempted=browser_attempted,
                         browser_success=browser_success,
                         max_state_chars=self._jev_max_state_chars,
@@ -360,14 +386,131 @@ class FetchService:
             primary_response=primary,
             final_response=final,
             web_result=web_result,
-            escalation_decision=decision if decision.escalate else None,
+            escalation_decision=legacy_escalation,
+            recovery_decision=recovery,
+            recovery_outcome=recovery_outcome,
             primary_provider=primary_name,
             browser_provider=browser_provider_name,
+            fallback_provider=fallback_provider_name,
             browser_attempted=browser_attempted,
             browser_success=browser_success,
+            fallback_used=fallback_used,
             route_trace=route_trace,
             used_legacy_fast_path=used_legacy,
         )
+
+    async def _execute_browser_recovery(
+        self,
+        request: FetchRequest,
+        primary: FetchResponse,
+        recovery: RecoveryDecision,
+        legacy_escalation: FetchEscalationDecision | None,
+        route_trace: list[dict[str, Any]],
+    ) -> tuple[FetchResponse, str | None, bool, bool, str]:
+        """Execute the single active browser recovery. At most one browser
+        fetch per web_fetch; the browser response is never re-classified (no
+        recovery recursion). Browser failure never drops the fast result."""
+        reason_code = (
+            legacy_escalation.reason_code.value
+            if legacy_escalation and legacy_escalation.reason_code
+            else (recovery.details or {}).get("escalation", "unknown")
+        )
+        route_trace.append({"action": "escalate", "reason": reason_code})
+        try:
+            record_escalation(reason_code)
+        except Exception:  # pragma: no cover
+            log.exception("observability record_escalation failed")
+
+        browser_name = self.registry.select(ProviderCapability.BROWSER)
+        browser_provider = self.registry.get(browser_name) if browser_name else None
+        if browser_provider is None:
+            route_trace.append({"capability": "browser", "provider": None, "result": "unavailable"})
+            return primary, None, False, False, "browser_unavailable"
+
+        try:
+            browser_resp = await browser_provider.fetch(request)
+            ok = bool(browser_resp.is_success and browser_resp.content)
+            route_trace.append(
+                {
+                    "capability": "browser",
+                    "provider": browser_name,
+                    "result": "success" if ok else "failure",
+                }
+            )
+            if self.router is not None and browser_name:
+                self.router.record_result(
+                    browser_name,
+                    ok,
+                    browser_resp.latency_ms,
+                    error_type=_router_error_type(browser_resp),
+                )
+            if ok:
+                return browser_resp, browser_name, True, True, "browser_success"
+            return primary, browser_name, True, False, "browser_failed"
+        except Exception as exc:  # pragma: no cover - defensive
+            log.warning("Browser recovery failed: %s", exc)
+            route_trace.append(
+                {
+                    "capability": "browser",
+                    "provider": browser_name,
+                    "result": "failure",
+                    "error": type(exc).__name__,
+                }
+            )
+            # final stays = primary (fast result preserved).
+            return primary, browser_name, True, False, "browser_failed"
+
+    async def _execute_provider_fallback(
+        self,
+        request: FetchRequest,
+        primary: FetchResponse,
+        primary_name: str,
+        route_trace: list[dict[str, Any]],
+    ) -> tuple[FetchResponse, str | None, bool, str]:
+        """Try at most ONE alternate FETCH provider. Never uses the browser as
+        a FETCH fallback; a failed alternate is terminal (no third provider)."""
+        exclude = [primary_name] if primary_name and primary_name != "none" else None
+        alt_name = self.registry.select(ProviderCapability.FETCH, exclude=exclude)
+        alt_provider = self.registry.get(alt_name) if alt_name else None
+        if alt_provider is None or alt_name == primary_name:
+            route_trace.append({"stage": "provider_fallback", "result": "unavailable"})
+            return primary, None, False, "fallback_unavailable"
+
+        route_trace.append({"stage": "provider_fallback", "provider": alt_name})
+        try:
+            alt_resp = await alt_provider.fetch(request)
+        except Exception as exc:  # pragma: no cover - defensive
+            log.warning("Provider fallback failed: %s", exc)
+            route_trace.append(
+                {
+                    "capability": "fetch",
+                    "provider": alt_name,
+                    "result": "failure",
+                    "error": type(exc).__name__,
+                }
+            )
+            return primary, alt_name, False, "fallback_failed"
+
+        ok = bool(alt_resp.is_success and alt_resp.content)
+        route_trace.append({"capability": "fetch", "provider": alt_name, "result": "success" if ok else "failure"})
+        if self.router is not None and alt_name:
+            self.router.record_result(
+                alt_name,
+                ok,
+                alt_resp.latency_ms,
+                error_type=_router_error_type(alt_resp),
+            )
+        try:
+            record_fetch_attempt(
+                alt_name,
+                result=_classify_fast_result(alt_resp),
+                latency_ms=float(alt_resp.latency_ms or 0.0),
+            )
+        except Exception:  # pragma: no cover
+            log.exception("observability record fallback fetch failed")
+        if ok:
+            return alt_resp, alt_name, True, "fallback_success"
+        return primary, alt_name, False, "fallback_failed"
 
     async def flush_pending_jev_tasks(self, timeout: float | None = None) -> None:
         """Best-effort wait for in-flight Jev shadow tasks at shutdown.

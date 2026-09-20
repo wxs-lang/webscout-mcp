@@ -71,6 +71,19 @@ def _403_response() -> FetchResponse:
     )
 
 
+def _403_challenge_response() -> FetchResponse:
+    """403 carrying a visible challenge/captcha -> SOFT_BLOCK -> BROWSER."""
+    return FetchResponse(
+        url="https://example.com/blocked",
+        final_url="https://example.com/blocked",
+        status_code=403,
+        provider="http",
+        content="",
+        content_type="text/html",
+        raw_html="<html><body>Please complete the captcha to continue (cloudflare).</body></html>",
+    )
+
+
 @pytest.mark.asyncio
 async def test_fast_fetch_uses_fetch_capability_only():
     """Search/browser providers must not be selected for fast fetch."""
@@ -103,7 +116,7 @@ async def test_escalation_false_does_not_call_browser():
 
 @pytest.mark.asyncio
 async def test_escalation_true_calls_browser_provider():
-    http = _FakeProvider("http", {ProviderCapability.FETCH}, _403_response())
+    http = _FakeProvider("http", {ProviderCapability.FETCH}, _403_challenge_response())
     browser_content = "<html><body>real content after render</body></html>"
     crawl = _FakeProvider(
         "crawl4ai",
@@ -131,7 +144,7 @@ async def test_escalation_true_calls_browser_provider():
 
 @pytest.mark.asyncio
 async def test_browser_failure_preserves_fast_response():
-    http = _FakeProvider("http", {ProviderCapability.FETCH}, _403_response())
+    http = _FakeProvider("http", {ProviderCapability.FETCH}, _403_challenge_response())
     crawl = _FakeProvider(
         "crawl4ai",
         {ProviderCapability.BROWSER},
@@ -185,7 +198,7 @@ async def test_route_trace_has_no_urls_or_credentials():
 @pytest.mark.asyncio
 async def test_router_recorded_once_per_provider():
     """One fast call + one browser call => router sees exactly two records."""
-    http = _FakeProvider("http", {ProviderCapability.FETCH}, _403_response())
+    http = _FakeProvider("http", {ProviderCapability.FETCH}, _403_challenge_response())
     crawl = _FakeProvider(
         "crawl4ai",
         {ProviderCapability.BROWSER},

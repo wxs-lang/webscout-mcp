@@ -37,6 +37,7 @@ from typing import Any
 from .errors import StandardErrorCode
 from .fetch_escalation import (
     EscalationReason,
+    FetchEscalationDecision,
     _looks_like_challenge,
     should_escalate_to_browser,
 )
@@ -256,3 +257,44 @@ def classify_recovery(response: FetchResponse) -> RecoveryDecision:
         return _d(RecoveryReason.COMPLETE_SHORT_PAGE, RecoveryAction.ACCEPT, 0.8, **details)
 
     return _d(RecoveryReason.COMPLETE_CONTENT, RecoveryAction.ACCEPT, 0.85, **details)
+
+
+# RecoveryReason -> legacy browser EscalationReason, for the compatibility
+# adapter. Only browser-class reasons map back.
+_REASON_TO_LEGACY_ESCALATION = {
+    RecoveryReason.SOFT_BLOCK: EscalationReason.SOFT_BLOCK,
+    RecoveryReason.JS_REQUIRED: EscalationReason.JS_REQUIRED,
+    RecoveryReason.LOW_CONTENT_DENSITY: EscalationReason.LOW_CONTENT_DENSITY,
+    RecoveryReason.LOW_QUALITY: EscalationReason.LOW_QUALITY,
+}
+
+
+def recovery_to_legacy_escalation(decision: RecoveryDecision) -> FetchEscalationDecision | None:
+    """Compatibility adapter (Phase 2.7D).
+
+    Derive the legacy ``FetchEscalationDecision`` from the single
+    ``RecoveryDecision`` so FetchService never runs the low-level browser
+    detector a second time. Returns None for every non-browser action.
+    """
+    if decision.action is not RecoveryAction.BROWSER:
+        return None
+    # Prefer the escalation code the classifier already captured in details.
+    code = decision.details.get("escalation") if decision.details else None
+    reason: EscalationReason | None = None
+    if code:
+        try:
+            reason = EscalationReason(code)
+        except ValueError:
+            reason = _REASON_TO_LEGACY_ESCALATION.get(decision.reason)
+    else:
+        reason = _REASON_TO_LEGACY_ESCALATION.get(decision.reason)
+    if reason is None:
+        return None
+    # Only safe scalar details cross the compatibility boundary.
+    safe_details = {k: v for k, v in (decision.details or {}).items() if isinstance(v, (str, int, float, bool))}
+    return FetchEscalationDecision(
+        escalate=True,
+        reason_code=reason,
+        confidence=decision.confidence,
+        details=safe_details,
+    )

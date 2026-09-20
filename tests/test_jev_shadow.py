@@ -268,6 +268,7 @@ async def test_jev_does_not_change_escalation(tmp_db):
             status_code=403,
             provider="http",
             content="",
+            raw_html="<html><body>cloudflare captcha: please verify you are a human</body></html>",
         ),
     )
     crawl = _FakeProvider(
@@ -284,7 +285,8 @@ async def test_jev_does_not_change_escalation(tmp_db):
     reg = _reg([http, crawl])
     svc = FetchService(registry=reg, config=SimpleNamespace(jev_enabled=False))
     route = await svc.fetch(FetchRequest(url="https://example.com"))
-    # Rule escalated (403), browser used, Jev disabled — production unchanged.
+    # Rule escalated (403 challenge -> SOFT_BLOCK), browser used, Jev disabled
+    # — production unchanged.
     assert route.browser_attempted
     assert route.browser_success
     assert route.final_response.provider == "crawl4ai"

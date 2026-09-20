@@ -49,6 +49,8 @@ _SSRF_BLOCKS: dict[str, int] = defaultdict(int)
 # recovery classification counters (Phase 2.7B): reason/action -> count
 _RECOVERY_REASONS: dict[str, int] = defaultdict(int)
 _RECOVERY_ACTIONS: dict[str, int] = defaultdict(int)
+# recovery execution counters (Phase 2.7D): action -> outcome -> count
+_RECOVERY_EXECUTION: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
 # progressive content delivery counters (Phase 2.7C)
 _CONTINUATION: dict[str, int] = defaultdict(int)
 
@@ -127,6 +129,16 @@ def record_recovery_classification(reason_code: str, action: str) -> None:
         _RECOVERY_ACTIONS[action] += 1
 
 
+def record_recovery_execution(action: str, outcome: str) -> None:
+    """Count the executed outcome of one recovery orchestration (Phase 2.7D).
+
+    One call per primary fetch orchestration; only scalar action/outcome
+    pairs are kept — never content, URLs, headers, or credentials.
+    """
+    with _LOCK:
+        _RECOVERY_EXECUTION[action][outcome] += 1
+
+
 def record_continuation(kind: str, chars: int = 0) -> None:
     """Count progressive-content-delivery events (Phase 2.7C).
 
@@ -171,6 +183,7 @@ def get_observability_summary() -> dict[str, Any]:
             "ssrf_blocks": dict(_SSRF_BLOCKS),
             "recovery_reasons": dict(_RECOVERY_REASONS),
             "recovery_actions": dict(_RECOVERY_ACTIONS),
+            "recovery_execution": {a: dict(o) for a, o in _RECOVERY_EXECUTION.items()},
             "continuation": dict(_CONTINUATION),
         }
 
@@ -184,5 +197,6 @@ def reset_for_tests() -> None:
         _SSRF_BLOCKS.clear()
         _RECOVERY_REASONS.clear()
         _RECOVERY_ACTIONS.clear()
+        _RECOVERY_EXECUTION.clear()
         _CONTINUATION.clear()
         _STARTED_AT = datetime.now(timezone.utc).isoformat()
