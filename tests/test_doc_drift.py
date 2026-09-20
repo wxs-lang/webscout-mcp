@@ -38,3 +38,18 @@ def test_compatibility_doc_matches_real_schema():
     assert "start_char" in section, "COMPATIBILITY must document the v1.3.0 start_char parameter"
     # The deprecated name must not appear as a live parameter.
     assert re.search(r"- `max_length`", section) is None, "COMPATIBILITY still lists legacy max_length"
+
+
+def test_compatibility_version_header_not_stale():
+    """The compatibility promise must not be frozen at v0.9/v1.0 while the
+    project ships v1.3.x. We do not hard-code a release date (that would force
+    every patch to touch this test); we only guard against the stale target."""
+    doc = DOC.read_text(encoding="utf-8")
+    assert "v0.9.0" not in doc, "COMPATIBILITY still references the stale v0.9.0 baseline"
+    assert "Frozen for v1.0" not in doc, "COMPATIBILITY still says 'Frozen for v1.0'"
+    assert "Target: **v1.0.0**" not in doc, "COMPATIBILITY still targets v1.0.0"
+    # Header version line must track a v1.x (or later) release, not v0.x.
+    m = re.search(r">\s*\*\*Version\*\*:\s*(v?\d+\.\d+\.\d+)", doc)
+    assert m, "COMPATIBILITY header must carry a Version line"
+    major = int(m.group(1).lstrip("v").split(".")[0])
+    assert major >= 1, f"COMPATIBILITY header version {m.group(1)} is still a v0.x release"
