@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "webscout-mcp"
 dynamic = ["version"]
-description = "AI-powered web intelligence platform: search, fetch, crawl, extract, understand, and monitor the web with built-in AI, vector search, browser automation, and alerting"
+description = "Self-healing web access layer for AI Agents: search, fetch, extract, progressive content delivery, provider routing, recovery, browser fallback, caching, and observability over the Model Context Protocol (MCP). Optional Jev shadow evaluator and vector/AI/browser extras are available separately."
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
@@ -35,7 +35,6 @@ dependencies = [
     "trafilatura>=1.6.0",
     "readability-lxml>=0.8.0",
     "tomli>=2.0.0; python_version < '3.11'",
-    "typesafe-sdk>=0.6.0,<0.7.0",
 ]
 
 [project.urls]
@@ -63,6 +62,9 @@ ai = [
 monitor = [
     "psutil>=5.9.0",
 ]
+jev = [
+    "typesafe-sdk>=0.6.0,<0.7.0",
+]
 all = [
     "playwright>=1.40.0",
     "chromadb>=0.4.0",
@@ -70,6 +72,7 @@ all = [
     "openai>=1.0.0",
     "psutil>=5.9.0",
     "html2text>=2020.1.16",
+    "typesafe-sdk>=0.6.0,<0.7.0",
 ]
 
 [project.scripts]

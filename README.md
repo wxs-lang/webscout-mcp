@@ -13,26 +13,31 @@
 [![Last Commit](https://img.shields.io/github/last-commit/wxs-lang/webscout-mcp.svg)](https://github.com/wxs-lang/webscout-mcp/commits/main)
 [![Commit Activity](https://img.shields.io/github/commit-activity/m/wxs-lang/webscout-mcp.svg)](https://github.com/wxs-lang/webscout-mcp/commits/main)
 
-AI-powered web intelligence platform for AI agents. Search, fetch, crawl, extract, understand, and monitor the web — with built-in AI, vector search, browser automation, and alerting. Everything stays on your machine.
+Self-healing web access layer for AI Agents. Search, fetch, extract, and read long web content progressively — with provider routing, deterministic recovery, browser fallback, caching, and observability over the Model Context Protocol (MCP). Everything stays on your machine.
 
-> **🎯 Project Positioning**: webscout-mcp is primarily a **Web Search / Fetch MCP server with extensive extension modules**. The core MCP server exposes 6 stable tools (search, fetch, crawl, extract, cache stats, cache clear). Additional modules (AI, RAG, browser, monitoring, SEO, etc.) are available as Python libraries and are planned for MCP integration. See [Module Status](MODULE_STATUS.md) for detailed stability and integration status.
+> **🎯 Project Positioning**: webscout-mcp is a **self-healing web access layer for AI agents**. The core MCP server exposes **11 tools**: `web_search`, `web_fetch`, `web_crawl`, `web_extract`, `metadata_extract`, `rss_parse`, `content_quality`, `broken_links`, `cache_stats`, `cache_clear`, and `search_health`. AI content understanding, vector search/RAG, headless browser automation, monitoring, SEO, and the optional Jev shadow evaluator are available as Python libraries / optional extras and are **not** required for core use. See [Module Status](MODULE_STATUS.md) for detailed stability and integration status.
 
 [**中文版本简介**](README_zh.md) | 快速了解项目，适合中文用户阅读
 
 ## 🎯 What's Included in MCP (Right Now)
 
-The MCP server currently exposes these **6 core tools**:
+The MCP server currently exposes these **11 tools**:
 
 | Tool | Description | Stability |
 |------|-------------|-----------|
 | `web_search` | Multi-backend web search with result merging | ✅ Stable |
-| `web_fetch` | Fetch and parse web pages with content extraction | ✅ Stable |
+| `web_fetch` | Fetch a URL and return one window of extracted main content, with progressive continuation (`start_char`) | ✅ Stable |
 | `web_crawl` | Concurrent website crawling with depth limits | 🔶 Beta |
 | `web_extract` | Structured content extraction with CSS selectors | ✅ Stable |
+| `metadata_extract` | Extract metadata (JSON-LD, OpenGraph, Twitter cards) from a page | 🔶 Beta |
+| `rss_parse` | Parse an RSS or Atom feed and return its entries | 🔶 Beta |
+| `content_quality` | Analyze content quality of a fetched page | 🧪 Experimental |
+| `broken_links` | Check for broken links on a web page | 🧪 Experimental |
 | `cache_stats` | View cache statistics and hit rates | ✅ Stable |
 | `cache_clear` | Clear the search/fetch cache | ✅ Stable |
+| `search_health` | Health report for all search backends | 🔶 Beta |
 
-**Available as Python libraries (not yet MCP tools)**: AI content understanding, vector search & RAG, headless browser automation, web monitoring & alerting, SEO analysis, OCR, PDF processing, knowledge graphs, and more. See [Module Status](MODULE_STATUS.md) for the full list.
+**Available as Python libraries / optional extras (not required for core use)**: AI content understanding, vector search & RAG, headless browser automation, web monitoring & alerting, SEO analysis, OCR, PDF processing, knowledge graphs, and the optional **Jev** shadow evaluator (`pip install "webscout-mcp[jev]"`, disabled by default, BYOK). See [Module Status](MODULE_STATUS.md) for the full list.
 
 ## ✨ Features
 

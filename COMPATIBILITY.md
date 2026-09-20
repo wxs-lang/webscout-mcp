@@ -29,13 +29,19 @@ Search the web with automatic fallback across providers.
 **Returns:** JSON string with structured search results.
 
 #### `web_fetch`
-Fetch a single URL and extract main content.
+Fetch a single URL and extract main content, returning one window of the article plus a continuation block.
 
 **Parameters:**
 - `url` (string, required): URL to fetch
-- `max_length` (integer, optional): Max content length in chars
+- `extract` (boolean, optional, default=true): Run content extraction
+- `output_format` (string, optional, default="markdown"): `markdown`, `text`, or `html`
+- `max_chars` (integer, optional, default=8000): Target size of the returned window in chars (not a hard cap on how much is fetched)
+- `bypass_cache` (boolean, optional, default=false): Ignore response cache and content snapshot
+- `start_char` (integer, optional, default=0): **Added in v1.3.0**, backwards-compatible. Offset into the already-extracted content; use `continuation.next_start_char` to read the next window.
 
-**Returns:** JSON string with extracted content, metadata, and status.
+> Note: the legacy `max_length` parameter name is **deprecated/removed**; the current parameter is `max_chars`.
+
+**Returns:** JSON string with extracted content, metadata, and status. When more content remains, the response includes an additive `continuation` object (`has_more`, `start_char`, `end_char`, `next_start_char`, `total_chars`, `remaining_chars`, `served_from_snapshot`). Agents that ignore it behave exactly as before; the field is purely additive.
 
 #### `web_crawl`
 Crawl a website with depth/page limits.
