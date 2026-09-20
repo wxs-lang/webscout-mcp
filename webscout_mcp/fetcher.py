@@ -15,7 +15,7 @@ import httpx
 from .cache import Cache
 from .config import Config
 from .user_agent import UserAgentRotator
-from .utils import TokenBucket, normalize_url, truncate_text
+from .utils import TokenBucket, normalize_url
 
 
 @dataclass
@@ -155,14 +155,36 @@ class Fetcher:
         output_format: str | None = None,
         max_chars: int | None = None,
         bypass_cache: bool = False,
+        start_char: int = 0,
     ) -> FetchResult:
         url = normalize_url(url)
         fmt = output_format or self.config.extract_output_format
-        # The output limit is part of the request semantics: a truncated
-        # 8000-char response and a full 200000-char response are different
-        # outputs for the same URL and must not share a cache entry.
+        # The output limit is the per-window target size (Phase 2.7C): it is
+        # the maximum chars returned in ONE response, not a cap on how much
+        # of the page is fetched/extracted.
         effective_limit = max_chars or 8000
-        cache_key = f"fetch:{url}:{extract}:{fmt}:{effective_limit}"
+        # Negative offsets are not meaningful; clamp deterministically to 0.
+        if not isinstance(start_char, int) or start_char < 0:
+            start_char = 0
+        # The content snapshot holds the FULL extracted article; its identity
+        # is independent of window size / offset so one snapshot serves every
+        # continuation window. The Cache hashes this key (SHA-256), so the
+        # full URL is never stored verbatim in SQLite.
+        snapshot_key = f"snapshot:{url}:{extract}:{fmt}"
+        # The per-window response cache additionally varies by limit+offset.
+        cache_key = f"fetch:{url}:{extract}:{fmt}:{effective_limit}:{start_char}"
+
+        # Continuation fast path: serve the next window from the local
+        # snapshot. No HTTP, no extraction, no browser, no Jev.
+        if start_char > 0 and not bypass_cache and self.cache:
+            snap = self._load_snapshot(snapshot_key)
+            if snap is not None:
+                return self._window_from_snapshot(snap, effective_limit, start_char, cache_layer_hit=True)
+            # Snapshot missing/expired: fall through to a real fetch and
+            # rebuild it, flagging the rebuild so callers never assume a hit.
+            snapshot_rebuilt = True
+        else:
+            snapshot_rebuilt = False
 
         if not bypass_cache and self.cache:
             cached = self.cache.get(cache_key)
@@ -206,28 +228,33 @@ class Fetcher:
                 if extracted:
                     result.content = extracted
                     result.extracted = True
-            # Content actually held after extraction but before the output
-            # limit. This is the key field for distinguishing "HTTP did not
-            # fetch enough" from "WebScout truncated a complete response".
-            pre_limit_content_chars = len(result.content)
-            truncated_by_output_limit = pre_limit_content_chars > effective_limit
-            omitted_chars = max(pre_limit_content_chars - effective_limit, 0)
-            result.content = truncate_text(result.content, effective_limit)
-            returned_content_chars = len(result.content)
-            result.metadata.update(
-                {
-                    "source_content_chars": source_content_chars,
-                    "pre_limit_content_chars": pre_limit_content_chars,
-                    "returned_content_chars": returned_content_chars,
-                    "output_limit_chars": effective_limit,
-                    "truncated_by_output_limit": truncated_by_output_limit,
-                    "omitted_chars": omitted_chars,
-                    # Backwards-compatible flag consumed by WebResult.
-                    "truncated": truncated_by_output_limit,
-                }
-            )
+            # FULL extracted article, captured BEFORE any windowing. This is
+            # what the continuation snapshot preserves.
+            full_content = result.content
 
-        if self.cache and result.error is None and result.status_code < 400:
+            # Persist the full-content snapshot (allowlisted scalars only —
+            # never headers/cookies/tokens). Reuses the existing Cache TTL and
+            # size pruning; it is a cache, not a permanent content store.
+            if self.cache and result.status_code < 400:
+                self._store_snapshot(
+                    snapshot_key,
+                    {
+                        "url": result.url,
+                        "final_url": result.final_url,
+                        "status_code": result.status_code,
+                        "title": result.title,
+                        "content": full_content,
+                        "content_type": result.content_type,
+                        "extracted": result.extracted,
+                    },
+                )
+
+            result = self._apply_window(result, full_content, effective_limit, start_char)
+            result.metadata["served_from_content_snapshot"] = False
+            result.metadata["snapshot_rebuilt"] = snapshot_rebuilt
+            result.metadata["source_content_chars"] = source_content_chars
+
+        if self.cache and result.error is None and result.status_code < 400 and start_char == 0:
             import json
 
             self.cache.set(
@@ -235,6 +262,89 @@ class Fetcher:
                 json.dumps(result.to_dict()),
                 content_type="application/json",
             )
+        return result
+
+    # ------------------------------------------------------------------
+    # Progressive content delivery (Phase 2.7C)
+    # ------------------------------------------------------------------
+    def _load_snapshot(self, snapshot_key: str) -> dict | None:
+        if not self.cache:
+            return None
+        import json
+
+        try:
+            entry = self.cache.get(snapshot_key)
+            if not entry:
+                return None
+            return json.loads(entry["value"])
+        except Exception:
+            return None
+
+    def _store_snapshot(self, snapshot_key: str, snap: dict) -> None:
+        import json
+
+        try:
+            self.cache.set(snapshot_key, json.dumps(snap), content_type="application/json")
+        except Exception:
+            # Snapshot persistence must never break content delivery.
+            logger.debug("content snapshot store failed", exc_info=True)
+
+    @staticmethod
+    def _window_metadata(total: int, start: int, end: int, limit: int) -> dict:
+        """Deterministic [start, end) window scalars (offsets into the FULL
+        extracted article, never into a marker-suffixed returned string)."""
+        has_more = end < total
+        remaining = max(total - end, 0)
+        range_exhausted = start >= total
+        return {
+            "content_start_char": start,
+            "content_end_char": end,
+            "content_total_chars": total,
+            "has_more": has_more,
+            "next_start_char": end if has_more else None,
+            "remaining_chars": remaining,
+            # Phase 2.7A-compatible truncation semantics, now window-aware:
+            # "truncated" means "more content follows this window".
+            "output_limit_chars": limit,
+            "pre_limit_content_chars": total,
+            "returned_content_chars": end - start,
+            "truncated_by_output_limit": has_more,
+            "omitted_chars": remaining,
+            "truncated": has_more,
+            "range_exhausted": range_exhausted,
+        }
+
+    def _apply_window(self, result: FetchResult, full_content: str, limit: int, start: int) -> FetchResult:
+        total = len(full_content)
+        if start >= total:
+            # At/past EOF: stable empty window, never restart at 0.
+            window = ""
+            end = start
+        else:
+            window = full_content[start : start + limit]
+            end = start + len(window)
+        result.content = window  # exact slice; no artificial truncate marker
+        meta = self._window_metadata(total, start, end, limit)
+        result.metadata.update(meta)
+        return result
+
+    def _window_from_snapshot(self, snap: dict, limit: int, start: int, cache_layer_hit: bool) -> FetchResult:
+        full_content = snap.get("content", "") or ""
+        result = FetchResult(
+            url=snap.get("url", ""),
+            final_url=snap.get("final_url", "") or snap.get("url", ""),
+            status_code=int(snap.get("status_code", 200) or 200),
+            title=snap.get("title", ""),
+            content="",
+            content_type=snap.get("content_type", ""),
+            extracted=bool(snap.get("extracted", False)),
+            cached=True,
+        )
+        result = self._apply_window(result, full_content, limit, start)
+        result.metadata["served_from_content_snapshot"] = True
+        result.metadata["snapshot_rebuilt"] = False
+        result.metadata["source_content_chars"] = len(full_content)
+        self._stats["cache_hits"] += 1
         return result
 
     async def _fetch_with_retry(self, url: str) -> FetchResult:

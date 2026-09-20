@@ -45,6 +45,7 @@ class FetchRequest:
     output_format: str | None = None
     max_chars: int | None = None
     bypass_cache: bool = False
+    start_char: int = 0
     timeout: float | None = None
     extra: dict[str, Any] = field(default_factory=dict)
 
@@ -250,6 +251,7 @@ class HTTPFetchProvider(FetchProvider):
                 output_format=request.output_format,
                 max_chars=request.max_chars,
                 bypass_cache=request.bypass_cache,
+                start_char=request.start_char,
             )
             latency_ms = self._measure_latency(start)
             response = FetchResponse.from_fetch_result(result, provider=self.name, latency_ms=latency_ms)

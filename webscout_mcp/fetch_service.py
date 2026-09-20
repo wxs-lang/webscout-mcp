@@ -21,7 +21,12 @@ from .fetch_escalation import FetchEscalationDecision, should_escalate_to_browse
 from .fetch_provider import FetchProvider, FetchRequest, FetchResponse
 from .logging_config import get_logger
 from .normalization import fetch_response_to_web_result
-from .observability import record_escalation, record_fetch_attempt, record_recovery_classification
+from .observability import (
+    record_continuation,
+    record_escalation,
+    record_fetch_attempt,
+    record_recovery_classification,
+)
 from .provider_registry import ProviderRegistry
 from .provider_router import ProviderCapability, ProviderRouter
 from .recovery import classify_recovery
@@ -87,6 +92,12 @@ class FetchRouteResult:
         }
         if self.escalation_decision is not None:
             out["escalation"] = self.escalation_decision.to_dict()
+        # Progressive content delivery (Phase 2.7C). Sourced from the FINAL
+        # served response: a browser-escalated response carries no continuation
+        # (browser content is not windowed in this phase).
+        continuation = _continuation_block(self.final_response.metadata)
+        if continuation is not None:
+            out["continuation"] = continuation
         if self.browser_attempted:
             out["browser_attempted"] = True
             out["browser_backend"] = self.browser_provider
@@ -105,6 +116,23 @@ class FetchRouteResult:
                 out["browser_success"] = False
                 out["browser_error"] = self.final_response.error
         return out
+
+
+def _continuation_block(metadata: dict[str, Any]) -> dict[str, Any] | None:
+    """Build the small, backwards-compatible continuation contract from
+    window metadata. Returns None for non-windowed / browser responses."""
+    if not metadata or "content_total_chars" not in metadata:
+        return None
+    return {
+        "has_more": bool(metadata.get("has_more")),
+        "start_char": metadata.get("content_start_char", 0),
+        "end_char": metadata.get("content_end_char", 0),
+        "next_start_char": metadata.get("next_start_char"),
+        "total_chars": metadata.get("content_total_chars", 0),
+        "remaining_chars": metadata.get("remaining_chars", 0),
+        "served_from_snapshot": bool(metadata.get("served_from_content_snapshot", False)),
+        "range_exhausted": bool(metadata.get("range_exhausted", False)),
+    }
 
 
 def _classify_fast_result(resp: FetchResponse) -> str:
@@ -181,6 +209,41 @@ class FetchService:
                     "result": "success" if primary.is_success else "failure",
                 }
             )
+            # Continuation served from the local content snapshot is NOT a new
+            # network fetch: no router result, no fetch-attempt metric, and it
+            # must never trigger browser escalation / recovery / Jev.
+            continuation_hit = bool(request.start_char > 0 and primary.metadata.get("served_from_content_snapshot"))
+            if continuation_hit:
+                try:
+                    record_continuation("request")
+                    record_continuation("snapshot_hit")
+                    record_continuation("chunk_served", len(primary.content or ""))
+                except Exception:  # pragma: no cover
+                    log.exception("observability continuation record failed")
+                web_result = fetch_response_to_web_result(primary)
+                route_trace.append({"action": "continue_from_snapshot", "provider": primary_name})
+                return FetchRouteResult(
+                    primary_response=primary,
+                    final_response=primary,
+                    web_result=web_result,
+                    escalation_decision=None,
+                    primary_provider=primary_name,
+                    browser_provider=None,
+                    browser_attempted=False,
+                    browser_success=False,
+                    route_trace=route_trace,
+                    used_legacy_fast_path=used_legacy,
+                )
+            if request.start_char > 0:
+                # Continuation requested but snapshot was missing -> the
+                # provider rebuilt it via a real fetch. Count the miss/rebuild;
+                # the rest of the normal path applies.
+                try:
+                    record_continuation("request")
+                    record_continuation("snapshot_miss")
+                    record_continuation("snapshot_rebuild")
+                except Exception:  # pragma: no cover
+                    log.exception("observability continuation record failed")
             # Record router result exactly once.
             if self.router is not None and not used_legacy:
                 self.router.record_result(
@@ -196,6 +259,10 @@ class FetchService:
                     result=_classify_fast_result(primary),
                     latency_ms=float(primary.latency_ms or 0.0),
                 )
+                # A first window carrying progressive-delivery metadata is one
+                # served chunk.
+                if primary.is_success and "content_total_chars" in primary.metadata:
+                    record_continuation("chunk_served", len(primary.content or ""))
             except Exception:  # pragma: no cover
                 log.exception("observability record fast fetch failed")
 
