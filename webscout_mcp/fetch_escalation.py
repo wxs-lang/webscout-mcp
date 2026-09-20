@@ -163,10 +163,20 @@ def should_escalate_to_browser(response: FetchResponse) -> FetchEscalationDecisi
 
     # On success, inspect the body we got.
     body = response.content or ""
-    raw_html = meta.get("raw_html", "") or body
+    # Prefer the internal raw HTML carried by the provider response; fall
+    # back to the (possibly extracted/truncated) body. raw_html is never
+    # read from metadata so it cannot leak into WebResult or SQLite.
+    raw_html = getattr(response, "raw_html", "") or meta.get("raw_html", "") or body
     details["text_len"] = len(body)
     details["html_len"] = len(raw_html)
     details["script_ratio"] = round(_script_ratio(raw_html), 3)
+    # Output-limit truncation is a delivery-budget signal, not a browser
+    # requirement: a 200K RFC truncated to 8K needs continuation/chunking,
+    # not Chromium. Record it for observability but never escalate on it.
+    truncated_by_output_limit = bool(meta.get("truncated_by_output_limit", False))
+    details["truncated_by_output_limit"] = truncated_by_output_limit
+    if truncated_by_output_limit:
+        details["omitted_chars"] = meta.get("omitted_chars", 0)
 
     if response.status_code == 200:
         if _looks_like_challenge(raw_html):

@@ -19,10 +19,9 @@ def _resp(
     content_quality: str | None = None,
 ) -> FetchResponse:
     meta = {}
-    if raw_html is not None:
-        meta["raw_html"] = raw_html
     if content_quality is not None:
         meta["content_quality"] = content_quality
+    # raw_html is an internal-only FetchResponse field, never metadata.
     return FetchResponse(
         url="https://example.com",
         final_url="https://example.com",
@@ -32,6 +31,7 @@ def _resp(
         content_type=content_type,
         error=error,
         metadata=meta,
+        raw_html=raw_html if raw_html is not None else "",
     )
 
 
