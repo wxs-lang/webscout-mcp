@@ -158,7 +158,11 @@ class Fetcher:
     ) -> FetchResult:
         url = normalize_url(url)
         fmt = output_format or self.config.extract_output_format
-        cache_key = f"fetch:{url}:{extract}:{fmt}"
+        # The output limit is part of the request semantics: a truncated
+        # 8000-char response and a full 200000-char response are different
+        # outputs for the same URL and must not share a cache entry.
+        effective_limit = max_chars or 8000
+        cache_key = f"fetch:{url}:{extract}:{fmt}:{effective_limit}"
 
         if not bypass_cache and self.cache:
             cached = self.cache.get(cache_key)
@@ -191,6 +195,10 @@ class Fetcher:
             self._stats["failed_requests"] += 1
 
         if result.error is None and result.content:
+            # Length of the decoded HTTP body before extraction (for HTML
+            # pages this is raw HTML char count). Scalar diagnostic only —
+            # the raw body itself is never propagated as metadata.
+            source_content_chars = len(result.content)
             if self._is_extractable(result.content_type):
                 result.raw_html = result.content
             if extract and self._is_extractable(result.content_type):
@@ -198,8 +206,26 @@ class Fetcher:
                 if extracted:
                     result.content = extracted
                     result.extracted = True
-            limit = max_chars or 8000
-            result.content = truncate_text(result.content, limit)
+            # Content actually held after extraction but before the output
+            # limit. This is the key field for distinguishing "HTTP did not
+            # fetch enough" from "WebScout truncated a complete response".
+            pre_limit_content_chars = len(result.content)
+            truncated_by_output_limit = pre_limit_content_chars > effective_limit
+            omitted_chars = max(pre_limit_content_chars - effective_limit, 0)
+            result.content = truncate_text(result.content, effective_limit)
+            returned_content_chars = len(result.content)
+            result.metadata.update(
+                {
+                    "source_content_chars": source_content_chars,
+                    "pre_limit_content_chars": pre_limit_content_chars,
+                    "returned_content_chars": returned_content_chars,
+                    "output_limit_chars": effective_limit,
+                    "truncated_by_output_limit": truncated_by_output_limit,
+                    "omitted_chars": omitted_chars,
+                    # Backwards-compatible flag consumed by WebResult.
+                    "truncated": truncated_by_output_limit,
+                }
+            )
 
         if self.cache and result.error is None and result.status_code < 400:
             import json

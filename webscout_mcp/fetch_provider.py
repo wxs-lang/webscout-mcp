@@ -75,6 +75,9 @@ class FetchResponse:
     error_code: StandardErrorCode | None = None
     retryable: bool = False
     metadata: dict[str, Any] = field(default_factory=dict)
+    # Internal-only: raw decoded HTML used by escalation heuristics.
+    # Never serialized to to_dict(), metadata, WebResult, logs, or SQLite.
+    raw_html: str = ""
 
     @property
     def is_success(self) -> bool:
@@ -113,6 +116,7 @@ class FetchResponse:
             error_code=error_code,
             retryable=retryable,
             metadata=dict(getattr(result, "metadata", {}) or {}),
+            raw_html=getattr(result, "raw_html", "") or "",
         )
 
     def to_dict(self) -> dict[str, Any]:

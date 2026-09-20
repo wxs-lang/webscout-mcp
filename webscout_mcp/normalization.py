@@ -99,8 +99,15 @@ def fetch_response_to_web_result(response: FetchResponse) -> WebResult:
       * HTTP >= 400 or error set              -> FAILED
     """
     backend = _classify_backend(response.provider)
-    if response.is_success and response.content:
+    truncated_by_output_limit = bool(
+        response.metadata.get("truncated_by_output_limit", False) or response.metadata.get("truncated", False)
+    )
+    if response.is_success and response.content and not truncated_by_output_limit:
         status = WebResultStatus.SUCCESS
+    elif response.is_success and response.content and truncated_by_output_limit:
+        # Network succeeded and content exists, but WebScout's own output
+        # limit cut it: the agent did not receive the complete response.
+        status = WebResultStatus.PARTIAL
     elif response.is_success and not response.content:
         status = WebResultStatus.PARTIAL
     else:
@@ -111,14 +118,30 @@ def fetch_response_to_web_result(response: FetchResponse) -> WebResult:
         "latency_ms": round(response.latency_ms, 2),
         "cached": response.cached,
         "extracted": response.extracted,
-        "truncated": bool(response.metadata.get("truncated", False)),
+        "truncated": truncated_by_output_limit,
+        "truncated_by_output_limit": truncated_by_output_limit,
         "extraction_failed": bool(response.error),
         "kind": "fetch",
     }
+    # Deterministic content-length semantics (scalars only; raw HTML is
+    # never carried into WebResult metadata).
+    for _len_key in (
+        "source_content_chars",
+        "pre_limit_content_chars",
+        "returned_content_chars",
+        "output_limit_chars",
+        "omitted_chars",
+    ):
+        if _len_key in response.metadata:
+            metadata[_len_key] = response.metadata[_len_key]
     # Carry through only scalar metadata from the backend, and run it
-    # through the sanitizer so credentials never reach WebResult.
+    # through the sanitizer so credentials never reach WebResult. Raw HTML
+    # bodies are internal escalation inputs and never persisted.
+    _BLOCKED_METADATA_KEYS = {"raw_html", "html", "body"}
     carried: dict[str, Any] = {}
     for k, v in (response.metadata or {}).items():
+        if k in _BLOCKED_METADATA_KEYS:
+            continue
         if isinstance(v, (str, int, float, bool)) and k not in metadata:
             carried[k] = v
     metadata.update(sanitize_metadata(carried))
