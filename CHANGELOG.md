@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - UNRELEASED (release candidate)
+
+Self-healing fetch core. No new MCP tools (still 11); `web_fetch` gains one backwards-compatible parameter.
+
+### Added
+- **Progressive content delivery / continuation**: after one fetch, long articles are delivered in `max_chars` windows; the response includes an additive `continuation` block. Re-call `web_fetch(url, start_char=continuation.next_start_char)` to read the next window — follow-up windows are served from a local content snapshot with **0 extra HTTP / extraction / Jev / Browser** calls.
+- **Deterministic recovery classification** (`RecoveryReason` / `RecoveryAction`) and **unified recovery orchestration**: one `RecoveryDecision` drives ACCEPT / CONTINUE_CONTENT / BROWSER (max one) / RETRY (delegated) / RETRY_LATER / PROVIDER_FALLBACK (max one) / REQUIRE_AUTH / STOP / NONE.
+- **Content sufficiency / truncation semantics**: explicit `pre_limit_content_chars`, `returned_content_chars`, `truncated_by_output_limit`, `omitted_chars`; `max_chars` now means the returned window, not a hard fetch cap; output truncation no longer triggers Browser escalation.
+- **Jev shadow evaluator (optional)**: `pip install "webscout-mcp[jev]"`. Disabled by default, BYOK, pure shadow (never changes production routing); schema v2 with `run_id` / `trace_id` / `jev_call_id` and call-level token/latency accounting.
+
+### Changed
+- Unified `WebResult`, metadata sanitization, canonical URL identity, SSRF hardening, provider registry/router, and observability.
+- `typesafe-sdk` moved from core dependencies to the optional `jev` extra (and `all`); core install no longer requires it.
+- Cache key now includes the effective output limit (avoids cross-`max_chars` cache pollution).
+- Docs aligned: README reports the real 11 tools; `web_fetch` uses `max_chars` + `start_char` (legacy `max_length` removed).
+
+### Security
+- SSRF guard unchanged across fast fetch, browser fallback, provider fallback, and continuation; metadata sanitizer strips authorization/cookie/token/credential fields.
+
 ## [1.0.0] - 2026-09-06
 
 ### 🎉 First Stable Release

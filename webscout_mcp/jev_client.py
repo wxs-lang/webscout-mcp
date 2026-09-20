@@ -416,6 +416,15 @@ def make_jev_client(config: Any) -> JevClient:
         )
         return NoopJevClient()
     try:
+        import typesafe_sdk  # noqa: F401
+    except ImportError:
+        log.warning(
+            "JEV_PROVIDER=typesafe and TYPESAFE_API_KEY is set, but the optional "
+            "typesafe-sdk package is not installed; Jev shadow is disabled. "
+            "Install it with: pip install 'webscout-mcp[jev]'."
+        )
+        return NoopJevClient()
+    try:
         return TypeSafeJevClient(
             api_key=api_key,
             model=getattr(config, "jev_model", "jev-latest"),
