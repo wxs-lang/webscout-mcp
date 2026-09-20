@@ -344,6 +344,24 @@ class SearchService:
 
     async def close(self) -> None:
         """Close all providers and release resources."""
+        # Best-effort flush pending Jev shadow tasks (fire-and-forget).
+        if self._pending_jev_tasks:
+            import asyncio
+
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*self._pending_jev_tasks, return_exceptions=True),
+                    timeout=10.0,
+                )
+            except (asyncio.TimeoutError, Exception):
+                pass
+            self._pending_jev_tasks.clear()
+        jev = getattr(self, "jev_client", None)
+        if jev is not None:
+            try:
+                await jev.aclose()
+            except Exception:
+                pass
         for provider in self.providers:
             try:
                 await provider.close()

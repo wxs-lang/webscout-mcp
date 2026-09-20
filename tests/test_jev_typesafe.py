@@ -131,7 +131,7 @@ async def test_ask_many_single_rtt_for_two_questions():
 
 
 def test_schema_version_constant():
-    assert JEV_DECISION_SCHEMA_VERSION == "1"
+    assert JEV_DECISION_SCHEMA_VERSION == "2"
 
 
 def test_confidence_optional():

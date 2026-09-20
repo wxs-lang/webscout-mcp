@@ -132,6 +132,7 @@ class FetchService:
         # allow an explicit one. In production the HTTPFetchProvider is
         # always registered.
         self._fallback_http = fallback_http_provider
+        self._config = config
         # Jev shadow client. Noop when disabled; errors are swallowed.
         self._jev_client = None
         self._jev_max_state_chars = 6000
@@ -291,12 +292,24 @@ class FetchService:
             used_legacy_fast_path=used_legacy,
         )
 
-    async def flush_pending_jev_tasks(self, timeout: float = 2.0) -> None:
-        """Best-effort wait for in-flight Jev shadow tasks at shutdown."""
+    async def flush_pending_jev_tasks(self, timeout: float | None = None) -> None:
+        """Best-effort wait for in-flight Jev shadow tasks at shutdown.
+
+        Default timeout is JEV_TIMEOUT_MS/1000 + 2.0s buffer so a shadow
+        request in flight has a fair chance to finish, with a hard upper
+        bound so shutdown never hangs."""
         if not self._pending_jev_tasks:
+            if self._jev_client is not None:
+                try:
+                    await self._jev_client.aclose()
+                except Exception:  # pragma: no cover
+                    log.debug("Jev client close failed", exc_info=True)
             return
         import asyncio
 
+        if timeout is None:
+            cfg_timeout_ms = getattr(self._config, "jev_timeout_ms", 8000) if self._config else 8000
+            timeout = float(cfg_timeout_ms) / 1000.0 + 2.0
         try:
             await asyncio.wait_for(
                 asyncio.gather(*self._pending_jev_tasks, return_exceptions=True),
