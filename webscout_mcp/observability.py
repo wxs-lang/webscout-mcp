@@ -46,6 +46,9 @@ _BACKEND_BUCKETS: dict[str, dict[str, Any]] = defaultdict(_new_bucket)
 _ESCALATION_REASONS: dict[str, int] = defaultdict(int)
 # reason_code -> count (SSRF blocks)
 _SSRF_BLOCKS: dict[str, int] = defaultdict(int)
+# recovery classification counters (Phase 2.7B): reason/action -> count
+_RECOVERY_REASONS: dict[str, int] = defaultdict(int)
+_RECOVERY_ACTIONS: dict[str, int] = defaultdict(int)
 
 _MAX_LATENCIES = 500  # ring buffer per backend
 
@@ -112,6 +115,16 @@ def record_ssrf_block(reason_code: str) -> None:
     log.info("ssrf_block", extra={"reason_code": reason_code})
 
 
+def record_recovery_classification(reason_code: str, action: str) -> None:
+    """Count a deterministic recovery classification (Phase 2.7B).
+
+    Classification only — this never executes the recommended action.
+    """
+    with _LOCK:
+        _RECOVERY_REASONS[reason_code] += 1
+        _RECOVERY_ACTIONS[action] += 1
+
+
 def _pct(values: list[float], p: float) -> float:
     if not values:
         return 0.0
@@ -141,6 +154,8 @@ def get_observability_summary() -> dict[str, Any]:
             "backends": backends,
             "escalations": dict(_ESCALATION_REASONS),
             "ssrf_blocks": dict(_SSRF_BLOCKS),
+            "recovery_reasons": dict(_RECOVERY_REASONS),
+            "recovery_actions": dict(_RECOVERY_ACTIONS),
         }
 
 
@@ -151,4 +166,6 @@ def reset_for_tests() -> None:
         _BACKEND_BUCKETS.clear()
         _ESCALATION_REASONS.clear()
         _SSRF_BLOCKS.clear()
+        _RECOVERY_REASONS.clear()
+        _RECOVERY_ACTIONS.clear()
         _STARTED_AT = datetime.now(timezone.utc).isoformat()

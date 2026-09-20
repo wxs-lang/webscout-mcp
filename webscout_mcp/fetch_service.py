@@ -21,9 +21,10 @@ from .fetch_escalation import FetchEscalationDecision, should_escalate_to_browse
 from .fetch_provider import FetchProvider, FetchRequest, FetchResponse
 from .logging_config import get_logger
 from .normalization import fetch_response_to_web_result
-from .observability import record_escalation, record_fetch_attempt
+from .observability import record_escalation, record_fetch_attempt, record_recovery_classification
 from .provider_registry import ProviderRegistry
 from .provider_router import ProviderCapability, ProviderRouter
+from .recovery import classify_recovery
 from .web_result import WebResult
 
 log = get_logger(__name__)
@@ -254,10 +255,19 @@ class FetchService:
                     )
                     # final stays = primary (fast result preserved).
 
-        # 4) Normalize to WebResult as the internal unified result.
+        # 4) Deterministic recovery classification (Phase 2.7B).
+        # Observability only: it never executes the recommended action and
+        # never changes routing, escalation, or the returned content.
+        try:
+            recovery = classify_recovery(primary)
+            record_recovery_classification(recovery.reason.value, recovery.action.value)
+        except Exception:  # pragma: no cover - defensive
+            log.exception("observability recovery classification failed")
+
+        # 5) Normalize to WebResult as the internal unified result.
         web_result = fetch_response_to_web_result(final)
 
-        # 5) Jev shadow (best-effort, non-blocking). Never changes routing.
+        # 6) Jev shadow (best-effort, non-blocking). Never changes routing.
         if self._jev_client is not None and getattr(self._jev_client, "name", "") != "noop":
             try:
                 import asyncio
