@@ -36,11 +36,16 @@ jobs:
 
       - name: Start Crawl4AI container
         run: |
+          # Pinned to the image verified by this E2E run (2026-09-21, run
+          # 35525202961: sidecar healthy + /crawl rendered example.com).
+          # Previously: floating unclecode/crawl4ai:latest.
+          # To upgrade: re-run this E2E against the new tag, then update digest.
+          CRAWL4AI_IMAGE="unclecode/crawl4ai@sha256:84751dab794259db05d5bd4e5c766a8041a65f0554326e4516e620abdf2fa18b"
           docker run -d --name crawl4ai \
             -p 11235:11235 \
             -e CRAWL4AI_API_TOKEN=ci-test-token \
             --shm-size=2g \
-            unclecode/crawl4ai:latest
+            "$CRAWL4AI_IMAGE"
           echo "Waiting for Crawl4AI to come up (may download Chromium on first run)..."
           for i in $(seq 1 120); do
             if curl -sf -o /dev/null "http://localhost:11235/health" 2>/dev/null \
