@@ -91,3 +91,39 @@ jobs:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           subject-digest: ${{ steps.build-and-push.outputs.digest }}
           push-to-registry: true
+
+  runtime-smoke:
+    name: Docker runtime smoke (build + run + 11 tools)
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build local image (amd64, no push)
+        run: |
+          docker build -t webscout-runtime-smoke:local .
+          docker images webscout-runtime-smoke:local
+
+      - name: Container starts and package imports
+        run: |
+          docker run --rm --entrypoint python webscout-runtime-smoke:local -m webscout_mcp --help
+
+      - name: Container creates MCP server and registers 11 tools
+        run: |
+          docker run --rm --entrypoint python webscout-runtime-smoke:local -c "
+          import asyncio
+          from webscout_mcp.config import Config
+          from webscout_mcp.server import create_server
+          mcp = create_server(Config())
+          async def count():
+            tools = await mcp.list_tools()
+            return len(tools)
+          n = asyncio.run(count())
+          print('MCP tools registered in container:', n)
+          assert n == 11, f'expected 11 tools, got {n}'
+          print('RUNTIME SMOKE OK')
+          "
+        env:
+          # No TypeSafe SDK, no Jev key: core image must start clean.
+          JEV_ENABLED: "false"

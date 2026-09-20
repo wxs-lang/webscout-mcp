@@ -1,8 +1,8 @@
 # Compatibility & Stability Promise
 
-> **Version**: v0.9.0
-> **Status**: Frozen for v1.0
-> **Last updated**: 2026-09-06
+> **Version**: v1.3.0 (release candidate)
+> **Status**: Frozen interfaces, backward-compatible
+> **Last updated**: 2026-09-21
 
 This document defines the stable, frozen interfaces of webscout-mcp.
 These interfaces will not change in backwards-incompatible ways until
@@ -263,4 +263,4 @@ We follow [Semantic Versioning](https://semver.org/):
 - **MINOR** (0.x.0): New features, backwards-compatible
 - **PATCH** (0.0.x): Bug fixes, backwards-compatible
 
-Current frozen state: **v0.9.0** → Target: **v1.0.0** (stable release)
+Current frozen state: **v1.3.0** (release candidate). Interfaces remain backward-compatible until v2.0.0.
