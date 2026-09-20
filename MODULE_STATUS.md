@@ -26,7 +26,7 @@ This document provides transparency about the stability and integration status o
 | `rss_parse` | Content Analysis | 🔶 Beta | Parse an RSS or Atom feed and return its entries. |
 | `web_crawl` | Crawl & Extract | 🔶 Beta | Crawl a website starting from a seed URL, respecting depth and page limits. |
 | `web_extract` | Crawl & Extract | ✅ Stable | Extract structured data from a web page using CSS selectors. |
-| `web_fetch` | Fetch | ✅ Stable | Fetch a URL and return its content, optionally extracting the main article. |
+| `web_fetch` | Fetch | ✅ Stable | Fetch a URL and return one window of its extracted main content. |
 | `search_health` | Health | 🔶 Beta | Get health report for all search backends. |
 | `web_search` | Search | ✅ Stable | Search the web and return structured results. |
 

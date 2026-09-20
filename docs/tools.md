@@ -77,7 +77,7 @@ Search the web and return structured results.
 **Stability**: ✅ Stable  
 **Async**: Yes  
 
-Fetch a URL and return its content, optionally extracting the main article.
+Fetch a URL and return one window of its extracted main content.
 
 **Parameters:**
 
@@ -88,6 +88,7 @@ Fetch a URL and return its content, optionally extracting the main article.
 | `output_format` | str | No | 'markdown' | |
 | `max_chars` | int | No | 8000 | |
 | `bypass_cache` | bool | No | False | |
+| `start_char` | int | No | 0 | |
 
 **Example:**
 

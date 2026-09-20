@@ -65,7 +65,14 @@ def test_truncation_metadata_when_over_limit(tmp_path):
     assert meta["returned_content_chars"] == len(result.content)
     assert meta["source_content_chars"] == 12000
     assert result.content.startswith("A" * 8000)
-    assert "truncated" in result.content
+    # Phase 2.7C: the inline truncate marker is replaced by structured
+    # continuation metadata; the window is an exact slice (8000 chars).
+    assert len(result.content) == 8000
+    assert meta["has_more"] is True
+    assert meta["next_start_char"] == 8000
+    assert meta["content_total_chars"] == 12000
+    assert meta["remaining_chars"] == 4000
+    assert meta["content_start_char"] == 0 and meta["content_end_char"] == 8000
 
 
 def test_no_truncation_when_under_limit(tmp_path):

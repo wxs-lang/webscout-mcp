@@ -49,6 +49,8 @@ _SSRF_BLOCKS: dict[str, int] = defaultdict(int)
 # recovery classification counters (Phase 2.7B): reason/action -> count
 _RECOVERY_REASONS: dict[str, int] = defaultdict(int)
 _RECOVERY_ACTIONS: dict[str, int] = defaultdict(int)
+# progressive content delivery counters (Phase 2.7C)
+_CONTINUATION: dict[str, int] = defaultdict(int)
 
 _MAX_LATENCIES = 500  # ring buffer per backend
 
@@ -125,6 +127,19 @@ def record_recovery_classification(reason_code: str, action: str) -> None:
         _RECOVERY_ACTIONS[action] += 1
 
 
+def record_continuation(kind: str, chars: int = 0) -> None:
+    """Count progressive-content-delivery events (Phase 2.7C).
+
+    kind is one of: request, snapshot_hit, snapshot_miss, snapshot_rebuild,
+    chunk_served. ``chars`` accumulates delivered window chars. Only scalar
+    counts are kept — never content, URLs, headers, or credentials.
+    """
+    with _LOCK:
+        _CONTINUATION[kind] += 1
+        if chars:
+            _CONTINUATION["chars_served"] += int(chars)
+
+
 def _pct(values: list[float], p: float) -> float:
     if not values:
         return 0.0
@@ -156,6 +171,7 @@ def get_observability_summary() -> dict[str, Any]:
             "ssrf_blocks": dict(_SSRF_BLOCKS),
             "recovery_reasons": dict(_RECOVERY_REASONS),
             "recovery_actions": dict(_RECOVERY_ACTIONS),
+            "continuation": dict(_CONTINUATION),
         }
 
 
@@ -168,4 +184,5 @@ def reset_for_tests() -> None:
         _SSRF_BLOCKS.clear()
         _RECOVERY_REASONS.clear()
         _RECOVERY_ACTIONS.clear()
+        _CONTINUATION.clear()
         _STARTED_AT = datetime.now(timezone.utc).isoformat()

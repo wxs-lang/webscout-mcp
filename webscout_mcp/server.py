@@ -251,8 +251,19 @@ def create_server(config: Config | None = None) -> MCPServer:
         output_format: str = "markdown",
         max_chars: int = 8000,
         bypass_cache: bool = False,
+        start_char: int = 0,
     ) -> str:
-        """Fetch a URL and return its content, optionally extracting the main article."""
+        """Fetch a URL and return one window of its extracted main content.
+
+        Progressive delivery: each call returns at most ``max_chars`` chars
+        (default 8000). If the response contains ``continuation.has_more=true``,
+        more content is available locally. To read the next window, call this
+        SAME tool again with the SAME url/extract/output_format/max_chars and set
+        ``start_char`` to the previous ``continuation.next_start_char``. Follow-up
+        windows are served from a local snapshot (no new HTTP fetch, extraction,
+        or browser). Stop when ``has_more`` is false. You do not need to read the
+        whole page unless the task requires it.
+        """
         from .fetch_provider import FetchRequest
 
         route = await fetch_service.fetch(
@@ -262,6 +273,7 @@ def create_server(config: Config | None = None) -> MCPServer:
                 output_format=output_format,
                 max_chars=max_chars,
                 bypass_cache=bypass_cache,
+                start_char=start_char,
             )
         )
         out = route.legacy_out(max_chars=max_chars)
