@@ -8,6 +8,7 @@ returns structured data. All network calls go through the rate limiter and cache
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import dataclass, field
 
 import httpx
@@ -16,6 +17,8 @@ from .cache import Cache
 from .config import Config
 from .user_agent import UserAgentRotator
 from .utils import TokenBucket, normalize_url
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
