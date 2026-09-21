@@ -45,6 +45,16 @@ class BackendHealth:
             self.circuit_open = False
             self.circuit_open_time = None
 
+    def record_empty(self) -> None:
+        """Record a soft miss (provider completed the request but had no results).
+
+        This is NOT a hard failure: it does not increment consecutive_failures,
+        does not trip the circuit breaker, and does not pollute error rate.
+        It still counts as a request so availability scoring stays honest.
+        """
+        self.total_requests += 1
+        self.last_success_time = time.time()
+
     def record_failure(self, reason: str = "unknown") -> None:
         """Record a failed request."""
         self.total_requests += 1
@@ -185,6 +195,11 @@ class SearchHealthManager:
         """Record a failed request for a backend."""
         if backend_name in self._backends:
             self._backends[backend_name].record_failure(reason)
+
+    def record_empty(self, backend_name: str) -> None:
+        """Record a soft miss (completed with no results), not a hard failure."""
+        if backend_name in self._backends:
+            self._backends[backend_name].record_empty()
 
     def get_available_backends(self, backend_names: list[str]) -> list[str]:
         """Filter backend names to only those that are currently available.

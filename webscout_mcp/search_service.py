@@ -33,6 +33,37 @@ from .search_provider import (
 log = get_logger(__name__)
 
 
+class FallbackReason:
+    """Deterministic reasons a SearchService moved from one provider to the next.
+
+    These are observability labels (not a recovery executor). Distinct from
+    hard transport/parser failures so we can answer *why* we fell back.
+    """
+
+    PROVIDER_ERROR = "PROVIDER_ERROR"
+    EMPTY_RESULT = "EMPTY_RESULT"
+    TIMEOUT = "TIMEOUT"
+    RATE_LIMITED = "RATE_LIMITED"
+    AUTH_ERROR = "AUTH_ERROR"
+    PARSER_FAILURE = "PARSER_FAILURE"
+    CIRCUIT_OPEN = "CIRCUIT_OPEN"
+    UNAVAILABLE = "UNAVAILABLE"
+
+
+def _fallback_reason_for_error(error_type: Any) -> str:
+    """Map a StandardErrorCode to a deterministic fallback reason."""
+    name = getattr(error_type, "value", str(error_type)).upper()
+    if "TIMEOUT" in name:
+        return FallbackReason.TIMEOUT
+    if "RATE" in name or "429" in name:
+        return FallbackReason.RATE_LIMITED
+    if "AUTH" in name or "401" in name or "403" in name:
+        return FallbackReason.AUTH_ERROR
+    if "PARSER" in name:
+        return FallbackReason.PARSER_FAILURE
+    return FallbackReason.PROVIDER_ERROR
+
+
 @dataclass
 class SearchServiceConfig:
     """Configuration for the SearchService."""
@@ -100,6 +131,12 @@ class SearchService:
         self.total_errors = 0
         self.last_used_provider: str | None = None
 
+        # Lightweight search-semantics observability (no query content).
+        # provider -> {success, empty, error}
+        self.provider_outcomes: dict[str, dict[str, int]] = {}
+        # fallback reason label -> count
+        self.fallback_reasons: dict[str, int] = {}
+
         # Search result cache (in-memory, TTL-based)
         self._search_cache: dict[str, tuple[float, SearchResponse]] = {}
         self._cache_ttl = 300  # 5 minutes
@@ -107,8 +144,19 @@ class SearchService:
         self.cache_misses = 0
 
     def _get_cache_key(self, request: SearchRequest) -> str:
-        """Generate cache key from search request."""
-        return f"{request.query.lower()}|{request.max_results}|{request.language}|{request.region}"
+        """Generate a cache key that is sensitive to every request dimension
+        that changes provider output.
+
+        Two requests that differ only by safe_search / country / region /
+        language / max_results MUST NOT share a cache entry. The query is
+        normalized with casefold (whitespace already stripped in
+        SearchRequest.__post_init__) so " python " and "python" match.
+        """
+        q = (request.query or "").casefold()
+        return (
+            f"{q}|max={request.max_results}|safe={bool(request.safe_search)}"
+            f"|region={request.region}|lang={request.language}|country={request.country}"
+        )
 
     def _get_from_cache(self, request: SearchRequest) -> SearchResponse | None:
         """Get search response from cache if available and not expired."""
@@ -163,10 +211,19 @@ class SearchService:
             return cached
 
         errors: list[SearchResponse] = []
+        empties: list[SearchResponse] = []
         tried_providers: list[str] = []
+        route_trace: list[dict[str, Any]] = []
 
         # Build provider lookup map
         provider_map = {p.name: p for p in self.providers}
+
+        def _record_outcome(provider: str, kind: str) -> None:
+            bucket = self.provider_outcomes.setdefault(provider, {"success": 0, "empty": 0, "error": 0})
+            bucket[kind] += 1
+
+        def _record_fallback_reason(reason: str) -> None:
+            self.fallback_reasons[reason] = self.fallback_reasons.get(reason, 0) + 1
 
         while True:
             # Select next provider
@@ -199,6 +256,9 @@ class SearchService:
 
             # Skip providers with open circuits (fixed order mode)
             if self.router is None and not self._is_provider_available(provider.name):
+                reason = FallbackReason.CIRCUIT_OPEN
+                route_trace.append({"provider": provider.name, "result": "skipped", "reason": reason})
+                _record_fallback_reason(reason)
                 errors.append(
                     SearchResponse.error(
                         query=request.query,
@@ -219,37 +279,69 @@ class SearchService:
 
                 if response.is_success:
                     self.health_manager.record_success(provider.name)
+                    _record_outcome(provider.name, "success")
                     if self.router is not None:
                         self.router.record_result(provider.name, True, response.latency_ms)
                         self.router.set_circuit_closed(provider.name)
                     self.last_used_provider = provider.name
-                    if len(errors) > 0:
+                    route_trace.append({"provider": provider.name, "result": "success", "count": len(response.results)})
+                    # A real fallback means we tried more than one provider and
+                    # used a later one (errors OR empties can both cause it).
+                    if len(tried_providers) > 1:
                         self.total_fallbacks += 1
-                    # Store in cache for future repeated queries
+                    # Store in cache for future repeated queries.
+                    # Only SUCCESS (non-empty) is cached; EMPTY/ERROR never.
                     self._put_in_cache(request, response)
+                    # Attach internal route trace (additive; no secrets).
+                    response.extra["route_trace"] = route_trace
                     # Jev shadow: best-effort, non-blocking, never affects
                     # ranking or result set.
                     self._fire_jev_shadow(request, response)
                     return response
-                else:
-                    # Provider returned an error response
-                    self.health_manager.record_failure(
+
+                if response.is_empty:
+                    # Soft miss: provider completed the search but had no
+                    # results. It is NOT a hard failure: do not trip the
+                    # circuit and do not count it as an error.
+                    self.health_manager.record_empty(provider.name)
+                    _record_outcome(provider.name, "empty")
+                    route_trace.append({"provider": provider.name, "result": "empty"})
+                    _record_fallback_reason(FallbackReason.EMPTY_RESULT)
+                    empties.append(response)
+                    continue
+
+                # Hard error response (transport / auth / rate-limit / parser drift)
+                self.health_manager.record_failure(
+                    provider.name,
+                    response.error_message or "Unknown error",
+                )
+                _record_outcome(provider.name, "error")
+                if self.router is not None:
+                    self.router.record_result(
                         provider.name,
-                        response.error_message or "Unknown error",
+                        False,
+                        response.latency_ms,
+                        response.error_type,
                     )
-                    if self.router is not None:
-                        self.router.record_result(
-                            provider.name,
-                            False,
-                            response.latency_ms,
-                            response.error_type,
-                        )
-                    errors.append(response)
+                reason = _fallback_reason_for_error(response.error_type)
+                route_trace.append(
+                    {
+                        "provider": provider.name,
+                        "result": "error",
+                        "reason": reason,
+                        "error_type": getattr(response.error_type, "value", None),
+                    }
+                )
+                _record_fallback_reason(reason)
+                errors.append(response)
 
             except asyncio.TimeoutError:
                 self.health_manager.record_failure(provider.name, "Timeout")
+                _record_outcome(provider.name, "error")
                 if self.router is not None:
                     self.router.record_result(provider.name, False, self.config.request_timeout * 1000, "timeout")
+                route_trace.append({"provider": provider.name, "result": "error", "reason": FallbackReason.TIMEOUT})
+                _record_fallback_reason(FallbackReason.TIMEOUT)
                 errors.append(
                     SearchResponse.error(
                         query=request.query,
@@ -261,8 +353,12 @@ class SearchService:
                 )
             except Exception as e:
                 self.health_manager.record_failure(provider.name, str(e))
+                _record_outcome(provider.name, "error")
                 if self.router is not None:
                     self.router.record_result(provider.name, False, 0, "unknown")
+                reason = FallbackReason.PROVIDER_ERROR
+                route_trace.append({"provider": provider.name, "result": "error", "reason": reason})
+                _record_fallback_reason(reason)
                 errors.append(
                     SearchResponse.error(
                         query=request.query,
@@ -273,15 +369,29 @@ class SearchService:
                     )
                 )
 
-        # All providers failed
+        # No provider returned results. Distinguish ALL-EMPTY (every backend
+        # completed the search but had no hits) from ALL-ERROR (every backend
+        # genuinely failed). A mix where at least one backend returned EMPTY
+        # also resolves to an aggregate EMPTY (the route_trace preserves the
+        # hard errors).
+        if empties:
+            # Aggregate empty: NOT a system error.
+            self.last_used_provider = "all"
+            resp = SearchResponse.empty(query=request.query, provider="all")
+            resp.extra["route_trace"] = route_trace
+            return resp
+
+        # All providers genuinely failed.
         self.total_errors += 1
-        return SearchResponse.error(
+        resp = SearchResponse.error(
             query=request.query,
             provider="all",
             error_type=StandardErrorCode.SEARCH_ALL_BACKENDS_FAILED,
             error_message=f"All {len(self.providers)} providers failed",
             retryable=True,
         )
+        resp.extra["route_trace"] = route_trace
+        return resp
 
     def get_health_report(self) -> dict[str, Any]:
         """Get a comprehensive health report for all providers."""
@@ -293,6 +403,8 @@ class SearchService:
             "last_used_provider": self.last_used_provider,
             "fallback_rate": (self.total_fallbacks / self.total_requests if self.total_requests > 0 else 0.0),
             "error_rate": (self.total_errors / self.total_requests if self.total_requests > 0 else 0.0),
+            "provider_outcomes": self.provider_outcomes,
+            "fallback_reasons": self.fallback_reasons,
         }
         # Include dynamic router health report if configured
         if self.router is not None:
@@ -311,6 +423,8 @@ class SearchService:
         self.total_fallbacks = 0
         self.total_errors = 0
         self.last_used_provider = None
+        self.provider_outcomes.clear()
+        self.fallback_reasons.clear()
 
     def _fire_jev_shadow(self, request: SearchRequest, response: SearchResponse) -> None:
         """Kick off a non-blocking Jev shadow recording for top-N results.
@@ -398,9 +512,12 @@ def create_search_service_from_config(
     providers = build_default_search_providers(config)
 
     service_config = SearchServiceConfig(
-        circuit_failure_threshold=getattr(config, "circuit_failure_threshold", 5),
-        circuit_recovery_time=getattr(config, "circuit_recovery_time", 60),
-        request_timeout=getattr(config, "search_timeout", 30.0),
+        circuit_failure_threshold=getattr(config, "search_circuit_failure_threshold", 5),
+        circuit_recovery_time=getattr(config, "search_circuit_recovery_time", 60),
+        # Config exposes request_timeout (seconds). There is no standalone
+        # `search_timeout`; the previous getattr("search_timeout", 30.0)
+        # silently shadowed the configured request_timeout.
+        request_timeout=float(getattr(config, "request_timeout", 30.0)),
     )
 
     # Create dynamic provider router with health-based scoring.
