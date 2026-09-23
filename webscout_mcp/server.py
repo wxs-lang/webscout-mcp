@@ -186,7 +186,10 @@ def create_server(config: Config | None = None) -> MCPServer:
         max_results = max(1, min(max_results, 25))
         from .search_provider import SearchRequest
 
-        # Try new SearchService first, fall back to old SearchEngine
+        # Phase 3 cutover: SearchService is the sole production authority when
+        # initialized. EMPTY / ERROR / STOP are final outcomes — we do NOT call
+        # legacy SearchEngine a second time. Legacy is only a startup fallback
+        # when search_service is None.
         if search_service is not None:
             try:
                 request = SearchRequest(
@@ -198,36 +201,42 @@ def create_server(config: Config | None = None) -> MCPServer:
                 response = await search_service.search(request)
                 if response.is_success:
                     results = response.results
+                    status = "success"
+                    error_block = None
+                elif response.is_empty:
+                    results = []
+                    status = "empty"
+                    error_block = None
                 else:
-                    # Fall back to old SearchEngine
-                    log.warning(
-                        "SearchService returned error, falling back to SearchEngine",
-                        extra={"error": response.error_message},
-                    )
-                    results = await search_engine.search(
-                        query=query,
-                        max_results=max_results,
-                        region=region,
-                        safe_search=safe_search,
-                    )
-            except Exception as exc:
-                log.warning(
-                    "SearchService failed, falling back to SearchEngine",
-                    extra={"error": str(exc)},
-                )
-                results = await search_engine.search(
-                    query=query,
-                    max_results=max_results,
-                    region=region,
-                    safe_search=safe_search,
-                )
+                    results = []
+                    status = "error"
+                    error_block = {
+                        "code": getattr(response.error_type, "value", "SEARCH_BACKEND_FAILED"),
+                        "message": response.error_message or "Search failed",
+                        "retryable": bool(response.retryable),
+                    }
+            except Exception as exc:  # noqa: BLE001
+                # Unexpected SearchService failure: safe error response, no
+                # legacy second search, no traceback / credential leakage.
+                log.warning("SearchService raised unexpected error", extra={"error": str(exc)})
+                results = []
+                status = "error"
+                error_block = {
+                    "code": "SYSTEM_ERROR",
+                    "message": "Search service encountered an unexpected error",
+                    "retryable": True,
+                }
         else:
+            # Startup-level legacy fallback only.
             results = await search_engine.search(
                 query=query,
                 max_results=max_results,
                 region=region,
                 safe_search=safe_search,
             )
+            status = "success" if results else "empty"
+            error_block = None
+
         output = [
             {
                 "position": r.position,
@@ -238,11 +247,15 @@ def create_server(config: Config | None = None) -> MCPServer:
             }
             for r in results
         ]
-        return json.dumps(
-            {"query": query, "count": len(output), "results": output},
-            ensure_ascii=False,
-            indent=2,
-        )
+        payload = {
+            "query": query,
+            "count": len(output),
+            "results": output,
+            "status": status,
+        }
+        if error_block is not None:
+            payload["error"] = error_block
+        return json.dumps(payload, ensure_ascii=False, indent=2)
 
     @mcp.tool()
     async def web_fetch(
@@ -345,7 +358,9 @@ def create_server(config: Config | None = None) -> MCPServer:
         # Build unified health report
         unified_report: dict = {
             "active_search_path": "SearchService" if search_service is not None else "SearchEngine (legacy)",
-            "fallback_engine_enabled": search_service is not None,
+            # Legacy engine is ONLY a startup fallback when SearchService failed
+            # to initialize. It is never invoked per-request after Phase 3.
+            "legacy_engine_runtime_fallback": search_service is None,
         }
 
         # Primary: SearchService health (the actual active search path)
