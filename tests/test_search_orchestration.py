@@ -514,7 +514,6 @@ class _FakeLegacyEngine:
         return {"legacy": True}
 
 
-
 def _tool_text(out):
     """Extract text from call_tool result across mcp SDK versions."""
     # tuple/list form: (content_blocks, meta)
