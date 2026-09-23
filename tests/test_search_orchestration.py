@@ -514,6 +514,23 @@ class _FakeLegacyEngine:
         return {"legacy": True}
 
 
+
+def _tool_text(out):
+    """Extract text from call_tool result across mcp SDK versions."""
+    # tuple/list form: (content_blocks, meta)
+    if isinstance(out, (tuple, list)):
+        blocks = out[0]
+        return blocks[0].text
+    # CallToolResult object
+    content = getattr(out, "content", None)
+    if content:
+        return content[0].text
+    output = getattr(out, "output", None)
+    if output:
+        return output
+    return str(out)
+
+
 def _make_server(search_svc, legacy):
     """Build an MCPServer with injected search_service / legacy engine."""
     with (
@@ -532,7 +549,7 @@ async def test_server_success_no_legacy_call():
     legacy = _FakeLegacyEngine()
     server = _make_server(svc, legacy)
     out = await server.call_tool("web_search", {"query": "hello"})
-    data = json.loads(out[0][0].text)
+    data = json.loads(_tool_text(out))
     assert data["status"] == "success"
     assert data["count"] == 3
     assert svc.calls == 1
@@ -545,7 +562,7 @@ async def test_server_empty_no_legacy_call():
     legacy = _FakeLegacyEngine()
     server = _make_server(svc, legacy)
     out = await server.call_tool("web_search", {"query": "zzz"})
-    data = json.loads(out[0][0].text)
+    data = json.loads(_tool_text(out))
     assert data["status"] == "empty"
     assert data["count"] == 0
     assert legacy.calls == 0
@@ -557,7 +574,7 @@ async def test_server_error_no_legacy_call():
     legacy = _FakeLegacyEngine()
     server = _make_server(svc, legacy)
     out = await server.call_tool("web_search", {"query": "x"})
-    data = json.loads(out[0][0].text)
+    data = json.loads(_tool_text(out))
     assert data["status"] == "error"
     assert "error" in data
     assert data["count"] == 0
@@ -570,7 +587,7 @@ async def test_server_stop_no_legacy_call():
     legacy = _FakeLegacyEngine()
     server = _make_server(svc, legacy)
     out = await server.call_tool("web_search", {"query": "!!"})
-    data = json.loads(out[0][0].text)
+    data = json.loads(_tool_text(out))
     assert data["status"] == "error"
     assert legacy.calls == 0
 
@@ -581,7 +598,7 @@ async def test_server_unexpected_exception_safe_error_no_legacy():
     legacy = _FakeLegacyEngine()
     server = _make_server(svc, legacy)
     out = await server.call_tool("web_search", {"query": "x"})
-    data = json.loads(out[0][0].text)
+    data = json.loads(_tool_text(out))
     assert data["status"] == "error"
     assert data["error"]["code"] == "SYSTEM_ERROR"
     assert "boom" not in data["error"]["message"]
@@ -600,7 +617,7 @@ async def test_server_none_search_service_uses_legacy():
 
         server = create_server(Config())
     out = await server.call_tool("web_search", {"query": "hi"})
-    data = json.loads(out[0][0].text)
+    data = json.loads(_tool_text(out))
     assert data["count"] == 2
     assert legacy.calls == 1
 
@@ -611,7 +628,7 @@ async def test_server_old_output_keys_present():
     legacy = _FakeLegacyEngine()
     server = _make_server(svc, legacy)
     out = await server.call_tool("web_search", {"query": "hi"})
-    data = json.loads(out[0][0].text)
+    data = json.loads(_tool_text(out))
     assert "query" in data
     assert "count" in data
     assert "results" in data
