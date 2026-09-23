@@ -25,7 +25,7 @@ The MCP server currently exposes these **11 tools**:
 
 | Tool | Description | Stability |
 |------|-------------|-----------|
-| `web_search` | Multi-backend web search with result merging | ✅ Stable |
+| `web_search` | Self-healing multi-provider search with deterministic recovery and automatic fallback | ✅ Stable |
 | `web_fetch` | Fetch a URL and return one window of extracted main content, with progressive continuation (`start_char`) | ✅ Stable |
 | `web_crawl` | Concurrent website crawling with depth limits | 🔶 Beta |
 | `web_extract` | Structured content extraction with CSS selectors | ✅ Stable |
@@ -42,7 +42,7 @@ The MCP server currently exposes these **11 tools**:
 ## ✨ Features
 
 ### 🔍 Core Web Tools
-- **Multi-backend search** — Bing, DuckDuckGo, Google, Brave HTML with automatic failover and result merging
+- **Self-healing multi-provider search** — Bing, DuckDuckGo, SearXNG, Tavily with health-based ranking, deterministic recovery, and automatic fallback
 - **Smart content extraction** — trafilatura + readability-lxml + html2text fallback, clean article content
 - **Concurrent crawler** — BFS crawl with depth/page limits, robots.txt compliance, retry on failures
 - **Structured data extraction** — CSS selectors, attributes, regex extraction

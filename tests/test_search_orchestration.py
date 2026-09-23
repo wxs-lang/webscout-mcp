@@ -631,3 +631,88 @@ async def test_server_old_output_keys_present():
     assert "query" in data
     assert "count" in data
     assert "results" in data
+
+
+# ---------------------------------------------------------------------------
+# v1.4.0 RC-1: P0 correctness regressions
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_stop_recorded_exactly_once():
+    """A single INVALID_QUERY must count reason/action/execution exactly once."""
+    svc = _svc(
+        [
+            ("a", lambda r: _err(SearchRecoveryReason.INVALID_QUERY, provider="a")),
+            ("b", lambda r: _ok(provider="b")),
+        ]
+    )
+    resp = await svc.search(_req())
+    assert resp.error_type == StandardErrorCode.SEARCH_INVALID_QUERY
+    assert svc.providers[1].calls == 0
+    assert svc.recovery_reasons.get("INVALID_QUERY") == 1
+    assert svc.recovery_actions.get("STOP") == 1
+    assert svc.recovery_execution.get("STOP", {}).get("stopped") == 1
+
+
+@pytest.mark.asyncio
+async def test_empty_query_zero_provider_calls():
+    svc = _svc([("a", lambda r: _ok(provider="a")), ("b", lambda r: _ok(provider="b"))])
+    resp = await svc.search(SearchRequest(query="", max_results=5))
+    assert not resp.is_success
+    assert resp.error_type == StandardErrorCode.SEARCH_INVALID_QUERY
+    assert svc.providers[0].calls == 0
+    assert svc.providers[1].calls == 0
+    assert svc.recovery_reasons.get("INVALID_QUERY") == 1
+    assert svc.recovery_execution.get("STOP", {}).get("stopped") == 1
+    # route_trace must not fake a provider call.
+    trace = resp.extra.get("route_trace", [])
+    assert all("provider" not in e or e.get("stage") == "request_validation" for e in trace)
+
+
+@pytest.mark.asyncio
+async def test_whitespace_query_zero_provider_calls():
+    svc = _svc([("a", lambda r: _ok(provider="a"))])
+    resp = await svc.search(SearchRequest(query="   ", max_results=5))
+    assert resp.error_type == StandardErrorCode.SEARCH_INVALID_QUERY
+    assert svc.providers[0].calls == 0
+
+
+@pytest.mark.asyncio
+async def test_result_available_not_in_fallback_reasons():
+    svc = _svc([("a", lambda r: _ok(provider="a"))])
+    await svc.search(_req("q_first_success"))
+    assert svc.total_fallbacks == 0
+    assert "RESULT_AVAILABLE" not in svc.fallback_reasons
+
+
+@pytest.mark.asyncio
+async def test_fallback_reasons_only_try_next():
+    svc = _svc(
+        [
+            ("a", lambda r: _err(SearchRecoveryReason.TIMEOUT, provider="a")),
+            ("b", lambda r: _ok(provider="b")),
+        ]
+    )
+    await svc.search(_req("q_fb_reason"))
+    assert svc.fallback_reasons.get("TIMEOUT") == 1
+    assert "RESULT_AVAILABLE" not in svc.fallback_reasons
+    assert "ACCEPT" not in svc.fallback_reasons
+
+
+@pytest.mark.asyncio
+async def test_empty_query_via_mcp_returns_invalid_query():
+    """web_search(query='') through the server returns SEARCH_INVALID_QUERY."""
+    from webscout_mcp.config import Config
+    from webscout_mcp.server import create_server
+
+    legacy = _FakeLegacyEngine()
+    with patch("webscout_mcp.server.SearchEngine", return_value=legacy):
+        server = create_server(Config())
+    out = await server.call_tool("web_search", {"query": ""})
+    data = json.loads(_tool_text(out))
+    assert data["status"] == "error"
+    assert data["count"] == 0
+    assert data["results"] == []
+    assert data["error"]["code"] == "SEARCH_INVALID_QUERY"
+    assert legacy.calls == 0

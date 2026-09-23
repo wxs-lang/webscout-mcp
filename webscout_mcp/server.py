@@ -180,8 +180,10 @@ def create_server(config: Config | None = None) -> MCPServer:
     ) -> str:
         """Search the web and return structured results.
 
-        Uses Bing first, automatically falls back to DuckDuckGo HTML if Bing
-        fails or returns nothing. No API key required.
+        SearchService uses health-based provider ranking, deterministic
+        recovery classification, and automatic fallback across registered
+        search providers. Empty/invalid queries are rejected without network
+        calls. No API key required for the default HTML providers.
         """
         max_results = max(1, min(max_results, 25))
         from .search_provider import SearchRequest
