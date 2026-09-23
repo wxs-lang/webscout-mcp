@@ -321,7 +321,34 @@ class SearchService:
             if self.router is not None:
                 self.router.record_result(provider_name, False, latency_ms, _router_error_label(reason))
 
-        stop_requested = False
+        # Empty / whitespace query is a request-level STOP: 0 provider network,
+        # 0 health/circuit mutation, 0 Jev. Goes through the same Decision path.
+        if not request.query:
+            invalid_resp = SearchResponse.error(
+                query=request.query,
+                provider="request",
+                error_type=StandardErrorCode.SEARCH_INVALID_QUERY,
+                error_message="Search query must not be empty",
+                retryable=False,
+                failure_kind=SearchFailureKind.INVALID_REQUEST,
+            )
+            decision = classify_search_recovery(invalid_resp)
+            _record_recovery(decision)
+            _record_execution(decision.action, "stopped")
+            route_trace.append(
+                {
+                    "stage": "request_validation",
+                    "result": "error",
+                    "recovery_reason": decision.reason.value,
+                    "recommended_action": decision.action.value,
+                    "execution_outcome": "stopped",
+                }
+            )
+            invalid_resp.extra["route_trace"] = route_trace
+            invalid_resp.extra["recovery_reason"] = decision.reason.value
+            return invalid_resp
+
+        final_decision: SearchRecoveryDecision | None = None
 
         while True:
             name, provider, skip_reason = _next_candidate()
@@ -395,7 +422,8 @@ class SearchService:
             decision = classify_search_recovery(response)
             _record_recovery(decision)
             _apply_health(name, decision, response.latency_ms)
-            self.fallback_reasons[decision.reason.value] = self.fallback_reasons.get(decision.reason.value, 0) + 1
+            # fallback_reasons only records why we LEFT a candidate / moved to
+            # the next provider. ACCEPT and STOP are not "fallbacks".
 
             if decision.action == SearchRecoveryAction.ACCEPT:
                 # RESULT_AVAILABLE only.
@@ -421,7 +449,9 @@ class SearchService:
             if decision.action == SearchRecoveryAction.STOP:
                 # Request-level failure (e.g. INVALID_QUERY): stop immediately,
                 # do not pollute provider health, do not try other providers.
-                stop_requested = True
+                # Save this decision as the final one so it is recorded exactly
+                # once (no re-classification in the finalizer).
+                final_decision = decision
                 _record_execution(decision.action, "stopped")
                 route_trace.append(
                     {
@@ -436,6 +466,8 @@ class SearchService:
                 break
 
             # TRY_NEXT_PROVIDER or NONE: move to the next eligible provider.
+            # This is the only provider-level path that counts as a fallback.
+            self.fallback_reasons[decision.reason.value] = self.fallback_reasons.get(decision.reason.value, 0) + 1
             outcome = (
                 "next_provider" if decision.action == SearchRecoveryAction.TRY_NEXT_PROVIDER else "no_action_continue"
             )
@@ -455,14 +487,11 @@ class SearchService:
             continue
 
         # --- finalizer drives production outcome ---
-        if stop_requested:
-            final_decision = SearchRecoveryDecision(
-                reason=SearchRecoveryReason.INVALID_QUERY,
-                action=SearchRecoveryAction.STOP,
-            )
-        else:
+        if final_decision is None:
             final_decision = classify_search_final_outcome(outcome_decisions)
-        _record_recovery(final_decision)
+            _record_recovery(final_decision)
+        # If final_decision was set by a provider STOP, it was already recorded
+        # in the loop; do not record a second time.
 
         if final_decision.action == SearchRecoveryAction.RETURN_EMPTY:
             self.last_used_provider = "all"
@@ -473,8 +502,9 @@ class SearchService:
             return resp
 
         if final_decision.action == SearchRecoveryAction.STOP:
+            # Provider-level STOP was already recorded in the loop. This block
+            # only assembles the final response; no second execution count.
             self.last_used_provider = "all"
-            _record_execution(final_decision.action, "stopped")
             resp = SearchResponse.error(
                 query=request.query,
                 provider="all",

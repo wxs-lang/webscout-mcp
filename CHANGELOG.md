@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - UNRELEASED (release candidate)
+
+Self-healing search core. No new MCP tools (still 11); `web_search` signature unchanged; response gains additive `status` / `error` fields.
+
+### Added
+- **Search SUCCESS / EMPTY / ERROR semantics**: EMPTY is a legitimate provider outcome (no results, no transport error) and no longer counts as a hard failure or opens a circuit.
+- **Search cache identity correctness**: cache key now includes `casefold(query)`, `max_results`, `safe_search`, `region`, `language`, `country`; different `safe_search` / `country` / `region` / `language` / `max_results` never share a cache entry.
+- **`SearchFailureKind`** (TIMEOUT / RATE_LIMITED / AUTH / PARSER / NETWORK / SERVER / CONFIG / PROVIDER / INVALID_REQUEST) as internal typed failure taxonomy.
+- **`SearchRecoveryDecision`** (`SearchRecoveryReason` / `SearchRecoveryAction`) with deterministic classifier and finalizer.
+- **Deterministic search recovery**: every provider outcome maps to ACCEPT / TRY_NEXT_PROVIDER / RETURN_EMPTY / RETURN_ERROR / STOP / NONE.
+- **Unified search recovery orchestration**: `SearchService.search()` is fully decision-driven; `SearchRecoveryDecision` is the single source of truth. Each provider is called at most once per request; no same-provider retry.
+- **SearchHealthManager as sole SEARCH circuit availability authority**; ProviderRouter owns ranking/latency/error metrics only.
+- **Legacy request-level double-search cutover**: when `SearchService` is initialized, `web_search` never falls back to the legacy `SearchEngine` per request (SUCCESS / EMPTY / ERROR / STOP / unexpected-exception all stay in SearchService). Legacy remains a startup-only fallback.
+- **`web_search` additive response fields**: `status` (`success` / `empty` / `error`) and `error` (only on error). `query` / `count` / `results` unchanged.
+- **`recovery_execution` observability**: per-action outcome counts.
+- **Empty / whitespace query validation**: rejected at the SearchService entry with `SEARCH_INVALID_QUERY`, 0 provider network / health / circuit / Jev calls.
+
+### Changed
+- Tavily / SearXNG / legacy HTML backends now emit typed `StandardErrorCode` + `SearchFailureKind` instead of bare strings (fixes `SearchResponse.to_dict()` crash on string `error_type`).
+- SearchService timeout now emits `SEARCH_TIMEOUT` (was incorrectly `FETCH_TIMEOUT`).
+- Legacy Bing/DDG/Google/Brave parser-zero-results now raise `SearchParseError` → `PARSER_FAILURE` (not EMPTY).
+- `fallback_reasons` only records reasons that actually caused a provider switch; `RESULT_AVAILABLE` / ACCEPT / STOP are excluded.
+- A single request-level STOP is recorded exactly once (no duplicate recovery/execution counts).
+
+### Security
+- Search route traces and error responses never include API keys, Authorization, Cookie, or credential-bearing headers.
+- SSRF guards, metadata sanitizer, and v1.3.0 Fetch Core behavior unchanged.
+
 ## [1.3.0] - 2026-09-21
 
 Self-healing fetch core. No new MCP tools (still 11); `web_fetch` gains one backwards-compatible parameter.

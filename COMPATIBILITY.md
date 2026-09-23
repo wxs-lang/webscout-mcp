@@ -1,8 +1,8 @@
 # Compatibility & Stability Promise
 
-> **Version**: v1.3.0
+> **Version**: v1.4.0 (release candidate)
 > **Status**: Frozen interfaces, backward-compatible
-> **Last updated**: 2026-09-21
+> **Last updated**: 2026-09-23
 
 This document defines the stable, frozen interfaces of webscout-mcp.
 These interfaces will not change in backwards-incompatible ways until
@@ -27,6 +27,17 @@ Search the web with automatic fallback across providers.
 - `safe_search` (boolean, optional, default=true): Safe search filter
 
 **Returns:** JSON string with structured search results.
+
+Stable fields (present on every response):
+- `query` (string): Echoed query
+- `count` (integer): Number of results returned
+- `results` (array): Search result objects
+
+**v1.4.0 additive fields** (backwards-compatible; old consumers may ignore):
+- `status` (string): `success`, `empty`, or `error`
+- `error` (object, only when `status="error"`): `{code, message, retryable?}`
+
+Empty/whitespace queries return `status="error"` with `code="SEARCH_INVALID_QUERY"` and make zero provider network calls. Internal route_trace is not exposed in the normal MCP response.
 
 #### `web_fetch`
 Fetch a single URL and extract main content, returning one window of the article plus a continuation block.
@@ -263,4 +274,4 @@ We follow [Semantic Versioning](https://semver.org/):
 - **MINOR** (0.x.0): New features, backwards-compatible
 - **PATCH** (0.0.x): Bug fixes, backwards-compatible
 
-Current frozen state: **v1.3.0**. Interfaces remain backward-compatible until v2.0.0.
+Current frozen state: **v1.4.0 (release candidate)**. Interfaces remain backward-compatible until v2.0.0.
