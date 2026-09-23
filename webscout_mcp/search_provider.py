@@ -42,6 +42,26 @@ class SearchStatus(str, Enum):
     ERROR = "error"
 
 
+class SearchFailureKind(str, Enum):
+    """Internal, deterministic failure category for a search provider.
+
+    Used by the SearchRecovery classifier. NOT part of the public MCP
+    response; it lives alongside error_type so we can distinguish
+    auth / rate-limit / parser / network / server without relying on
+    provider-specific strings.
+    """
+
+    TIMEOUT = "timeout"
+    RATE_LIMITED = "rate_limited"
+    AUTH = "auth"
+    PARSER = "parser"
+    NETWORK = "network"
+    SERVER = "server"
+    CONFIG = "config"
+    PROVIDER = "provider"
+    INVALID_REQUEST = "invalid_request"
+
+
 class ProviderHealthStatus(str, Enum):
     """Health status of a provider."""
 
@@ -136,6 +156,7 @@ class SearchResponse:
     error_type: StandardErrorCode | None = None
     error_message: str | None = None
     retryable: bool = False
+    failure_kind: SearchFailureKind | None = None
     extra: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -207,6 +228,7 @@ class SearchResponse:
         error_message: str = "",
         latency_ms: float = 0.0,
         retryable: bool | None = None,
+        failure_kind: SearchFailureKind | None = None,
     ) -> SearchResponse:
         """Create an error search response."""
         return cls(
@@ -218,6 +240,7 @@ class SearchResponse:
             error_type=error_type,
             error_message=error_message,
             retryable=retryable if retryable is not None else False,
+            failure_kind=failure_kind,
         )
 
     def to_dict(self) -> dict[str, Any]:

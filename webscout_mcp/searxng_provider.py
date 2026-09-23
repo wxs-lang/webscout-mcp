@@ -26,6 +26,7 @@ from .logging_config import get_logger
 from .search import SearchResult
 from .search_provider import (
     ProviderHealth,
+    SearchFailureKind,
     SearchProvider,
     SearchRequest,
     SearchResponse,
@@ -79,6 +80,7 @@ class SearXNGSearchProvider(SearchProvider):
                 query=request.query,
                 provider=self.name,
                 error_type=StandardErrorCode.SYSTEM_CONFIG_ERROR,
+                failure_kind=SearchFailureKind.CONFIG,
                 error_message="SEARXNG_BASE_URL not set",
                 latency_ms=self._measure_latency(start_time),
             )
@@ -104,6 +106,7 @@ class SearXNGSearchProvider(SearchProvider):
                     query=request.query,
                     provider=self.name,
                     error_type=StandardErrorCode.SEARCH_RATE_LIMITED,
+                    failure_kind=SearchFailureKind.RATE_LIMITED,
                     error_message="SearXNG rate limited",
                     latency_ms=self._measure_latency(start_time),
                     retryable=True,
@@ -116,6 +119,7 @@ class SearXNGSearchProvider(SearchProvider):
                     query=request.query,
                     provider=self.name,
                     error_type=StandardErrorCode.SEARCH_BACKEND_FAILED,
+                    failure_kind=SearchFailureKind.AUTH,
                     error_message="SearXNG denied JSON API access (403); enable formats on your instance",
                     latency_ms=self._measure_latency(start_time),
                 )
@@ -124,6 +128,7 @@ class SearXNGSearchProvider(SearchProvider):
                     query=request.query,
                     provider=self.name,
                     error_type=StandardErrorCode.SEARCH_BACKEND_FAILED,
+                    failure_kind=SearchFailureKind.SERVER,
                     error_message=f"SearXNG server error: {resp.status_code}",
                     latency_ms=self._measure_latency(start_time),
                     retryable=True,
@@ -160,6 +165,7 @@ class SearXNGSearchProvider(SearchProvider):
                 query=request.query,
                 provider=self.name,
                 error_type=StandardErrorCode.SEARCH_TIMEOUT,
+                failure_kind=SearchFailureKind.TIMEOUT,
                 error_message=f"SearXNG timed out after {self.timeout}s",
                 latency_ms=self._measure_latency(start_time),
                 retryable=True,
@@ -169,6 +175,7 @@ class SearXNGSearchProvider(SearchProvider):
                 query=request.query,
                 provider=self.name,
                 error_type=StandardErrorCode.SEARCH_BACKEND_FAILED,
+                failure_kind=SearchFailureKind.NETWORK,
                 error_message="Could not connect to SearXNG instance",
                 latency_ms=self._measure_latency(start_time),
                 retryable=True,
@@ -179,6 +186,7 @@ class SearXNGSearchProvider(SearchProvider):
                 query=request.query,
                 provider=self.name,
                 error_type=StandardErrorCode.SYSTEM_ERROR,
+                failure_kind=SearchFailureKind.PROVIDER,
                 error_message=str(e),
                 latency_ms=self._measure_latency(start_time),
                 retryable=True,
