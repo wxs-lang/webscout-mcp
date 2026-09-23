@@ -24,7 +24,7 @@ from bs4 import BeautifulSoup
 
 from .cache import Cache
 from .config import Config
-from .exceptions import AllBackendsFailedError, SearchError
+from .exceptions import AllBackendsFailedError, SearchError, SearchParseError
 from .logging_config import get_logger
 from .search_health import SearchHealthManager
 
@@ -158,7 +158,7 @@ class BingBackend(SearchBackend):
             raise SearchError(query, self.name, f"{type(exc).__name__}: {exc}") from exc
         results = await asyncio.to_thread(self._parse_results, response.text, max_results)
         if not results:
-            raise SearchError(query, self.name, "no results parsed from Bing HTML")
+            raise SearchParseError(query, self.name, "no results parsed from Bing HTML")
         return results
 
     @staticmethod
@@ -258,7 +258,7 @@ class DuckDuckGoHTMLBackend(SearchBackend):
             raise SearchError(query, self.name, f"{type(exc).__name__}: {exc}") from exc
         results = await asyncio.to_thread(self._parse_results, response.text, max_results)
         if not results:
-            raise SearchError(query, self.name, "no results parsed from DuckDuckGo HTML")
+            raise SearchParseError(query, self.name, "no results parsed from DuckDuckGo HTML")
         return results
 
     @staticmethod
@@ -365,7 +365,7 @@ class GoogleHTMLBackend(SearchBackend):
             raise SearchError(query, self.name, f"{type(exc).__name__}: {exc}") from exc
         results = await asyncio.to_thread(self._parse_results, response.text, max_results)
         if not results:
-            raise SearchError(query, self.name, "no results parsed from Google HTML")
+            raise SearchParseError(query, self.name, "no results parsed from Google HTML")
         return results
 
     @classmethod
@@ -469,7 +469,7 @@ class BraveHTMLBackend(SearchBackend):
             raise SearchError(query, self.name, f"{type(exc).__name__}: {exc}") from exc
         results = await asyncio.to_thread(self._parse_results, response.text, max_results)
         if not results:
-            raise SearchError(query, self.name, "no results parsed from Brave HTML")
+            raise SearchParseError(query, self.name, "no results parsed from Brave HTML")
         return results
 
     @classmethod
