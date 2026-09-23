@@ -154,6 +154,18 @@ def classify_circuit_open() -> SearchRecoveryDecision:
     )
 
 
+def classify_unavailable() -> SearchRecoveryDecision:
+    """A provider name appears in router ranking but is not in the provider map.
+
+    Treated as a stale registry entry: skip and continue, never break the
+    whole search because of one missing provider.
+    """
+    return SearchRecoveryDecision(
+        reason=SearchRecoveryReason.UNAVAILABLE,
+        action=SearchRecoveryAction.TRY_NEXT_PROVIDER,
+    )
+
+
 def classify_search_final_outcome(
     outcomes: list[SearchRecoveryDecision],
 ) -> SearchRecoveryDecision:

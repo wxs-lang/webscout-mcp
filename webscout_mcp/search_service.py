@@ -32,9 +32,12 @@ from .search_provider import (
 )
 from .search_recovery import (
     SearchRecoveryAction,
+    SearchRecoveryDecision,
+    SearchRecoveryReason,
     classify_circuit_open,
     classify_search_final_outcome,
     classify_search_recovery,
+    classify_unavailable,
 )
 
 log = get_logger(__name__)
@@ -58,7 +61,12 @@ class FallbackReason:
 
 
 def _fallback_reason_for_error(error_type: Any) -> str:
-    """Map a StandardErrorCode to a deterministic fallback reason."""
+    """DEPRECATED: kept for backward-compatible references only.
+
+    Phase 3 production fallback reasons come directly from
+    ``SearchRecoveryDecision.reason.value``. This function must not be used
+    as an authoritative mapping in the search loop.
+    """
     name = getattr(error_type, "value", str(error_type)).upper()
     if "TIMEOUT" in name:
         return FallbackReason.TIMEOUT
@@ -69,6 +77,24 @@ def _fallback_reason_for_error(error_type: Any) -> str:
     if "PARSER" in name:
         return FallbackReason.PARSER_FAILURE
     return FallbackReason.PROVIDER_ERROR
+
+
+def _router_error_label(reason: SearchRecoveryReason) -> str:
+    """Map a recovery reason to the ProviderRouter error taxonomy.
+
+    Used ONLY for Router ranking metrics (error_429 / error_403 /
+    error_timeout / error_connection / error_other). The Router label never
+    feeds back into SearchRecovery.
+    """
+    if reason == SearchRecoveryReason.RATE_LIMITED:
+        return "rate_limited"
+    if reason == SearchRecoveryReason.AUTH_ERROR:
+        return "forbidden"
+    if reason == SearchRecoveryReason.TIMEOUT:
+        return "timeout"
+    if reason == SearchRecoveryReason.NETWORK_FAILURE:
+        return "connection_error"
+    return "other"
 
 
 @dataclass
@@ -146,7 +172,12 @@ class SearchService:
         # recovery classifier observability
         self.recovery_reasons: dict[str, int] = {}
         self.recovery_actions: dict[str, int] = {}
+        # DEPRECATED: Phase 2 recorded unconditional "agree"; Phase 3 production
+        # is driven by the decision itself, so this metric is no longer
+        # meaningful. Kept as a zeroed field for backward-compatible reports.
         self.recovery_agreement: dict[str, int] = {"agree": 0, "disagree": 0}
+        # Phase 3: actual execution outcomes keyed by action -> outcome -> count.
+        self.recovery_execution: dict[str, dict[str, int]] = {}
 
         # Search result cache (in-memory, TTL-based)
         self._search_cache: dict[str, tuple[float, SearchResponse]] = {}
@@ -202,265 +233,248 @@ class SearchService:
         return backend is not None and backend.can_use()
 
     async def search(self, request: SearchRequest) -> SearchResponse:
-        """Execute a search with fallback and circuit breaking.
+        """Execute a search driven by SearchRecoveryDecision (Phase 3).
 
-        If a dynamic router is configured, uses health-based provider selection.
-        Otherwise, tries providers in fixed order. Providers with open circuits
-        are skipped. If all providers fail, returns a standardized error response.
-
-        Args:
-            request: The search request.
-
-        Returns:
-            SearchResponse with results or error information.
+        Production flow:
+            candidate -> provider outcome -> classify_search_recovery()
+            -> SearchRecoveryDecision -> execute(action)
+        The decision is the single source of truth: there is no parallel
+        if/else routing. Each provider is called at most once per request.
         """
         self.total_requests += 1
 
-        # Check cache first
+        # Cache hit is the shortest path: 0 provider HTTP, 0 recovery, 0 Jev.
         cached = self._get_from_cache(request)
         if cached is not None:
             return cached
 
-        errors: list[SearchResponse] = []
-        empties: list[SearchResponse] = []
         tried_providers: list[str] = []
         route_trace: list[dict[str, Any]] = []
-        outcome_decisions: list[Any] = []  # SearchRecoveryDecision per attempted/skipped provider
-
-        # Build provider lookup map
+        outcome_decisions: list[SearchRecoveryDecision] = []
         provider_map = {p.name: p for p in self.providers}
 
         def _record_outcome(provider: str, kind: str) -> None:
             bucket = self.provider_outcomes.setdefault(provider, {"success": 0, "empty": 0, "error": 0})
             bucket[kind] += 1
 
-        def _record_fallback_reason(reason: str) -> None:
-            self.fallback_reasons[reason] = self.fallback_reasons.get(reason, 0) + 1
-
-        def _record_recovery(decision: Any) -> None:
+        def _record_recovery(decision: SearchRecoveryDecision) -> None:
             outcome_decisions.append(decision)
             self.recovery_reasons[decision.reason.value] = self.recovery_reasons.get(decision.reason.value, 0) + 1
             self.recovery_actions[decision.action.value] = self.recovery_actions.get(decision.action.value, 0) + 1
 
-        def _select_next() -> tuple[Any | None, list[str]]:
-            """Pick the next provider, enforcing SearchHealthManager circuit.
+        def _record_execution(action: SearchRecoveryAction, outcome: str) -> None:
+            bucket = self.recovery_execution.setdefault(action.value, {})
+            bucket[outcome] = bucket.get(outcome, 0) + 1
 
-            Returns (provider, skipped_open_names). For dynamic routing the
-            router ranks candidates, but SearchHealthManager.can_use() is the
-            single availability authority: a router-top provider with an open
-            circuit is skipped (recorded) and the next eligible one is used.
+        def _next_candidate() -> tuple[str | None, Any | None, str | None]:
+            """Return (name, provider_or_None, skip_reason_or_None).
+
+            skip_reason in {None, "circuit_open", "unavailable"}.
+            SearchHealthManager.can_use() is the sole availability authority.
             """
-            skipped: list[str] = []
             if self.router is not None:
                 ranked = self.router.get_ranked_providers(capability=ProviderCapability.SEARCH)
                 for score in ranked:
                     name = score.name
                     if name in tried_providers:
                         continue
+                    if name not in provider_map:
+                        return name, None, "unavailable"
                     if not self._is_provider_available(name):
-                        skipped.append(name)
-                        continue
-                    return provider_map.get(name), skipped
-                return None, skipped
-            # Fixed order
+                        return name, None, "circuit_open"
+                    return name, provider_map[name], None
+                return None, None, None
             for p in self.providers:
                 if p.name in tried_providers:
                     continue
                 if not self._is_provider_available(p.name):
-                    skipped.append(p.name)
-                    continue
-                return p, skipped
-            return None, skipped
+                    return p.name, None, "circuit_open"
+                return p.name, p, None
+            return None, None, None
+
+        def _apply_health(provider_name: str, decision: SearchRecoveryDecision, latency_ms: float) -> None:
+            """Mutate SearchHealthManager + Router metrics according to reason.
+
+            INVALID_QUERY is request-level: it must NOT pollute provider health.
+            EMPTY is neutral: no Router success/error, no circuit.
+            """
+            reason = decision.reason
+            if reason == SearchRecoveryReason.INVALID_QUERY:
+                return
+            if reason == SearchRecoveryReason.RESULT_AVAILABLE:
+                self.health_manager.record_success(provider_name)
+                _record_outcome(provider_name, "success")
+                if self.router is not None:
+                    self.router.record_result(provider_name, True, latency_ms)
+                return
+            if reason == SearchRecoveryReason.EMPTY_RESULT:
+                self.health_manager.record_empty(provider_name)
+                _record_outcome(provider_name, "empty")
+                # EMPTY is neutral for Router: neither success nor error.
+                return
+            if reason in (SearchRecoveryReason.CIRCUIT_OPEN, SearchRecoveryReason.UNAVAILABLE):
+                # No real provider call; no health mutation.
+                return
+            # All hard-failure reasons: record provider failure.
+            self.health_manager.record_failure(provider_name, reason.value)
+            _record_outcome(provider_name, "error")
+            if self.router is not None:
+                self.router.record_result(provider_name, False, latency_ms, _router_error_label(reason))
+
+        stop_requested = False
 
         while True:
-            provider, skipped_open = _select_next()
-            for name in skipped_open:
-                if name in tried_providers:
-                    continue
-                tried_providers.append(name)
+            name, provider, skip_reason = _next_candidate()
+            if name is None:
+                break
+            tried_providers.append(name)
+
+            # --- skipped candidates (0 network) ---
+            if skip_reason == "circuit_open":
                 decision = classify_circuit_open()
                 _record_recovery(decision)
+                _record_execution(decision.action, "circuit_skipped")
+                self.fallback_reasons[decision.reason.value] = self.fallback_reasons.get(decision.reason.value, 0) + 1
                 route_trace.append(
                     {
                         "provider": name,
                         "result": "skipped",
-                        "reason": FallbackReason.CIRCUIT_OPEN,
+                        "reason": decision.reason.value,
                         "recovery_reason": decision.reason.value,
                         "recommended_action": decision.action.value,
+                        "execution_outcome": "circuit_skipped",
                     }
                 )
-                _record_fallback_reason(FallbackReason.CIRCUIT_OPEN)
+                continue
+            if skip_reason == "unavailable":
+                decision = classify_unavailable()
+                _record_recovery(decision)
+                _record_execution(decision.action, "unavailable_skipped")
+                self.fallback_reasons[decision.reason.value] = self.fallback_reasons.get(decision.reason.value, 0) + 1
+                route_trace.append(
+                    {
+                        "provider": name,
+                        "result": "skipped",
+                        "reason": decision.reason.value,
+                        "recovery_reason": decision.reason.value,
+                        "recommended_action": decision.action.value,
+                        "execution_outcome": "unavailable_skipped",
+                    }
+                )
+                continue
+
+            # --- real provider call (at most once per provider per request) ---
             if provider is None:
-                break
-
-            tried_providers.append(provider.name)
-
+                # Defensive: should not happen because skip_reason handles it.
+                continue
             try:
-                # Execute with timeout
                 response = await asyncio.wait_for(
                     provider.search(request),
                     timeout=self.config.request_timeout,
                 )
-
-                if response.is_success:
-                    self.health_manager.record_success(provider.name)
-                    _record_outcome(provider.name, "success")
-                    if self.router is not None:
-                        self.router.record_result(provider.name, True, response.latency_ms)
-                        self.router.set_circuit_closed(provider.name)
-                    self.last_used_provider = provider.name
-                    decision = classify_search_recovery(response)
-                    _record_recovery(decision)
-                    route_trace.append(
-                        {
-                            "provider": provider.name,
-                            "result": "success",
-                            "count": len(response.results),
-                            "recovery_reason": decision.reason.value,
-                            "recommended_action": decision.action.value,
-                        }
-                    )
-                    # Production behavior agrees with ACCEPT.
-                    self.recovery_agreement["agree"] += 1
-                    # A real fallback means we tried more than one provider and
-                    # used a later one (errors OR empties can both cause it).
-                    if len(tried_providers) > 1:
-                        self.total_fallbacks += 1
-                    # Store in cache for future repeated queries.
-                    # Only SUCCESS (non-empty) is cached; EMPTY/ERROR never.
-                    self._put_in_cache(request, response)
-                    # Attach internal route trace (additive; no secrets).
-                    response.extra["route_trace"] = route_trace
-                    # Jev shadow: best-effort, non-blocking, never affects
-                    # ranking or result set.
-                    self._fire_jev_shadow(request, response)
-                    return response
-
-                if response.is_empty:
-                    # Soft miss: provider completed the search but had no
-                    # results. It is NOT a hard failure: do not trip the
-                    # circuit and do not count it as an error.
-                    self.health_manager.record_empty(provider.name)
-                    _record_outcome(provider.name, "empty")
-                    decision = classify_search_recovery(response)
-                    _record_recovery(decision)
-                    route_trace.append(
-                        {
-                            "provider": provider.name,
-                            "result": "empty",
-                            "recovery_reason": decision.reason.value,
-                            "recommended_action": decision.action.value,
-                        }
-                    )
-                    # Production continues to next provider -> agrees with TRY_NEXT.
-                    self.recovery_agreement["agree"] += 1
-                    _record_fallback_reason(FallbackReason.EMPTY_RESULT)
-                    empties.append(response)
-                    continue
-
-                # Hard error response (transport / auth / rate-limit / parser drift)
-                self.health_manager.record_failure(
-                    provider.name,
-                    response.error_message or "Unknown error",
-                )
-                _record_outcome(provider.name, "error")
-                if self.router is not None:
-                    self.router.record_result(
-                        provider.name,
-                        False,
-                        response.latency_ms,
-                        response.error_type,
-                    )
-                decision = classify_search_recovery(response)
-                _record_recovery(decision)
-                reason = _fallback_reason_for_error(response.error_type)
-                route_trace.append(
-                    {
-                        "provider": provider.name,
-                        "result": "error",
-                        "reason": reason,
-                        "error_type": getattr(response.error_type, "value", None),
-                        "failure_kind": getattr(response.failure_kind, "value", None),
-                        "recovery_reason": decision.reason.value,
-                        "recommended_action": decision.action.value,
-                    }
-                )
-                # Production continues to next provider -> agrees with TRY_NEXT.
-                self.recovery_agreement["agree"] += 1
-                _record_fallback_reason(reason)
-                errors.append(response)
-
             except asyncio.TimeoutError:
-                self.health_manager.record_failure(provider.name, "Timeout")
-                _record_outcome(provider.name, "error")
-                if self.router is not None:
-                    self.router.record_result(provider.name, False, self.config.request_timeout * 1000, "timeout")
-                timeout_resp = SearchResponse.error(
+                response = SearchResponse.error(
                     query=request.query,
-                    provider=provider.name,
+                    provider=name,
                     error_type=StandardErrorCode.SEARCH_TIMEOUT,
-                    error_message=f"Timeout for {provider.name}",
+                    error_message=f"Timeout for {name}",
                     retryable=True,
+                    failure_kind=SearchFailureKind.TIMEOUT,
                 )
-                timeout_resp.failure_kind = SearchFailureKind.TIMEOUT
-                decision = classify_search_recovery(timeout_resp)
-                _record_recovery(decision)
-                route_trace.append(
-                    {
-                        "provider": provider.name,
-                        "result": "error",
-                        "reason": FallbackReason.TIMEOUT,
-                        "recovery_reason": decision.reason.value,
-                        "recommended_action": decision.action.value,
-                    }
-                )
-                self.recovery_agreement["agree"] += 1
-                _record_fallback_reason(FallbackReason.TIMEOUT)
-                errors.append(timeout_resp)
-            except Exception as e:
-                self.health_manager.record_failure(provider.name, str(e))
-                _record_outcome(provider.name, "error")
-                if self.router is not None:
-                    self.router.record_result(provider.name, False, 0, "unknown")
-                err_resp = SearchResponse.error(
+            except Exception as e:  # noqa: BLE001
+                response = SearchResponse.error(
                     query=request.query,
-                    provider=provider.name,
+                    provider=name,
                     error_type=StandardErrorCode.SEARCH_BACKEND_FAILED,
                     error_message=f"{type(e).__name__}: {e}",
                     retryable=True,
+                    failure_kind=SearchFailureKind.PROVIDER,
                 )
-                err_resp.failure_kind = SearchFailureKind.PROVIDER
-                decision = classify_search_recovery(err_resp)
-                _record_recovery(decision)
-                reason = FallbackReason.PROVIDER_ERROR
+
+            # --- classify ONCE, then execute ---
+            decision = classify_search_recovery(response)
+            _record_recovery(decision)
+            _apply_health(name, decision, response.latency_ms)
+            self.fallback_reasons[decision.reason.value] = self.fallback_reasons.get(decision.reason.value, 0) + 1
+
+            if decision.action == SearchRecoveryAction.ACCEPT:
+                # RESULT_AVAILABLE only.
+                self.last_used_provider = name
+                if len(tried_providers) > 1:
+                    self.total_fallbacks += 1
+                _record_execution(decision.action, "accepted")
                 route_trace.append(
                     {
-                        "provider": provider.name,
-                        "result": "error",
-                        "reason": reason,
+                        "provider": name,
+                        "result": "success",
+                        "count": len(response.results),
                         "recovery_reason": decision.reason.value,
                         "recommended_action": decision.action.value,
+                        "execution_outcome": "accepted",
                     }
                 )
-                self.recovery_agreement["agree"] += 1
-                _record_fallback_reason(reason)
-                errors.append(err_resp)
+                self._put_in_cache(request, response)
+                response.extra["route_trace"] = route_trace
+                self._fire_jev_shadow(request, response)
+                return response
 
-        # No provider returned results. Use the deterministic finalizer.
-        final_decision = classify_search_final_outcome(outcome_decisions)
+            if decision.action == SearchRecoveryAction.STOP:
+                # Request-level failure (e.g. INVALID_QUERY): stop immediately,
+                # do not pollute provider health, do not try other providers.
+                stop_requested = True
+                _record_execution(decision.action, "stopped")
+                route_trace.append(
+                    {
+                        "provider": name,
+                        "result": "error",
+                        "reason": decision.reason.value,
+                        "recovery_reason": decision.reason.value,
+                        "recommended_action": decision.action.value,
+                        "execution_outcome": "stopped",
+                    }
+                )
+                break
+
+            # TRY_NEXT_PROVIDER or NONE: move to the next eligible provider.
+            outcome = (
+                "next_provider" if decision.action == SearchRecoveryAction.TRY_NEXT_PROVIDER else "no_action_continue"
+            )
+            _record_execution(decision.action, outcome)
+            route_trace.append(
+                {
+                    "provider": name,
+                    "result": "empty" if response.is_empty else "error",
+                    "reason": decision.reason.value,
+                    "error_type": getattr(response.error_type, "value", None),
+                    "failure_kind": getattr(response.failure_kind, "value", None),
+                    "recovery_reason": decision.reason.value,
+                    "recommended_action": decision.action.value,
+                    "execution_outcome": outcome,
+                }
+            )
+            continue
+
+        # --- finalizer drives production outcome ---
+        if stop_requested:
+            final_decision = SearchRecoveryDecision(
+                reason=SearchRecoveryReason.INVALID_QUERY,
+                action=SearchRecoveryAction.STOP,
+            )
+        else:
+            final_decision = classify_search_final_outcome(outcome_decisions)
         _record_recovery(final_decision)
 
         if final_decision.action == SearchRecoveryAction.RETURN_EMPTY:
-            # Aggregate empty: NOT a system error (Phase 1 semantics).
             self.last_used_provider = "all"
+            _record_execution(final_decision.action, "returned_empty")
             resp = SearchResponse.empty(query=request.query, provider="all")
             resp.extra["route_trace"] = route_trace
             resp.extra["recovery_reason"] = final_decision.reason.value
-            self.recovery_agreement["agree"] += 1
             return resp
 
         if final_decision.action == SearchRecoveryAction.STOP:
             self.last_used_provider = "all"
+            _record_execution(final_decision.action, "stopped")
             resp = SearchResponse.error(
                 query=request.query,
                 provider="all",
@@ -472,8 +486,10 @@ class SearchService:
             resp.extra["recovery_reason"] = final_decision.reason.value
             return resp
 
-        # All providers genuinely failed.
+        # RETURN_ERROR (ALL_FAILED)
         self.total_errors += 1
+        self.last_used_provider = "all"
+        _record_execution(final_decision.action, "returned_error")
         resp = SearchResponse.error(
             query=request.query,
             provider="all",
@@ -483,7 +499,6 @@ class SearchService:
         )
         resp.extra["route_trace"] = route_trace
         resp.extra["recovery_reason"] = final_decision.reason.value
-        self.recovery_agreement["agree"] += 1
         return resp
 
     def get_health_report(self) -> dict[str, Any]:
@@ -500,8 +515,18 @@ class SearchService:
             "fallback_reasons": self.fallback_reasons,
             "recovery_reasons": self.recovery_reasons,
             "recovery_actions": self.recovery_actions,
+            "recovery_execution": self.recovery_execution,
             "recovery_agreement": self.recovery_agreement,
+            "recovery_agreement_deprecated": True,
             "search_circuit_authority": "SearchHealthManager",
+            "effective_search_availability": {
+                name: {
+                    "available": self.health_manager.get_backend(name).can_use(),
+                    "circuit_open": self.health_manager.get_backend(name).circuit_open,
+                }
+                for name in (p.name for p in self.providers)
+                if self.health_manager.get_backend(name) is not None
+            },
         }
         # Include dynamic router health report if configured
         if self.router is not None:
@@ -524,6 +549,7 @@ class SearchService:
         self.fallback_reasons.clear()
         self.recovery_reasons.clear()
         self.recovery_actions.clear()
+        self.recovery_execution.clear()
         self.recovery_agreement = {"agree": 0, "disagree": 0}
 
     def _fire_jev_shadow(self, request: SearchRequest, response: SearchResponse) -> None:
