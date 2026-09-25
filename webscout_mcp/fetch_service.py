@@ -14,6 +14,7 @@ and maps the result back to the legacy JSON shape.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -186,6 +187,7 @@ class FetchService:
                 self._jev_client = None
 
     async def fetch(self, request: FetchRequest) -> FetchRouteResult:
+        _decision_started_at = time.time()
         # 1) Select fast FETCH provider.
         primary_name = self.registry.select(ProviderCapability.FETCH)
         primary_provider: FetchProvider | None = None
@@ -381,6 +383,27 @@ class FetchService:
                 task.add_done_callback(self._pending_jev_tasks.discard)
             except Exception:  # pragma: no cover
                 log.debug("Jev shadow fire failed", exc_info=True)
+
+        # 6) Decision telemetry (best-effort, never affects routing).
+        try:
+            from .decision_adapter import record_fetch_decision
+
+            record_fetch_decision(
+                request=request,
+                primary=primary,
+                final=final,
+                recovery=recovery,
+                recovery_outcome=recovery_outcome,
+                primary_provider=primary_name,
+                browser_attempted=browser_attempted,
+                browser_success=browser_success,
+                fallback_used=fallback_used,
+                cache_hit=getattr(primary, "from_cache", False),
+                snapshot_hit=used_legacy and getattr(request, "start_char", 0) > 0,
+                started_at=_decision_started_at,
+            )
+        except Exception:  # pragma: no cover - telemetry must never break production
+            log.debug("fetch decision telemetry failed", exc_info=True)
 
         return FetchRouteResult(
             primary_response=primary,

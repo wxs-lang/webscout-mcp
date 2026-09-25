@@ -336,6 +336,45 @@ def build_parser() -> argparse.ArgumentParser:
     )
     jev_parser.set_defaults(func=_cmd_jev_report)
 
+    # --- decision telemetry (v1.5.0) ---
+    decision_report_parser = subparsers.add_parser(
+        "decision-report", help="Aggregate report of recorded Fetch/Search decisions"
+    )
+    decision_report_parser.add_argument("--domain", choices=["fetch", "search", "all"], default="all")
+    decision_report_parser.add_argument("--limit", type=int, default=100, help="Show N most recent events")
+    decision_report_parser.add_argument("--json", action="store_true", help="Output as JSON")
+    decision_report_parser.set_defaults(func=_cmd_decision_report)
+
+    decision_export_parser = subparsers.add_parser("decision-export", help="Export sanitized decision events as JSON")
+    decision_export_parser.add_argument("--domain", choices=["fetch", "search", "all"], default="all")
+    decision_export_parser.add_argument("--limit", type=int, default=500)
+    decision_export_parser.add_argument("--output", "-o", default=None, help="Output file (default: stdout)")
+    decision_export_parser.set_defaults(func=_cmd_decision_export)
+
+    decision_replay_parser = subparsers.add_parser(
+        "decision-replay", help="Evaluate replay cases against production decisions"
+    )
+    decision_replay_parser.add_argument("--domain", choices=["fetch", "search", "all"], default="all")
+    decision_replay_parser.add_argument("--limit", type=int, default=1000)
+    decision_replay_parser.add_argument("--json", action="store_true", help="Output as JSON")
+    decision_replay_parser.set_defaults(func=_cmd_decision_replay)
+
+    decision_label_parser = subparsers.add_parser("decision-label", help="Label a replay case for offline evaluation")
+    decision_label_parser.add_argument("case_id", help="ReplayCase case_id to label")
+    decision_label_parser.add_argument(
+        "--label",
+        required=True,
+        help="Expected label (e.g. ACCEPT, BROWSER, STOP, RETURN_EMPTY, browser_rescued)",
+    )
+    decision_label_parser.add_argument(
+        "--source",
+        default="human_verified",
+        choices=["human_verified", "deterministic_fixture", "objective_outcome", "historical_verified"],
+    )
+    decision_label_parser.add_argument("--confidence", type=float, default=1.0)
+    decision_label_parser.add_argument("--notes", default="")
+    decision_label_parser.set_defaults(func=_cmd_decision_label)
+
     return parser
 
 
@@ -517,6 +556,137 @@ async def _jev_smoke() -> None:
         print(f"Smoke FAILED: {type(exc).__name__}: {exc}")
     finally:
         await client.aclose()
+
+
+async def _cmd_decision_report(args: argparse.Namespace) -> None:
+    """Aggregate report of recorded Fetch/Search decisions."""
+    import json as _json
+
+    from . import decision_store
+
+    db = decision_store.configure()
+    print(f"Decision DB: {db}")
+
+    domain = None if args.domain == "all" else args.domain
+    s = decision_store.summary()
+
+    if getattr(args, "json", False):
+        print(_json.dumps(s, indent=2, default=str))
+        return
+
+    print()
+    print("=== Decision Telemetry Summary ===")
+    print(f"Total events:    {s['total_events']}")
+    print(f"  Fetch events:  {s['fetch_events']}")
+    print(f"  Search events: {s['search_events']}")
+    print(f"Replay cases:    {s['replay_cases']}")
+    print(f"Jev-joined:      {s['jev_joined_events']}")
+    print()
+    if domain in (None, "fetch"):
+        print("--- Fetch ---")
+        print(f"  Reasons:  {s['fetch']['reasons']}")
+        print(f"  Actions:  {s['fetch']['actions']}")
+        print(f"  Outcomes: {s['fetch']['outcomes']}")
+        print()
+    if domain in (None, "search"):
+        print("--- Search ---")
+        print(f"  Reasons:  {s['search']['reasons']}")
+        print(f"  Actions:  {s['search']['actions']}")
+        print(f"  Outcomes: {s['search']['outcomes']}")
+
+    # Recent events.
+    limit = getattr(args, "limit", 20)
+    events = decision_store.load_events(domain=domain, limit=limit)
+    if events:
+        print()
+        print(f"--- Recent {len(events)} events ---")
+        for e in events:
+            print(
+                f"  {e.get('domain', '?'):6s} {e.get('deterministic_reason', '?'):24s} "
+                f"-> {e.get('deterministic_action', '?'):20s} "
+                f"outcome={e.get('production_outcome', '?'):20s} "
+                f"subject={e.get('subject', '?')}"
+            )
+
+
+async def _cmd_decision_export(args: argparse.Namespace) -> None:
+    """Export sanitized decision events as JSON."""
+    import json as _json
+
+    from . import decision_store
+
+    decision_store.configure()
+    domain = None if args.domain == "all" else args.domain
+    events = decision_store.load_events(domain=domain, limit=args.limit)
+    payload = _json.dumps(events, indent=2, default=str, ensure_ascii=False)
+
+    output = getattr(args, "output", None)
+    if output:
+        with open(output, "w", encoding="utf-8") as f:  # noqa: ASYNC230
+            f.write(payload)
+        print(f"Exported {len(events)} events to {output}")
+    else:
+        print(payload)
+
+
+async def _cmd_decision_replay(args: argparse.Namespace) -> None:
+    """Evaluate replay cases against production decisions."""
+    import json as _json
+
+    from .decision_evaluator import evaluate_from_store
+
+    domain = None if args.domain == "all" else args.domain
+    result = evaluate_from_store(domain=domain, limit=args.limit)
+
+    if getattr(args, "json", False):
+        print(_json.dumps(result.to_dict(), indent=2, default=str))
+        return
+
+    print("=== Replay Evaluation ===")
+    print(f"Total cases:     {result.total_cases}")
+    print(f"Covered:         {result.covered_cases}")
+    print(f"Uncovered:       {result.uncovered_cases}")
+    print(f"Coverage rate:   {result.to_dict()['coverage_rate']:.1%}")
+    print(f"Agreed:          {result.overall_agreement}")
+    print(f"Disagreed:       {result.overall_disagreement}")
+    print(f"Agreement rate:  {result.to_dict()['overall_agreement_rate']:.1%}")
+    print()
+    if result.per_label:
+        print("--- Per-label ---")
+        for label, m in sorted(result.per_label.items()):
+            if label.startswith("FP:"):
+                continue
+            print(
+                f"  {label:24s} total={m.total:4d}  agreed={m.agreed:4d}  "
+                f"disagreed={m.disagreed:4d}  rate={m.agreement_rate:.1%}"
+            )
+    if result.disagreements:
+        print()
+        print(f"--- Disagreements ({len(result.disagreements)}) ---")
+        for d in result.disagreements[:10]:
+            print(
+                f"  {d['case_id'][:8]}  expected={d['expected_label']:20s} "
+                f"production={d['production_action']:20s} source={d['label_source']}"
+            )
+
+
+async def _cmd_decision_label(args: argparse.Namespace) -> None:
+    """Label a replay case for offline evaluation."""
+    from . import decision_store
+
+    decision_store.configure()
+    ok = decision_store.update_replay_label(
+        case_id=args.case_id,
+        label=args.label,
+        source=args.source,
+        confidence=args.confidence,
+        notes=args.notes,
+    )
+    if ok:
+        print(f"Labeled case {args.case_id}: {args.label} (source={args.source})")
+    else:
+        print(f"Case {args.case_id} not found.")
+        raise SystemExit(1)
 
 
 def main() -> None:

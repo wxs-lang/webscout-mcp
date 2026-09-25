@@ -241,11 +241,26 @@ class SearchService:
         The decision is the single source of truth: there is no parallel
         if/else routing. Each provider is called at most once per request.
         """
+        _decision_started_at = time.time()
         self.total_requests += 1
 
         # Cache hit is the shortest path: 0 provider HTTP, 0 recovery, 0 Jev.
         cached = self._get_from_cache(request)
         if cached is not None:
+            try:
+                from .decision_adapter import record_search_decision
+
+                record_search_decision(
+                    request=request,
+                    response=cached,
+                    final_decision=None,
+                    provider_attempt_count=0,
+                    fallback_count=0,
+                    cache_hit=True,
+                    started_at=_decision_started_at,
+                )
+            except Exception:  # pragma: no cover
+                log.debug("search cache-hit telemetry failed", exc_info=True)
             return cached
 
         tried_providers: list[str] = []
@@ -265,6 +280,26 @@ class SearchService:
         def _record_execution(action: SearchRecoveryAction, outcome: str) -> None:
             bucket = self.recovery_execution.setdefault(action.value, {})
             bucket[outcome] = bucket.get(outcome, 0) + 1
+
+        def _emit_decision(resp: SearchResponse, decision: SearchRecoveryDecision | None) -> None:
+            """Best-effort DecisionEvent recording. Never affects production."""
+            try:
+                from .decision_adapter import record_search_decision
+
+                circuit_skips = sum(1 for e in route_trace if e.get("execution_outcome") == "circuit_skipped")
+                unavailable_skips = sum(1 for e in route_trace if e.get("execution_outcome") == "unavailable_skipped")
+                record_search_decision(
+                    request=request,
+                    response=resp,
+                    final_decision=decision,
+                    provider_attempt_count=len(tried_providers),
+                    fallback_count=max(0, len(tried_providers) - 1),
+                    circuit_skips=circuit_skips,
+                    unavailable_skips=unavailable_skips,
+                    started_at=_decision_started_at,
+                )
+            except Exception:  # pragma: no cover
+                log.debug("search decision telemetry failed", exc_info=True)
 
         def _next_candidate() -> tuple[str | None, Any | None, str | None]:
             """Return (name, provider_or_None, skip_reason_or_None).
@@ -346,6 +381,7 @@ class SearchService:
             )
             invalid_resp.extra["route_trace"] = route_trace
             invalid_resp.extra["recovery_reason"] = decision.reason.value
+            _emit_decision(invalid_resp, decision)
             return invalid_resp
 
         final_decision: SearchRecoveryDecision | None = None
@@ -444,6 +480,7 @@ class SearchService:
                 self._put_in_cache(request, response)
                 response.extra["route_trace"] = route_trace
                 self._fire_jev_shadow(request, response)
+                _emit_decision(response, decision)
                 return response
 
             if decision.action == SearchRecoveryAction.STOP:
@@ -499,6 +536,7 @@ class SearchService:
             resp = SearchResponse.empty(query=request.query, provider="all")
             resp.extra["route_trace"] = route_trace
             resp.extra["recovery_reason"] = final_decision.reason.value
+            _emit_decision(resp, final_decision)
             return resp
 
         if final_decision.action == SearchRecoveryAction.STOP:
@@ -514,6 +552,7 @@ class SearchService:
             )
             resp.extra["route_trace"] = route_trace
             resp.extra["recovery_reason"] = final_decision.reason.value
+            _emit_decision(resp, final_decision)
             return resp
 
         # RETURN_ERROR (ALL_FAILED)
@@ -529,6 +568,7 @@ class SearchService:
         )
         resp.extra["route_trace"] = route_trace
         resp.extra["recovery_reason"] = final_decision.reason.value
+        _emit_decision(resp, final_decision)
         return resp
 
     def get_health_report(self) -> dict[str, Any]:
