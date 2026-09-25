@@ -596,6 +596,7 @@ async def _cmd_decision_report(args: argparse.Namespace) -> None:
     else:
         print(f"Jev-joined:      {s['jev_joined_events']} (deprecated metric)")
     from .decision_event import hash_key_persistent
+
     print(f"Hash key persistent: {hash_key_persistent()}")
     print()
     if domain in (None, "fetch"):
