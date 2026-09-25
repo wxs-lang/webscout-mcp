@@ -23,6 +23,7 @@ from typing import Any
 from .errors import StandardErrorCode
 from .logging_config import get_logger
 from .provider_router import ProviderCapability, ProviderCostTier, ProviderRouter
+from .runtime_context import PROCESS_RUN_ID, new_trace_id
 from .search_health import SearchHealthManager
 from .search_provider import (
     SearchFailureKind,
@@ -242,6 +243,7 @@ class SearchService:
         if/else routing. Each provider is called at most once per request.
         """
         _decision_started_at = time.time()
+        _trace_id = new_trace_id()
         self.total_requests += 1
 
         # Cache hit is the shortest path: 0 provider HTTP, 0 recovery, 0 Jev.
@@ -257,6 +259,8 @@ class SearchService:
                     provider_attempt_count=0,
                     fallback_count=0,
                     cache_hit=True,
+                    trace_id=_trace_id,
+                    run_id=PROCESS_RUN_ID,
                     started_at=_decision_started_at,
                 )
             except Exception:  # pragma: no cover
@@ -296,6 +300,8 @@ class SearchService:
                     fallback_count=max(0, len(tried_providers) - 1),
                     circuit_skips=circuit_skips,
                     unavailable_skips=unavailable_skips,
+                    trace_id=_trace_id,
+                    run_id=PROCESS_RUN_ID,
                     started_at=_decision_started_at,
                 )
             except Exception:  # pragma: no cover
@@ -479,7 +485,7 @@ class SearchService:
                 )
                 self._put_in_cache(request, response)
                 response.extra["route_trace"] = route_trace
-                self._fire_jev_shadow(request, response)
+                self._fire_jev_shadow(request, response, trace_id=_trace_id)
                 _emit_decision(response, decision)
                 return response
 
@@ -622,7 +628,7 @@ class SearchService:
         self.recovery_execution.clear()
         self.recovery_agreement = {"agree": 0, "disagree": 0}
 
-    def _fire_jev_shadow(self, request: SearchRequest, response: SearchResponse) -> None:
+    def _fire_jev_shadow(self, request: SearchRequest, response: SearchResponse, trace_id: str | None = None) -> None:
         """Kick off a non-blocking Jev shadow recording for top-N results.
 
         Never raises; never mutates ranking or the result set.
@@ -645,6 +651,8 @@ class SearchService:
                     results=response.results,
                     max_results=self.jev_max_results,
                     max_state_chars=self.jev_max_state_chars,
+                    trace_id=trace_id,
+                    run_id=PROCESS_RUN_ID,
                 )
             )
             self._pending_jev_tasks.add(task)

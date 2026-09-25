@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 import uuid
 from pathlib import Path
 
@@ -183,6 +184,7 @@ def _fetch_cases() -> list[ReplayCase]:
                     expected_label=expected,
                     label_source=LabelSource.DETERMINISTIC_FIXTURE,
                     label_confidence=1.0,
+                    label_time=time.time(),
                     notes=f"Fixture: {reason} -> {action} -> {outcome}",
                 )
             )
@@ -326,6 +328,7 @@ def _search_cases() -> list[ReplayCase]:
                     expected_label=expected,
                     label_source=LabelSource.DETERMINISTIC_FIXTURE,
                     label_confidence=1.0,
+                    label_time=time.time(),
                     notes=f"Fixture: {reason} -> {action} -> {outcome}",
                 )
             )

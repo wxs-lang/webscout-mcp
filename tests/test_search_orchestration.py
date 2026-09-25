@@ -352,7 +352,7 @@ async def test_no_same_provider_retry():
 async def test_jev_only_after_accept():
     svc = _svc([("a", lambda r: _err(provider="a")), ("b", lambda r: _ok(provider="b"))])
     fired = []
-    svc._fire_jev_shadow = lambda req, resp: fired.append(resp.provider)
+    svc._fire_jev_shadow = lambda req, resp, **kwargs: fired.append(resp.provider)
     await svc.search(_req("q_jev"))
     assert fired == ["b"]
 

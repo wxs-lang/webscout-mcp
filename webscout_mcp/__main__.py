@@ -375,6 +375,12 @@ def build_parser() -> argparse.ArgumentParser:
     decision_label_parser.add_argument("--notes", default="")
     decision_label_parser.set_defaults(func=_cmd_decision_label)
 
+    decision_join_parser = subparsers.add_parser(
+        "decision-join-report", help="Join DecisionEvents with Jev Shadow records by (run_id, trace_id)"
+    )
+    decision_join_parser.add_argument("--json", action="store_true", help="Output as JSON")
+    decision_join_parser.set_defaults(func=_cmd_decision_join_report)
+
     return parser
 
 
@@ -687,6 +693,30 @@ async def _cmd_decision_label(args: argparse.Namespace) -> None:
     else:
         print(f"Case {args.case_id} not found.")
         raise SystemExit(1)
+
+
+async def _cmd_decision_join_report(args: argparse.Namespace) -> None:
+    """Join DecisionEvents with Jev Shadow records by (run_id, trace_id)."""
+    import json as _json
+
+    from . import decision_store
+
+    decision_store.configure()
+    report = decision_store.join_report()
+    if getattr(args, "json", False):
+        print(_json.dumps(report, indent=2, ensure_ascii=False))
+    else:
+        print("Decision ↔ Jev Join Report")
+        print("=" * 50)
+        print(f"Decision event pairs:      {report.get('decision_event_pairs', 0)}")
+        print(f"Jev record pairs:          {report.get('jev_record_pairs', 0)}")
+        print(f"Joined pairs:              {report.get('joined_pairs', 0)}")
+        print(f"Unjoined decision pairs:   {report.get('unjoined_decision_pairs', 0)}")
+        print(f"Orphan Jev pairs:          {report.get('orphan_jev_pairs', 0)}")
+        print(f"Join coverage:             {report.get('join_coverage', 0.0):.2%}")
+        by_domain = report.get("by_domain", {})
+        for domain, stats in by_domain.items():
+            print(f"  {domain}: decisions={stats.get('decision_events', 0)}, jev={stats.get('jev_records', 0)}")
 
 
 def main() -> None:

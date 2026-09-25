@@ -13,11 +13,15 @@ by trace_id / run_id, never stored as ground truth.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
+import os
+import re
 import time
 import uuid
 from dataclasses import asdict, dataclass, field
 from enum import Enum
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
@@ -57,16 +61,90 @@ _SECRET_KEY_PATTERNS = (
     "bearer",
 )
 
+# Patterns for text-level secret redaction (notes, free-text fields).
+# Matches key=value and key: value forms.
+_TEXT_SECRET_PATTERNS = [
+    # Bearer token must come before authorization so "Bearer <token>" is
+    # fully redacted rather than leaving the token after "Bearer" is eaten.
+    re.compile(r"(bearer\s+)(\S+)", re.IGNORECASE),
+    re.compile(r"(authorization\s*[:=]\s*(?:bearer\s+)?)(\S+)", re.IGNORECASE),
+    re.compile(r"(cookie\s*[:=]\s*)(\S+)", re.IGNORECASE),
+    re.compile(r"(set-cookie\s*[:=]\s*)(\S+)", re.IGNORECASE),
+    re.compile(r"(api[_-]?key\s*[:=]\s*)(\S+)", re.IGNORECASE),
+    re.compile(r"(access[_-]?token\s*[:=]\s*)(\S+)", re.IGNORECASE),
+    re.compile(r"(refresh[_-]?token\s*[:=]\s*)(\S+)", re.IGNORECASE),
+    re.compile(r"(token\s*[:=]\s*)(\S+)", re.IGNORECASE),
+    re.compile(r"(passw(?:or)?d\s*[:=]\s*)(\S+)", re.IGNORECASE),
+    re.compile(r"(secret\s*[:=]\s*)(\S+)", re.IGNORECASE),
+    re.compile(r"(credential\s*[:=]\s*)(\S+)", re.IGNORECASE),
+]
+
+_MAX_NOTES_LEN = 2000
+
+# ---------------------------------------------------------------------------
+# Privacy hash key (per-install salt for HMAC).
+# ---------------------------------------------------------------------------
+
+_HASH_KEY: bytes | None = None
+
+
+def _hash_key_path() -> Path:
+    xdg = os.environ.get("XDG_DATA_HOME")
+    base = Path(xdg) if xdg else (Path.home() / ".local" / "share")
+    return base / "webscout" / "decision_hash.key"
+
+
+def _get_hash_key() -> bytes:
+    """Return the per-install HMAC key.
+
+    Priority:
+      1. WEBSCOUT_DECISION_HASH_KEY env var (for tests / reproducible deploys)
+      2. <data_dir>/webscout/decision_hash.key (created on first use, 0600)
+      3. In-memory random key (last resort; not persisted)
+    """
+    global _HASH_KEY
+    if _HASH_KEY is not None:
+        return _HASH_KEY
+    env_key = os.environ.get("WEBSCOUT_DECISION_HASH_KEY")
+    if env_key:
+        _HASH_KEY = env_key.encode("utf-8")
+        return _HASH_KEY
+    try:
+        key_path = _hash_key_path()
+        key_path.parent.mkdir(parents=True, exist_ok=True)
+        if key_path.exists():
+            _HASH_KEY = key_path.read_bytes().strip()
+        else:
+            _HASH_KEY = os.urandom(32)
+            key_path.write_bytes(_HASH_KEY)
+            try:
+                os.chmod(key_path, 0o600)
+            except OSError:
+                pass
+    except OSError:
+        _HASH_KEY = os.urandom(32)
+    return _HASH_KEY
+
+
+def _privacy_hash(value: str) -> str:
+    """HMAC-SHA256 hex prefix (32 chars) using the per-install key.
+
+    Same input -> same hash within one install. Different installs produce
+    different hashes, preventing cross-install dictionary attacks.
+    """
+    key = _get_hash_key()
+    return hmac.new(key, (value or "").encode("utf-8"), hashlib.sha256).hexdigest()[:32]
+
 
 def canonical_url_hash(url: str) -> str:
-    """SHA-256 hex of the full normalized URL. Used as a stable identity
+    """HMAC-SHA256 hex of the normalized URL. Used as a stable identity
     without persisting the raw (possibly secret-bearing) URL."""
     normalized = (url or "").strip().lower()
-    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:32]
+    return _privacy_hash(normalized)
 
 
 def sanitized_url_features(url: str) -> dict[str, Any]:
-    """Return only scheme + host + canonical hash. Never the path/query."""
+    """Return only scheme + host + privacy hash. Never the path/query/userinfo."""
     try:
         parsed = urlparse(url or "")
         return {
@@ -79,9 +157,8 @@ def sanitized_url_features(url: str) -> dict[str, Any]:
 
 
 def query_hash(query: str) -> str:
-    """SHA-256 hex prefix of a search query. Raw query is not stored by
-    default; use opt-in debug mode to persist it."""
-    return hashlib.sha256((query or "").encode("utf-8")).hexdigest()[:32]
+    """HMAC-SHA256 hex prefix of a search query. Raw query is not stored."""
+    return _privacy_hash(query or "")
 
 
 def _scrub_dict(data: dict[str, Any]) -> dict[str, Any]:
@@ -105,6 +182,22 @@ def _scrub_dict(data: dict[str, Any]) -> dict[str, Any]:
         else:
             clean[key] = str(value)
     return clean
+
+
+def _scrub_text(text: str, max_len: int = _MAX_NOTES_LEN) -> str:
+    """Redact secret-like patterns from free-text fields (e.g. notes).
+
+    Recognizes key=value and key: value forms for common secret names.
+    Truncates to max_len to prevent unbounded storage.
+    """
+    if not text:
+        return ""
+    result = text
+    for pattern in _TEXT_SECRET_PATTERNS:
+        result = pattern.sub(lambda m: f"{m.group(1)}[REDACTED]", result)
+    if len(result) > max_len:
+        result = result[:max_len] + "...[truncated]"
+    return result
 
 
 @dataclass

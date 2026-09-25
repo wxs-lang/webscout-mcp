@@ -303,6 +303,7 @@ async def maybe_record_fetch(
     browser_success: bool,
     max_state_chars: int,
     trace_id: str | None = None,
+    run_id: str | None = None,
 ) -> None:
     """Best-effort shadow call after a fetch completes. Never raises.
 
@@ -337,6 +338,7 @@ async def maybe_record_fetch(
                 browser_attempted=browser_attempted,
                 browser_success=browser_success,
                 trace_id=trace_id,
+                run_id=run_id,
                 schema_version=JEV_DECISION_SCHEMA_VERSION,
             )
     except Exception:  # pragma: no cover - absolute safety net
@@ -351,6 +353,7 @@ async def maybe_record_search(
     max_results: int,
     max_state_chars: int,
     trace_id: str | None = None,
+    run_id: str | None = None,
 ) -> None:
     """Best-effort shadow call for top-N search results. Never raises.
 
@@ -382,6 +385,7 @@ async def maybe_record_search(
                 position=pos,
                 search_provider=getattr(result, "backend", "") or None,
                 trace_id=trace_id,
+                run_id=run_id,
                 schema_version=JEV_DECISION_SCHEMA_VERSION,
             )
     except Exception:  # pragma: no cover
