@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Unified Decision Dataset & Replay** (v1.5.0 Phase 1): `DecisionEvent` records sanitized Fetch + Search production decisions (reason, action, outcome, latency, request/outcome features) to a local SQLite store.
+- **`DecisionStore`**: SQLite with WAL, 30-day retention, 256 MB size cap, idempotent schema migration, and best-effort fault isolation (store failures never affect production).
+- **`ReplayCase`** + offline `decision_evaluator`: deterministic fixture cases with `label_source` (deterministic_fixture / human_verified / objective_outcome / historical_verified; `jev_verified` explicitly rejected).
+- **Decision CLI**: `decision-report`, `decision-export`, `decision-replay`, `decision-label` (CLI only, not MCP tools).
+- **Fetch + Search adapters**: `record_fetch_decision()` / `record_search_decision()` hook into production paths; 0 routing changes.
+- **Privacy**: URLs stored as scheme + host + canonical hash only; search queries stored as hash + length; `_scrub_dict` removes Authorization / Cookie / token / api_key / password / credential at store layer.
+- **Telemetry toggle**: `WEBSCOUT_DECISION_TELEMETRY=0` disables recording; `WEBSCOUT_DECISION_DB` overrides store path.
+
+### Changed
+- No production routing changes. Fetch (v1.3.0) and Search (v1.4.0) recovery behavior unchanged.
+- MCP tools remain 11. Jev remains pure Shadow / optional.
+
 ## [1.4.0] - 2026-09-23
 
 Self-healing search core. No new MCP tools (still 11); `web_search` signature unchanged; response gains additive `status` / `error` fields.
