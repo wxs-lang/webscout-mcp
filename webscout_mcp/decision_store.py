@@ -29,8 +29,9 @@ import time
 from pathlib import Path
 from typing import Any
 
-from .decision_event import DecisionEvent, _scrub_dict
+from .decision_event import DecisionEvent, _scrub_dict, _scrub_text
 from .logging_config import get_logger
+from .replay_case import _validate_label_source
 
 log = get_logger(__name__)
 
@@ -83,12 +84,31 @@ CREATE TABLE IF NOT EXISTS replay_cases (
     expected_label TEXT,
     label_source TEXT,
     label_confidence REAL,
+    label_time REAL,
     notes TEXT,
     created_at REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_replay_domain ON replay_cases(domain);
 CREATE INDEX IF NOT EXISTS idx_replay_label ON replay_cases(expected_label);
 """
+
+_MIGRATIONS = [
+    # (table, column, ddl)
+    ("replay_cases", "label_time", "ALTER TABLE replay_cases ADD COLUMN label_time REAL"),
+]
+
+
+def _run_migrations(path: Path) -> None:
+    """Idempotent column migrations for existing DBs."""
+    try:
+        with sqlite3.connect(str(path), timeout=5.0) as c:
+            for table, column, ddl in _MIGRATIONS:
+                cols = {row[1] for row in c.execute(f"PRAGMA table_info({table})")}
+                if column not in cols:
+                    c.execute(ddl)
+            c.commit()
+    except Exception:
+        log.warning("decision_events migration failed", exc_info=True)
 
 
 def _default_db_path() -> Path:
@@ -132,6 +152,7 @@ def _init_schema(path: Path) -> None:
         with sqlite3.connect(str(path), timeout=5.0) as c:
             c.executescript(_SCHEMA_BASE)
             c.commit()
+        _run_migrations(path)
     except Exception:
         log.warning("decision_events schema init failed", exc_info=True)
 
@@ -143,38 +164,82 @@ def _prune_old(conn: sqlite3.Connection, retention_days: int) -> None:
     conn.execute("DELETE FROM replay_cases WHERE created_at < ?", (cutoff,))
 
 
-def _enforce_size_cap(conn: sqlite3.Connection, max_mb: int, db_path: Path) -> None:
-    """If DB file exceeds max_mb, delete oldest decision_events until under cap."""
-    try:
-        size_bytes = db_path.stat().st_size
-    except OSError:
-        return
-    max_bytes = max_mb * 1024 * 1024
-    if size_bytes <= max_bytes:
-        return
-    # Delete oldest 10% of rows iteratively.
-    while True:
+def _total_db_size(path: Path) -> int:
+    """Total on-disk size: main DB + WAL file."""
+    total = 0
+    for suffix in ("", "-wal", "-shm"):
+        p = Path(str(path) + suffix)
         try:
-            current = db_path.stat().st_size
+            total += p.stat().st_size
         except OSError:
-            break
-        if current <= max_bytes:
-            break
-        count = conn.execute("SELECT COUNT(*) FROM decision_events").fetchone()[0]
-        if count == 0:
-            break
-        delete_n = max(1, count // 10)
-        conn.execute(
-            "DELETE FROM decision_events WHERE id IN (SELECT id FROM decision_events ORDER BY created_at ASC LIMIT ?)",
-            (delete_n,),
-        )
-        conn.commit()
-        # VACUUM is expensive; skip on hot path. Size will shrink on next
-        # SQLite checkpoint naturally. We just prevent unbounded growth.
+            pass
+    return total
+
+
+def _enforce_size_cap(conn: sqlite3.Connection, max_mb: int, db_path: Path, *, force_vacuum: bool = False) -> None:
+    """If DB (+WAL) exceeds max_mb, prune oldest rows from BOTH tables.
+
+    Uses hysteresis: only triggers heavy maintenance (VACUUM) when size
+    exceeds 110% of cap. Normal writes just delete oldest rows; VACUUM
+    reclaims freed pages only when the file is materially over cap.
+    """
+    try:
+        max_bytes = max_mb * 1024 * 1024
+        # Checkpoint WAL first so size reflects committed data, not transient
+        # uncheckpointed writes that would otherwise trigger premature pruning.
+        try:
+            conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
+        except sqlite3.Error:
+            pass
+        current = _total_db_size(db_path)
+        if current <= max_bytes and not force_vacuum:
+            return
+
+        # Delete oldest rows from BOTH tables, proportional to their sizes.
+        vacuum_threshold = int(max_bytes * 1.1)
+        deleted_any = False
+        while _total_db_size(db_path) > max_bytes:
+            ev_count = conn.execute("SELECT COUNT(*) FROM decision_events").fetchone()[0]
+            rp_count = conn.execute("SELECT COUNT(*) FROM replay_cases").fetchone()[0]
+            if ev_count == 0 and rp_count == 0:
+                break
+            total = ev_count + rp_count
+            # Delete from each table proportionally, at least 1 row each if non-empty.
+            if ev_count > 0:
+                ev_delete = max(1, int(ev_count / total * max(1, total // 10)))
+                conn.execute(
+                    "DELETE FROM decision_events WHERE id IN (SELECT id FROM decision_events ORDER BY created_at ASC LIMIT ?)",
+                    (ev_delete,),
+                )
+                deleted_any = True
+            if rp_count > 0:
+                rp_delete = max(1, int(rp_count / total * max(1, total // 10)))
+                conn.execute(
+                    "DELETE FROM replay_cases WHERE id IN (SELECT id FROM replay_cases ORDER BY created_at ASC LIMIT ?)",
+                    (rp_delete,),
+                )
+                deleted_any = True
+            conn.commit()
+
+        # Checkpoint WAL to flush to main DB.
+        try:
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        except sqlite3.Error:
+            pass
+
+        # VACUUM only if still materially over cap (avoids hot-path vacuum).
+        if force_vacuum or (_total_db_size(db_path) > vacuum_threshold and deleted_any):
+            try:
+                conn.execute("VACUUM")
+                conn.commit()
+            except sqlite3.Error:
+                pass
+    except Exception:
+        log.warning("decision_events size cap enforcement failed", exc_info=True)
 
 
 def record_event(
-    event: DecisionEvent, retention_days: int = DEFAULT_RETENTION_DAYS, max_db_size_mb: int = DEFAULT_MAX_DB_SIZE_MB
+    event: DecisionEvent, retention_days: int = DEFAULT_RETENTION_DAYS, max_db_size_mb: int | None = None
 ) -> bool:
     """Insert one DecisionEvent. Best-effort; never raises.
 
@@ -182,12 +247,14 @@ def record_event(
     duplicate event_id).
     """
     try:
+        if max_db_size_mb is None:
+            max_db_size_mb = DEFAULT_MAX_DB_SIZE_MB
         with _lock, _conn() as c:
             _prune_old(c, retention_days)
             req = json.dumps(_scrub_dict(event.request_features), ensure_ascii=False)
             out = json.dumps(_scrub_dict(event.outcome_features), ensure_ascii=False)
             meta = json.dumps(_scrub_dict(event.metadata), ensure_ascii=False)
-            c.execute(
+            cur = c.execute(
                 """INSERT OR IGNORE INTO decision_events (
                     schema_version, event_id, trace_id, run_id, domain, stage,
                     subject, observed_status, deterministic_reason,
@@ -219,16 +286,22 @@ def record_event(
                     time.time(),
                 ),
             )
+            inserted = cur.rowcount > 0
             c.commit()
             _enforce_size_cap(c, max_db_size_mb, _db_path or _default_db_path())
-            return c.total_changes > 0
+            return inserted
     except Exception:
         log.warning("decision_events record failed", exc_info=True)
         return False
 
 
 def record_replay_case(case: Any, retention_days: int = DEFAULT_RETENTION_DAYS) -> bool:
-    """Insert or update a ReplayCase. Best-effort; never raises."""
+    """Insert or update a ReplayCase. Best-effort; never raises.
+
+    Strictly validates label_source (jev_verified rejected). Scrubs
+    input_features / observed_outcome / production_decision / notes
+    at the store layer.
+    """
     try:
         from .replay_case import ReplayCase
 
@@ -236,28 +309,44 @@ def record_replay_case(case: Any, retention_days: int = DEFAULT_RETENTION_DAYS) 
             data = case.to_dict()
         else:
             data = dict(case)
+        # Strict label_source validation BEFORE writing.
+        label_source = _validate_label_source(data.get("label_source", "objective_outcome"))
+        data["label_source"] = label_source.value
+
+        # Store-level scrub: all dict fields + notes text.
+        input_features = json.dumps(_scrub_dict(data.get("input_features", {})), ensure_ascii=False)
+        observed_outcome = json.dumps(_scrub_dict(data.get("observed_outcome", {})), ensure_ascii=False)
+        production_decision = json.dumps(_scrub_dict(data.get("production_decision", {})), ensure_ascii=False)
+        notes = _scrub_text(data.get("notes", ""))
+
+        label_time = data.get("label_time")
+        if label_time is not None:
+            label_time = float(label_time)
+
         with _lock, _conn() as c:
             _prune_old(c, retention_days)
             c.execute(
                 """INSERT OR REPLACE INTO replay_cases (
                     case_id, domain, input_features, observed_outcome,
                     production_decision, expected_label, label_source,
-                    label_confidence, notes, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    label_confidence, label_time, notes, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     data.get("case_id"),
                     data.get("domain", "fetch"),
-                    json.dumps(data.get("input_features", {}), ensure_ascii=False),
-                    json.dumps(data.get("observed_outcome", {}), ensure_ascii=False),
-                    json.dumps(data.get("production_decision", {}), ensure_ascii=False),
+                    input_features,
+                    observed_outcome,
+                    production_decision,
                     data.get("expected_label", ""),
-                    data.get("label_source", "objective_outcome"),
+                    data["label_source"],
                     float(data.get("label_confidence", 1.0)),
-                    data.get("notes", ""),
+                    label_time,
+                    notes,
                     float(data.get("created_at", time.time())),
                 ),
             )
             c.commit()
+            _enforce_size_cap(c, DEFAULT_MAX_DB_SIZE_MB, _db_path or _default_db_path())
             return True
     except Exception:
         log.warning("replay_cases record failed", exc_info=True)
@@ -414,18 +503,94 @@ def summary() -> dict[str, Any]:
 def update_replay_label(
     case_id: str, label: str, source: str = "human_verified", confidence: float = 1.0, notes: str = ""
 ) -> bool:
-    """Update the expected_label of an existing ReplayCase (human labeling)."""
+    """Update the expected_label of an existing ReplayCase (human labeling).
+
+    Strictly validates label_source. Sets label_time to current UTC epoch.
+    Scrubs notes of secrets.
+    """
     try:
+        label_source = _validate_label_source(source)
+        notes_clean = _scrub_text(notes)
         with _lock, _conn() as c:
             c.execute(
-                "UPDATE replay_cases SET expected_label=?, label_source=?, label_confidence=?, notes=? WHERE case_id=?",
-                (label, source, confidence, notes, case_id),
+                "UPDATE replay_cases SET expected_label=?, label_source=?, label_confidence=?, label_time=?, notes=? WHERE case_id=?",
+                (label, label_source.value, confidence, time.time(), notes_clean, case_id),
             )
             c.commit()
             return c.total_changes > 0
     except Exception:
         log.warning("replay label update failed", exc_info=True)
         return False
+
+
+def join_report() -> dict[str, Any]:
+    """Read-only join report between DecisionEvents and Jev Shadow records.
+
+    Join key: (run_id, trace_id). Does NOT copy Jev state into Decision DB.
+    Returns counts of decision_events, joined_events, unjoined decisions,
+    orphan_jev_records, and join_coverage, split by fetch/search.
+    """
+    try:
+        from .jev_store import _default_db_path as _jev_db_path
+
+        decision_pairs: set[tuple[str, str]] = set()
+        decision_by_domain: dict[str, int] = {"fetch": 0, "search": 0}
+        with _lock, _conn() as c:
+            rows = c.execute(
+                "SELECT DISTINCT run_id, trace_id, domain FROM decision_events WHERE run_id != '' AND trace_id != ''"
+            ).fetchall()
+            for row in rows:
+                decision_pairs.add((row["run_id"], row["trace_id"]))
+                d = row["domain"]
+                if d in decision_by_domain:
+                    decision_by_domain[d] += 1
+
+        jev_pairs: set[tuple[str, str]] = set()
+        jev_by_operation: dict[str, int] = {"fetch": 0, "search": 0}
+        jev_db = _jev_db_path()
+        if jev_db.exists():
+            try:
+                with sqlite3.connect(str(jev_db), timeout=5.0) as jc:
+                    jc.row_factory = sqlite3.Row
+                    jrows = jc.execute(
+                        "SELECT DISTINCT run_id, trace_id, operation FROM jev_records WHERE run_id IS NOT NULL AND run_id != '' AND trace_id IS NOT NULL AND trace_id != ''"
+                    ).fetchall()
+                    for row in jrows:
+                        jev_pairs.add((row["run_id"], row["trace_id"]))
+                        op = row["operation"]
+                        if op in jev_by_operation:
+                            jev_by_operation[op] += 1
+            except Exception:
+                log.warning("join_report: jev db read failed", exc_info=True)
+
+        joined = decision_pairs & jev_pairs
+        unjoined_decisions = decision_pairs - jev_pairs
+        orphan_jev = jev_pairs - decision_pairs
+
+        total_decisions = len(decision_pairs)
+        coverage = len(joined) / total_decisions if total_decisions else 0.0
+
+        return {
+            "decision_event_pairs": total_decisions,
+            "jev_record_pairs": len(jev_pairs),
+            "joined_pairs": len(joined),
+            "unjoined_decision_pairs": len(unjoined_decisions),
+            "orphan_jev_pairs": len(orphan_jev),
+            "join_coverage": round(coverage, 4),
+            "by_domain": {
+                "fetch": {
+                    "decision_events": decision_by_domain.get("fetch", 0),
+                    "jev_records": jev_by_operation.get("fetch", 0),
+                },
+                "search": {
+                    "decision_events": decision_by_domain.get("search", 0),
+                    "jev_records": jev_by_operation.get("search", 0),
+                },
+            },
+        }
+    except Exception:
+        log.warning("join_report failed", exc_info=True)
+        return {"decision_event_pairs": 0, "jev_record_pairs": 0, "joined_pairs": 0, "join_coverage": 0.0}
 
 
 def db_path() -> Path:

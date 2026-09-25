@@ -18,6 +18,26 @@ from typing import Any
 
 from .decision_event import LabelSource
 
+_VALID_LABEL_SOURCES = {e.value for e in LabelSource}
+
+
+def _validate_label_source(value: Any) -> LabelSource:
+    """Strict validation: invalid label_source raises ValueError.
+
+    No silent fallback to OBJECTIVE_OUTCOME — that would let jev_verified
+    or typos masquerade as trusted labels.
+    """
+    if isinstance(value, LabelSource):
+        return value
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"label_source must be a non-empty string, got {value!r}")
+    if value not in _VALID_LABEL_SOURCES:
+        raise ValueError(
+            f"Invalid label_source {value!r}. Must be one of: {sorted(_VALID_LABEL_SOURCES)}. "
+            "jev_verified is explicitly rejected."
+        )
+    return LabelSource(value)
+
 
 @dataclass
 class ReplayCase:
@@ -31,9 +51,10 @@ class ReplayCase:
         production_decision: the deterministic decision that was made in production
             (reason + action + outcome).
         expected_label: trusted label for this case.
-        label_source: where the label came from (never jev_verified).
+        label_source: where the label came from (never jev_verified). Strictly validated.
         label_confidence: 0..1, how confident the label source is.
-        notes: free-text annotation.
+        label_time: UTC epoch when the label was last set (None if not yet labeled).
+        notes: free-text annotation (scrubbed of secrets at store time).
         created_at: epoch seconds.
     """
 
@@ -45,8 +66,12 @@ class ReplayCase:
     expected_label: str = ""
     label_source: LabelSource = LabelSource.OBJECTIVE_OUTCOME
     label_confidence: float = 1.0
+    label_time: float | None = None
     notes: str = ""
     created_at: float = field(default_factory=time.time)
+
+    def __post_init__(self) -> None:
+        self.label_source = _validate_label_source(self.label_source)
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
@@ -55,11 +80,8 @@ class ReplayCase:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ReplayCase:
-        ls = data.get("label_source", "objective_outcome")
-        try:
-            label_source = LabelSource(ls)
-        except ValueError:
-            label_source = LabelSource.OBJECTIVE_OUTCOME
+        """Strict: invalid label_source raises ValueError (no silent fallback)."""
+        label_source = _validate_label_source(data.get("label_source", "objective_outcome"))
         return cls(
             case_id=data.get("case_id", str(uuid.uuid4())),
             domain=data.get("domain", "fetch"),
@@ -69,6 +91,7 @@ class ReplayCase:
             expected_label=data.get("expected_label", ""),
             label_source=label_source,
             label_confidence=float(data.get("label_confidence", 1.0)),
+            label_time=data.get("label_time"),
             notes=data.get("notes", ""),
             created_at=float(data.get("created_at", time.time())),
         )

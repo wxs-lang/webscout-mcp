@@ -38,6 +38,7 @@ from .recovery import (
     classify_recovery,
     recovery_to_legacy_escalation,
 )
+from .runtime_context import PROCESS_RUN_ID, new_trace_id
 from .web_result import WebResult
 
 log = get_logger(__name__)
@@ -188,6 +189,7 @@ class FetchService:
 
     async def fetch(self, request: FetchRequest) -> FetchRouteResult:
         _decision_started_at = time.time()
+        _trace_id = new_trace_id()
         # 1) Select fast FETCH provider.
         primary_name = self.registry.select(ProviderCapability.FETCH)
         primary_provider: FetchProvider | None = None
@@ -233,6 +235,38 @@ class FetchService:
                     record_continuation("chunk_served", len(primary.content or ""))
                 except Exception:  # pragma: no cover
                     log.exception("observability continuation record failed")
+                # Telemetry-only DecisionEvent for snapshot hit. This is NOT
+                # a recovery classification — it records that the continuation
+                # was served from the local cache. 0 network, 0 extraction,
+                # 0 Jev, 0 Browser.
+                try:
+                    from .decision_adapter import record_fetch_decision
+
+                    record_fetch_decision(
+                        request=request,
+                        primary=primary,
+                        final=primary,
+                        recovery=type(
+                            "R",
+                            (),
+                            {
+                                "reason": type("V", (), {"value": "SNAPSHOT_HIT"})(),
+                                "action": type("A", (), {"value": "ACCEPT"})(),
+                            },
+                        )(),
+                        recovery_outcome="snapshot_served",
+                        primary_provider=primary_name,
+                        browser_attempted=False,
+                        browser_success=False,
+                        fallback_used=False,
+                        cache_hit=True,
+                        snapshot_hit=True,
+                        trace_id=_trace_id,
+                        run_id=PROCESS_RUN_ID,
+                        started_at=_decision_started_at,
+                    )
+                except Exception:  # pragma: no cover
+                    log.debug("snapshot hit decision telemetry failed", exc_info=True)
                 web_result = fetch_response_to_web_result(primary)
                 route_trace.append({"action": "continue_from_snapshot", "provider": primary_name})
                 return FetchRouteResult(
@@ -377,6 +411,8 @@ class FetchService:
                         browser_attempted=browser_attempted,
                         browser_success=browser_success,
                         max_state_chars=self._jev_max_state_chars,
+                        trace_id=_trace_id,
+                        run_id=PROCESS_RUN_ID,
                     )
                 )
                 self._pending_jev_tasks.add(task)
@@ -400,6 +436,8 @@ class FetchService:
                 fallback_used=fallback_used,
                 cache_hit=getattr(primary, "from_cache", False),
                 snapshot_hit=used_legacy and getattr(request, "start_char", 0) > 0,
+                trace_id=_trace_id,
+                run_id=PROCESS_RUN_ID,
                 started_at=_decision_started_at,
             )
         except Exception:  # pragma: no cover - telemetry must never break production

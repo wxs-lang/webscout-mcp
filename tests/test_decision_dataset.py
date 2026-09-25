@@ -695,3 +695,379 @@ class TestReplayGeneration:
         assert "RETURN_ERROR" in actions
         assert "STOP" in actions
         assert "CIRCUIT_OPEN" in {c.production_decision["reason"] for c in cases}
+
+
+# ===========================================================================
+# v1.5.0 Phase 1.1 — Decision Data Integrity & Correlation Hardening
+# ===========================================================================
+
+
+class TestLabelSourceStrict:
+    """P0: label_source must be strictly validated, no silent fallback."""
+
+    def test_from_dict_rejects_jev_verified(self):
+        with pytest.raises(ValueError, match="jev_verified"):
+            ReplayCase.from_dict({"label_source": "jev_verified"})
+
+    def test_from_dict_rejects_jev_verified_uppercase(self):
+        with pytest.raises(ValueError):
+            ReplayCase.from_dict({"label_source": "JEV_VERIFIED"})
+
+    def test_from_dict_rejects_unknown(self):
+        with pytest.raises(ValueError):
+            ReplayCase.from_dict({"label_source": "unknown"})
+
+    def test_from_dict_rejects_empty(self):
+        with pytest.raises(ValueError):
+            ReplayCase.from_dict({"label_source": ""})
+
+    def test_from_dict_rejects_typo(self):
+        with pytest.raises(ValueError):
+            ReplayCase.from_dict({"label_source": "human_verifyed"})
+
+    def test_constructor_rejects_invalid(self):
+        with pytest.raises(ValueError):
+            ReplayCase(label_source="jev_verified")
+
+    def test_record_replay_case_rejects_jev(self, tmp_db: Path):
+        ok = record_replay_case(
+            {
+                "case_id": "bad-label-1",
+                "domain": "fetch",
+                "label_source": "jev_verified",
+                "expected_label": "ACCEPT",
+            }
+        )
+        assert ok is False
+        cases = load_replay_cases()
+        assert all(c["case_id"] != "bad-label-1" for c in cases)
+
+    def test_update_replay_label_rejects_jev(self, tmp_db: Path):
+        record_replay_case(ReplayCase(case_id="lbl-1", expected_label="ACCEPT"))
+        ok = update_replay_label("lbl-1", "BROWSER", source="jev_verified")
+        assert ok is False
+        # Label should be unchanged.
+        cases = load_replay_cases()
+        c = next(c for c in cases if c["case_id"] == "lbl-1")
+        assert c["expected_label"] == "ACCEPT"
+
+
+class TestLabelTime:
+    """label_time must exist and survive roundtrip."""
+
+    def test_replay_case_has_label_time_field(self):
+        c = ReplayCase(case_id="lt-1", expected_label="ACCEPT")
+        assert hasattr(c, "label_time")
+        assert c.label_time is None
+
+    def test_label_time_set_in_constructor(self):
+        ts = 1700000000.0
+        c = ReplayCase(case_id="lt-2", expected_label="ACCEPT", label_time=ts)
+        assert c.label_time == ts
+
+    def test_label_time_survives_to_dict_roundtrip(self):
+        ts = 1700000000.5
+        c = ReplayCase(case_id="lt-3", expected_label="ACCEPT", label_time=ts)
+        d = c.to_dict()
+        assert d["label_time"] == ts
+        c2 = ReplayCase.from_dict(d)
+        assert c2.label_time == ts
+
+    def test_update_replay_label_sets_label_time(self, tmp_db: Path):
+        record_replay_case(ReplayCase(case_id="lt-4", expected_label="ACCEPT"))
+        before = time.time()
+        update_replay_label("lt-4", "BROWSER", source="human_verified")
+        after = time.time()
+        cases = load_replay_cases()
+        c = next(c for c in cases if c["case_id"] == "lt-4")
+        assert c["label_time"] is not None
+        assert before <= c["label_time"] <= after + 1
+
+    def test_label_time_persisted_in_db(self, tmp_db: Path):
+        ts = 1700000123.0
+        record_replay_case(ReplayCase(case_id="lt-5", expected_label="ACCEPT", label_time=ts))
+        with sqlite3.connect(str(tmp_db)) as c:
+            row = c.execute("SELECT label_time FROM replay_cases WHERE case_id='lt-5'").fetchone()
+        assert row[0] == ts
+
+
+class TestReplayStoreScrub:
+    """P0: ReplayCase store layer must scrub all fields + notes."""
+
+    def test_malicious_replay_privacy(self, tmp_db: Path):
+        """Secrets in input_features/observed_outcome/production_decision/notes
+        must never appear in the raw SQLite file."""
+        record_replay_case(
+            {
+                "case_id": "priv-1",
+                "domain": "fetch",
+                "input_features": {
+                    "authorization": "Bearer TOPSECRET",
+                    "nested": {"api_key": "ABC123"},
+                },
+                "observed_outcome": {"cookie": "SESSIONID123"},
+                "production_decision": {"token": "TOKENXYZ"},
+                "expected_label": "ACCEPT",
+                "label_source": "objective_outcome",
+                "notes": "Authorization: Bearer SECRETXYZ; password=hunter2; api_key=LEAK",
+            }
+        )
+        # Read raw DB bytes and scan for secrets.
+        raw = tmp_db.read_bytes()
+        for secret in ["TOPSECRET", "ABC123", "SESSIONID123", "TOKENXYZ", "SECRETXYZ", "hunter2", "LEAK"]:
+            assert secret.encode() not in raw, f"Secret {secret!r} found in DB!"
+
+    def test_notes_scrub_text_redacts_patterns(self):
+        from webscout_mcp.decision_event import _scrub_text
+
+        text = "Authorization: Bearer abc123 and token=xyz password=secret123"
+        result = _scrub_text(text)
+        assert "abc123" not in result
+        assert "xyz" not in result
+        assert "secret123" not in result
+        assert "[REDACTED]" in result
+
+    def test_notes_truncated(self):
+        from webscout_mcp.decision_event import _MAX_NOTES_LEN, _scrub_text
+
+        long_text = "x" * (_MAX_NOTES_LEN + 500)
+        result = _scrub_text(long_text)
+        assert len(result) <= _MAX_NOTES_LEN + 20  # + "[truncated]" marker
+
+
+class TestHmacPrivacyHash:
+    """query_hash and canonical_url_hash must use per-install HMAC key."""
+
+    def test_same_input_same_hash_within_install(self):
+        h1 = query_hash("python tutorial")
+        h2 = query_hash("python tutorial")
+        assert h1 == h2
+
+    def test_different_input_different_hash(self):
+        assert query_hash("python") != query_hash("java")
+
+    def test_different_key_produces_different_hash(self, monkeypatch):
+        monkeypatch.setenv("WEBSCOUT_DECISION_HASH_KEY", "key-A")
+        # Reset cached key.
+        import webscout_mcp.decision_event as de
+
+        de._HASH_KEY = None
+        h_a = query_hash("test")
+        monkeypatch.setenv("WEBSCOUT_DECISION_HASH_KEY", "key-B")
+        de._HASH_KEY = None
+        h_b = query_hash("test")
+        assert h_a != h_b
+        # Reset for other tests.
+        de._HASH_KEY = None
+
+    def test_url_hash_does_not_leak_path(self, tmp_db: Path):
+        url = "https://user:pass@example.com/path?token=SECRET123"
+        record_event(
+            _make_fetch_event(
+                event_id="url-hash-1",
+                request_features={"url": sanitized_url_features(url)},
+            )
+        )
+        raw = tmp_db.read_bytes()
+        for secret in [b"user", b"pass", b"/path", b"token", b"SECRET123"]:
+            assert secret not in raw, f"{secret!r} found in DB!"
+
+    def test_hash_is_32_hex_chars(self):
+        h = query_hash("anything")
+        assert len(h) == 32
+        int(h, 16)  # valid hex
+
+
+class TestSizeCapHardening:
+    """Size cap must include WAL and count replay_cases."""
+
+    def test_size_cap_includes_wal_and_replay(self, tmp_path: Path):
+        """With a small cap, both decision_events and replay_cases are pruned,
+        and WAL is checkpointed. Both tables retain some rows."""
+        import webscout_mcp.decision_store as ds
+
+        db = tmp_path / "cap.db"
+        configure(str(db))
+        original = ds.DEFAULT_MAX_DB_SIZE_MB
+        try:
+            ds.DEFAULT_MAX_DB_SIZE_MB = 2
+            # Write many events and replay cases.
+            for i in range(300):
+                record_event(_make_fetch_event(event_id=f"cap-ev-{i}"))
+            for i in range(150):
+                record_replay_case(ReplayCase(case_id=f"cap-rp-{i}", expected_label="ACCEPT"))
+            # Total size should be bounded (with hysteresis allowance).
+            total = ds._total_db_size(db)
+            assert total <= 2 * 1024 * 1024 * 1.15, f"DB too large: {total} bytes"
+            # Both tables should still have some rows (not all deleted).
+            assert count_events("fetch") > 0
+            assert len(load_replay_cases(limit=1000)) > 0
+        finally:
+            ds.DEFAULT_MAX_DB_SIZE_MB = original
+
+    def test_total_db_size_includes_wal(self, tmp_path: Path):
+        import webscout_mcp.decision_store as ds
+
+        db = tmp_path / "wal.db"
+        configure(str(db))
+        # Write something to create WAL.
+        record_event(_make_fetch_event(event_id="wal-1"))
+        total = ds._total_db_size(db)
+        main_size = db.stat().st_size
+        assert total >= main_size
+
+
+class TestDuplicateEventReturn:
+    """record_event must return False for duplicate event_id."""
+
+    def test_duplicate_returns_false(self, tmp_db: Path):
+        e = _make_fetch_event(event_id="dup-1")
+        assert record_event(e) is True
+        assert record_event(e) is False
+        assert count_events("fetch") == 1
+
+    def test_distinct_ids_return_true(self, tmp_db: Path):
+        assert record_event(_make_fetch_event(event_id="uniq-1")) is True
+        assert record_event(_make_fetch_event(event_id="uniq-2")) is True
+        assert count_events("fetch") == 2
+
+
+class TestDecisionJevCorrelation:
+    """DecisionEvent and Jev Shadow must share (run_id, trace_id)."""
+
+    def test_fetch_trace_id_shared_with_jev(self, tmp_db: Path):
+        """Fetch operation: DecisionEvent.trace_id == Jev record.trace_id."""
+        from webscout_mcp.runtime_context import PROCESS_RUN_ID, new_trace_id
+
+        trace_id = new_trace_id()
+        # Record a DecisionEvent with this trace_id.
+        record_event(_make_fetch_event(event_id="corr-fetch-1", trace_id=trace_id, run_id=PROCESS_RUN_ID))
+        # Record a Jev shadow record with the same trace_id (simulate).
+        from webscout_mcp.jev_shadow import get_recorder
+
+        recorder = get_recorder()
+        recorder.record(
+            operation="fetch",
+            jev_question="needs_escalation",
+            decision=None,
+            rule_decision=False,
+            rule_reason=None,
+            trace_id=trace_id,
+            run_id=PROCESS_RUN_ID,
+        )
+        # Verify join report sees it.
+        report = __import__("webscout_mcp.decision_store", fromlist=["join_report"]).join_report()
+        assert report["decision_event_pairs"] >= 1
+        assert report["jev_record_pairs"] >= 1
+        assert report["joined_pairs"] >= 1
+
+    def test_search_trace_id_shared_with_jev(self, tmp_db: Path):
+        """Search operation: 1 DecisionEvent joins to multiple Jev records."""
+        from webscout_mcp.runtime_context import PROCESS_RUN_ID, new_trace_id
+
+        trace_id = new_trace_id()
+        record_event(_make_search_event(event_id="corr-search-1", trace_id=trace_id, run_id=PROCESS_RUN_ID))
+        from webscout_mcp.jev_shadow import get_recorder
+
+        recorder = get_recorder()
+        for pos in range(3):
+            recorder.record(
+                operation="search",
+                jev_question="result_relevant",
+                decision=None,
+                rule_decision=None,
+                rule_reason=None,
+                position=pos + 1,
+                trace_id=trace_id,
+                run_id=PROCESS_RUN_ID,
+            )
+        report = __import__("webscout_mcp.decision_store", fromlist=["join_report"]).join_report()
+        assert report["joined_pairs"] >= 1
+
+    def test_join_report_structure(self, tmp_db: Path):
+        report = __import__("webscout_mcp.decision_store", fromlist=["join_report"]).join_report()
+        assert "decision_event_pairs" in report
+        assert "jev_record_pairs" in report
+        assert "joined_pairs" in report
+        assert "unjoined_decision_pairs" in report
+        assert "orphan_jev_pairs" in report
+        assert "join_coverage" in report
+        assert "by_domain" in report
+
+
+class TestSnapshotHitTelemetry:
+    """Fetch snapshot hit must record 1 DecisionEvent with 0 recovery/Jev/network."""
+
+    def test_snapshot_hit_records_decision_event(self, tmp_db: Path):
+        """Simulate the snapshot-hit telemetry path in FetchService."""
+        from webscout_mcp.decision_adapter import record_fetch_decision
+
+        class FakeRequest:
+            url = "https://example.com/long"
+            max_chars = 8000
+            start_char = 4000
+            output_format = "markdown"
+            extract = True
+            bypass_cache = False
+
+        class FakeResponse:
+            status = "success"
+            status_code = 200
+            content = "x" * 1000
+            metadata = {"served_from_content_snapshot": True}
+            provider = "http"
+            from_cache = True
+
+        class FakeRecovery:
+            class reason:
+                value = "SNAPSHOT_HIT"
+
+            class action:
+                value = "ACCEPT"
+
+        record_fetch_decision(
+            request=FakeRequest(),
+            primary=FakeResponse(),
+            final=FakeResponse(),
+            recovery=FakeRecovery(),
+            recovery_outcome="snapshot_served",
+            primary_provider="http",
+            browser_attempted=False,
+            browser_success=False,
+            fallback_used=False,
+            cache_hit=True,
+            snapshot_hit=True,
+            trace_id="trace-snap-1",
+            run_id="run-snap-1",
+            started_at=time.time(),
+        )
+        events = load_events(domain="fetch", limit=10)
+        snap_events = [e for e in events if e["trace_id"] == "trace-snap-1"]
+        assert len(snap_events) == 1
+        ev = snap_events[0]
+        assert ev["deterministic_reason"] == "SNAPSHOT_HIT"
+        assert ev["deterministic_action"] == "ACCEPT"
+        assert ev["production_outcome"] == "snapshot_served"
+        assert ev["request_features"]["snapshot_hit"] is True
+        assert ev["outcome_features"]["snapshot_hit"] is True
+
+
+class TestPerformanceSemantics:
+    """Performance test: CI safety ceiling 50ms, design target <5ms."""
+
+    def test_p95_under_ci_ceiling(self, tmp_db: Path):
+        """1000 records; p95 under 50ms (CI safety ceiling).
+        Design target is <5ms typical local, but CI filesystems may be slower."""
+        events = [_make_fetch_event(event_id=f"perf2-{i}") for i in range(1000)]
+        latencies = []
+        for e in events:
+            t0 = time.perf_counter()
+            record_event(e)
+            latencies.append((time.perf_counter() - t0) * 1000)
+        latencies.sort()
+        p95 = latencies[int(len(latencies) * 0.95)]
+        p50 = latencies[int(len(latencies) * 0.50)]
+        p99 = latencies[int(len(latencies) * 0.99)]
+        # CI safety ceiling.
+        assert p95 < 50, f"p95={p95:.1f}ms exceeds CI ceiling"
+        assert count_events("fetch") >= 1000
