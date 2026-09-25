@@ -1,6 +1,6 @@
 # Compatibility & Stability Promise
 
-> **Version**: v1.4.0 (release candidate)
+> **Version**: v1.4.0
 > **Status**: Frozen interfaces, backward-compatible
 > **Last updated**: 2026-09-23
 
@@ -274,4 +274,4 @@ We follow [Semantic Versioning](https://semver.org/):
 - **MINOR** (0.x.0): New features, backwards-compatible
 - **PATCH** (0.0.x): Bug fixes, backwards-compatible
 
-Current frozen state: **v1.4.0 (release candidate)**. Interfaces remain backward-compatible until v2.0.0.
+Current frozen state: **v1.4.0**. Interfaces remain backward-compatible until v2.0.0.
