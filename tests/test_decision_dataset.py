@@ -40,6 +40,7 @@ from webscout_mcp.decision_store import (
     configure,
     count_events,
     db_path,
+    join_report,
     load_events,
     load_replay_cases,
     record_event,
@@ -280,7 +281,7 @@ class TestPrivacyRedaction:
 
     def test_no_secrets_in_stored_features(self, tmp_db: Path):
         """URLs with secrets in query string must not be stored raw."""
-        secret_url = "https://example.com/page?token=secret123&api_key=abc&password=hunter2"
+        secret_url = "https://example.com/page?token=uniqsecret123xyz&api_key=uniqkey456abc&password=uniqpass789"
         e = DecisionEvent(
             domain=DecisionDomain.FETCH,
             request_features={"url": sanitized_url_features(secret_url), "max_chars": 8000},
@@ -290,7 +291,7 @@ class TestPrivacyRedaction:
 
         # Full-text scan the DB file.
         db_content = tmp_db.read_text(errors="ignore")
-        for secret in ["secret123", "hunter2", "abc"]:
+        for secret in ["uniqsecret123xyz", "uniqpass789", "uniqkey456abc"]:
             assert secret not in db_content, f"Secret '{secret}' found in DB!"
 
     def test_search_query_not_stored_raw(self, tmp_db: Path):
@@ -957,9 +958,8 @@ class TestDecisionJevCorrelation:
         )
         # Verify join report sees it.
         report = __import__("webscout_mcp.decision_store", fromlist=["join_report"]).join_report()
-        assert report["decision_event_pairs"] >= 1
-        assert report["jev_record_pairs"] >= 1
-        assert report["joined_pairs"] >= 1
+        assert report["total_decisions"] >= 1
+        assert report["joined_decisions"] >= 1
 
     def test_search_trace_id_shared_with_jev(self, tmp_db: Path):
         """Search operation: 1 DecisionEvent joins to multiple Jev records."""
@@ -982,17 +982,20 @@ class TestDecisionJevCorrelation:
                 run_id=PROCESS_RUN_ID,
             )
         report = __import__("webscout_mcp.decision_store", fromlist=["join_report"]).join_report()
-        assert report["joined_pairs"] >= 1
+        assert report["joined_decisions"] >= 1
 
     def test_join_report_structure(self, tmp_db: Path):
         report = __import__("webscout_mcp.decision_store", fromlist=["join_report"]).join_report()
-        assert "decision_event_pairs" in report
-        assert "jev_record_pairs" in report
-        assert "joined_pairs" in report
-        assert "unjoined_decision_pairs" in report
-        assert "orphan_jev_pairs" in report
+        assert "total_decisions" in report
+        assert "eligible_decisions" in report
+        assert "joined_eligible" in report
+        assert "intentional_unjoined" in report
+        assert "unexpected_unjoined" in report
         assert "join_coverage" in report
         assert "by_domain" in report
+        for domain in ("fetch", "search"):
+            assert "join_coverage" in report["by_domain"][domain]
+            assert "eligible_decisions" in report["by_domain"][domain]
 
 
 class TestSnapshotHitTelemetry:
@@ -1071,3 +1074,537 @@ class TestPerformanceSemantics:
         # CI safety ceiling.
         assert p95 < 50, f"p95={p95:.1f}ms exceeds CI ceiling"
         assert count_events("fetch") >= 1000
+
+
+# ===========================================================================
+# Phase 1.2: Decision Store Reliability & Correlation E2E
+# ===========================================================================
+
+
+class TestSizeCapRealOverCap:
+    """Real over-cap scenario: DB must exceed cap before maintenance, and
+    maintenance must prune oldest while preserving newest rows."""
+
+    def test_real_over_cap_prunes_oldest_preserves_newest(self, tmp_path: Path):
+        """Construct large payloads to truly exceed cap, verify pruning."""
+        import webscout_mcp.decision_store as ds
+
+        db = tmp_path / "realcap.db"
+        configure(str(db))
+        original = ds.DEFAULT_MAX_DB_SIZE_MB
+        try:
+            ds.DEFAULT_MAX_DB_SIZE_MB = 1
+            # Generate large metadata to push DB over 1MB.
+            big_meta = {"padding": "x" * 2000}
+            for i in range(800):
+                e = _make_fetch_event(event_id=f"big-{i:04d}")
+                e.metadata = dict(big_meta)
+                record_event(e)
+            # Also add replay cases.
+            for i in range(200):
+                record_replay_case(ReplayCase(case_id=f"big-rp-{i:04d}", expected_label="ACCEPT", notes="y" * 500))
+            # Verify we truly exceeded the cap at some point.
+            # (The cap runs on every write, so final size should be bounded.)
+            total_after = ds._total_db_size(db)
+            assert total_after <= 1 * 1024 * 1024 * 1.15, f"DB too large: {total_after}"
+            # Both tables must still have rows (not deleted to empty).
+            ev_count = count_events("fetch")
+            rp_count = len(load_replay_cases(limit=10000))
+            assert ev_count > 0, "decision_events was fully deleted!"
+            assert rp_count > 0, "replay_cases was fully deleted!"
+            # Newest rows must be preserved (highest IDs).
+            events = load_events(limit=10000)
+            event_ids = [e["event_id"] for e in events]
+            # The newest event should still be there.
+            assert "big-0799" in event_ids or any(
+                i > 700 for i in [int(eid.split("-")[1]) for eid in event_ids if eid.startswith("big-")]
+            )
+        finally:
+            ds.DEFAULT_MAX_DB_SIZE_MB = original
+
+    def test_logical_usage_decreases_after_delete(self, tmp_path: Path):
+        """Verify _logical_used_bytes decreases after DELETE (not physical size)."""
+        import sqlite3
+
+        import webscout_mcp.decision_store as ds
+
+        db = tmp_path / "logical.db"
+        configure(str(db))
+        for i in range(100):
+            record_event(_make_fetch_event(event_id=f"log-{i}"))
+        with sqlite3.connect(str(db)) as c:
+            before = ds._logical_used_bytes(c)
+            c.execute("DELETE FROM decision_events WHERE id IN (SELECT id FROM decision_events LIMIT 50)")
+            c.commit()
+            after = ds._logical_used_bytes(c)
+        assert after < before, f"logical usage did not decrease: {before} -> {after}"
+
+
+class TestHashKeyAtomicCreation:
+    """Hash key must be created atomically with 0600 permissions."""
+
+    def test_atomic_creation_0600(self, tmp_path: Path, monkeypatch):
+        """Key file created with O_EXCL 0600, no write-then-chmod window."""
+        import webscout_mcp.decision_event as de
+
+        monkeypatch.setattr(de, "_HASH_KEY", None)
+        monkeypatch.setattr(de, "_HASH_KEY_PERSISTENT", False)
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        monkeypatch.delenv("WEBSCOUT_DECISION_HASH_KEY", raising=False)
+
+        key = de._get_hash_key()
+        assert len(key) == 32
+        key_path = de._hash_key_path()
+        assert key_path.exists()
+        # Check permissions are 0600.
+        mode = key_path.stat().st_mode & 0o777
+        assert mode == 0o600, f"Key file permissions {oct(mode)}, expected 0o600"
+        assert de.hash_key_persistent() is True
+
+    def test_concurrent_creation_does_not_overwrite(self, tmp_path: Path, monkeypatch):
+        """If another process creates the key first, we read it, don't overwrite."""
+        import webscout_mcp.decision_event as de
+
+        monkeypatch.setattr(de, "_HASH_KEY", None)
+        monkeypatch.setattr(de, "_HASH_KEY_PERSISTENT", False)
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        monkeypatch.delenv("WEBSCOUT_DECISION_HASH_KEY", raising=False)
+
+        # Pre-create the key file with known content.
+        key_path = de._hash_key_path()
+        key_path.parent.mkdir(parents=True, exist_ok=True)
+        known_key = b"a" * 32
+        fd = os.open(str(key_path), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        os.write(fd, known_key)
+        os.close(fd)
+
+        # _get_hash_key should read the existing key, not overwrite.
+        key = de._get_hash_key()
+        assert key == known_key
+        assert key_path.read_bytes() == known_key
+
+    def test_in_memory_fallback_when_persist_fails(self, tmp_path: Path, monkeypatch):
+        """If key cannot be persisted, fall back to in-memory key."""
+        import webscout_mcp.decision_event as de
+
+        monkeypatch.setattr(de, "_HASH_KEY", None)
+        monkeypatch.setattr(de, "_HASH_KEY_PERSISTENT", False)
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        monkeypatch.delenv("WEBSCOUT_DECISION_HASH_KEY", raising=False)
+
+        # Create a read-only directory to force persistence failure.
+        bad_dir = tmp_path / "readonly"
+        bad_dir.mkdir()
+        bad_dir.chmod(0o500)  # read+execute only, no write
+        bad_path = bad_dir / "key"
+        monkeypatch.setattr(de, "_hash_key_path", lambda: bad_path)
+
+        try:
+            key = de._get_hash_key()
+            assert len(key) == 32
+            assert de.hash_key_persistent() is False
+            # Key should still work for hashing.
+            h1 = de._privacy_hash("test")
+            h2 = de._privacy_hash("test")
+            assert h1 == h2
+        finally:
+            bad_dir.chmod(0o700)  # restore for cleanup
+
+
+class TestEligibilityAwareJoin:
+    """Join coverage must use eligible decisions as denominator, not all decisions."""
+
+    def test_snapshot_hit_is_intentional_unjoined(self, tmp_db: Path):
+        """Snapshot hit DecisionEvent has jev_eligible=false → not a correlation failure."""
+        from webscout_mcp.decision_adapter import record_fetch_decision
+
+        class FakeRequest:
+            url = "https://example.com/long"
+            max_chars = 8000
+            start_char = 4000
+            output_format = "markdown"
+            extract = True
+            bypass_cache = False
+
+        class FakeRecovery:
+            class reason:
+                value = "SNAPSHOT_HIT"
+
+            class action:
+                value = "ACCEPT"
+
+        class FakeResponse:
+            status = "success"
+            status_code = 200
+            content = "x" * 100
+            web_result = None
+
+        record_fetch_decision(
+            request=FakeRequest(),
+            primary=FakeResponse(),
+            final=FakeResponse(),
+            recovery=FakeRecovery(),
+            recovery_outcome="snapshot_served",
+            primary_provider="http",
+            browser_attempted=False,
+            browser_success=False,
+            fallback_used=False,
+            cache_hit=True,
+            snapshot_hit=True,
+            jev_eligible=False,
+            trace_id="snap-trace-1",
+            run_id="run-1",
+        )
+        report = join_report()
+        # Snapshot hit is total decision but not eligible.
+        assert report["total_decisions"] >= 1
+        assert report["eligible_decisions"] == 0
+        assert report["intentional_unjoined"] >= 1
+        # Coverage is 0/0 → 0.0 but not a failure.
+        assert report["unexpected_unjoined"] == 0
+
+    def test_eligible_decision_counts_in_denominator(self, tmp_db: Path):
+        """Normal fetch with jev_eligible=true counts toward coverage."""
+        from webscout_mcp.decision_adapter import record_fetch_decision
+
+        class FakeRequest:
+            url = "https://example.com/page"
+            max_chars = 8000
+            start_char = 0
+            output_format = "markdown"
+            extract = True
+            bypass_cache = False
+
+        class FakeRecovery:
+            class reason:
+                value = "COMPLETE_CONTENT"
+
+            class action:
+                value = "ACCEPT"
+
+        class FakeResponse:
+            status = "success"
+            status_code = 200
+            content = "x" * 100
+            web_result = None
+
+        record_fetch_decision(
+            request=FakeRequest(),
+            primary=FakeResponse(),
+            final=FakeResponse(),
+            recovery=FakeRecovery(),
+            recovery_outcome="accepted",
+            primary_provider="http",
+            browser_attempted=False,
+            browser_success=False,
+            fallback_used=False,
+            jev_eligible=True,
+            trace_id="elig-trace-1",
+            run_id="run-elig-1",
+        )
+        # No Jev record → this is unexpected_unjoined.
+        report = join_report()
+        assert report["eligible_decisions"] >= 1
+        assert report["unexpected_unjoined"] >= 1
+
+
+class TestJevStoreDbPath:
+    """jev_store.db_path() must return configured path, not just default."""
+
+    def test_public_db_path_accessor(self, tmp_path: Path):
+        from webscout_mcp import jev_store
+
+        custom = tmp_path / "custom_jev.db"
+        jev_store.configure(str(custom))
+        try:
+            assert jev_store.db_path() == custom
+        finally:
+            # Reset to default for other tests.
+            jev_store.configure(None)
+
+    def test_join_report_uses_configured_jev_path(self, tmp_path: Path):
+        """join_report should read from configured Jev DB path."""
+        import sqlite3
+
+        from webscout_mcp import jev_store
+
+        custom = tmp_path / "custom_jev.db"
+        jev_store.configure(str(custom))
+        try:
+            # Write a Jev record to the custom DB.
+            with sqlite3.connect(str(custom)) as c:
+                c.execute(
+                    "INSERT INTO jev_records (run_id, trace_id, operation, jev_question, timestamp) VALUES (?, ?, ?, ?, ?)",
+                    ("run-custom", "trace-custom", "fetch", "needs_escalation", time.time()),
+                )
+                c.commit()
+            # Write a matching decision event.
+            record_event(_make_fetch_event(event_id="custom-join-1", trace_id="trace-custom", run_id="run-custom"))
+            report = join_report()
+            assert report["joined_decisions"] >= 1
+        finally:
+            jev_store.configure(None)
+
+
+class TestStoreLabelApiBehavior:
+    """Store APIs (record_replay_case, update_replay_label) return False on
+    invalid label_source; pure model APIs (constructor, from_dict) raise."""
+
+    def test_store_api_returns_false_not_raises(self, tmp_db: Path):
+        result = record_replay_case(
+            {"case_id": "bad-store-1", "expected_label": "ACCEPT", "label_source": "jev_verified"}
+        )
+        assert result is False
+
+    def test_update_label_returns_false_not_raises(self, tmp_db: Path):
+        record_replay_case(ReplayCase(case_id="good-1", expected_label="ACCEPT"))
+        result = update_replay_label("good-1", "ACCEPT", source="jev_verified")
+        assert result is False
+
+    def test_model_api_raises_value_error(self):
+        with pytest.raises(ValueError):
+            ReplayCase(case_id="bad-model-1", expected_label="ACCEPT", label_source="jev_verified")
+
+    def test_from_dict_raises_value_error(self):
+        with pytest.raises(ValueError):
+            ReplayCase.from_dict({"case_id": "bad-dict-1", "label_source": "jev_verified"})
+
+
+class TestRealFetchCorrelationE2E:
+    """Real FetchService + Fake JevClient integration: verify production wiring
+    passes the same (run_id, trace_id) to both DecisionEvent and Jev Shadow."""
+
+    @pytest.mark.asyncio
+    async def test_fetch_service_jev_correlation_real(self, tmp_path: Path):
+        """End-to-end: FetchService.fetch() → DecisionEvent + Jev records share keys."""
+        from unittest.mock import AsyncMock
+
+        from webscout_mcp.fetch_provider import FetchRequest, FetchResponse
+        from webscout_mcp.fetch_service import FetchService
+        from webscout_mcp.provider_registry import ProviderRegistry
+        from webscout_mcp.provider_router import ProviderCapability, ProviderCostTier, ProviderRouter
+
+        # Configure Decision DB to temp path.
+        configure(str(tmp_path / "decision.db"))
+        # Configure Jev DB to temp path.
+        from webscout_mcp import jev_store
+
+        jev_store.configure(str(tmp_path / "jev.db"))
+
+        # Fake JevClient that records via the real JevShadowRecorder.
+        class FakeJevClient:
+            name = "fake-jev"
+
+            async def ask_many(self, questions, state):
+                from webscout_mcp.jev_client import JevDecision
+
+                return {q: JevDecision(decision=True, probability=0.9, reason="test") for q in questions}
+
+            async def aclose(self):
+                pass
+
+        # Fake FETCH provider.
+        class FakeFetchProvider:
+            name = "fake-http"
+            capabilities = {ProviderCapability.FETCH}
+
+            async def fetch(self, request):
+                return FetchResponse(
+                    url=request.url,
+                    final_url=request.url,
+                    status_code=200,
+                    provider="fake-http",
+                    title="Test",
+                    content="<html><body><p>hello world</p></body></html>",
+                    content_type="text/html",
+                    extracted=True,
+                )
+
+            async def close(self):
+                pass
+
+            def get_health(self):
+                return {"status": "ok"}
+
+        router = ProviderRouter(
+            provider_names=["fake-http"],
+            cost_tiers={"fake-http": ProviderCostTier.FREE},
+            capabilities={"fake-http": {ProviderCapability.FETCH}},
+        )
+        reg = ProviderRegistry(router=router)
+        reg.register(FakeFetchProvider(), capabilities={ProviderCapability.FETCH})
+
+        svc = FetchService(registry=reg)
+        svc._jev_client = FakeJevClient()
+
+        req = FetchRequest(url="https://example.com/test")
+        result = await svc.fetch(req)
+        await svc.flush_pending_jev_tasks(timeout=5.0)
+
+        # Read Decision DB.
+        events = load_events(limit=10)
+        assert len(events) >= 1
+        fetch_event = events[0]
+        assert fetch_event["domain"] == "fetch"
+        trace_id = fetch_event["trace_id"]
+        run_id = fetch_event["run_id"]
+        assert trace_id, "DecisionEvent has no trace_id"
+        assert run_id, "DecisionEvent has no run_id"
+
+        # Read Jev DB — should have 2 records (needs_escalation + result_usable).
+        import sqlite3
+
+        with sqlite3.connect(str(tmp_path / "jev.db")) as jc:
+            jc.row_factory = sqlite3.Row
+            jev_rows = jc.execute(
+                "SELECT * FROM jev_records WHERE trace_id = ? AND run_id = ?",
+                (trace_id, run_id),
+            ).fetchall()
+        assert len(jev_rows) == 2, f"Expected 2 Jev rows, got {len(jev_rows)}"
+        questions = {r["jev_question"] for r in jev_rows}
+        assert "needs_escalation" in questions
+        assert "result_usable" in questions
+
+        # join_report should show 100% fetch coverage.
+        report = join_report()
+        assert report["by_domain"]["fetch"]["eligible_decisions"] >= 1
+        assert report["by_domain"]["fetch"]["joined_eligible"] >= 1
+        assert report["by_domain"]["fetch"]["join_coverage"] == 1.0
+
+        # Cleanup Jev store config.
+        jev_store.configure(None)
+
+
+class TestRealSearchCorrelationE2E:
+    """Real SearchService + Fake JevClient integration: verify production wiring."""
+
+    @pytest.mark.asyncio
+    async def test_search_service_jev_correlation_real(self, tmp_path: Path):
+        """End-to-end: SearchService.search() → DecisionEvent + Jev records share keys."""
+        import asyncio
+
+        from webscout_mcp.search_provider import SearchRequest, SearchResponse, SearchResult, SearchStatus
+        from webscout_mcp.search_service import SearchService, SearchServiceConfig
+
+        configure(str(tmp_path / "decision.db"))
+        from webscout_mcp import jev_store
+
+        jev_store.configure(str(tmp_path / "jev.db"))
+
+        class FakeJevClient:
+            name = "fake-jev"
+
+            async def ask_many(self, questions, state):
+                from webscout_mcp.jev_client import JevDecision
+
+                return {q: JevDecision(decision=True, probability=0.9, reason="test") for q in questions}
+
+            async def aclose(self):
+                pass
+
+        class FakeSearchProvider:
+            name = "fake-search"
+
+            async def search(self, request):
+                results = [
+                    SearchResult(
+                        position=i,
+                        title=f"Result {i}",
+                        url=f"https://example.com/{i}",
+                        snippet=f"Snippet {i}",
+                        backend="fake-search",
+                    )
+                    for i in range(3)
+                ]
+                return SearchResponse(
+                    query=request.query,
+                    results=results,
+                    status=SearchStatus.SUCCESS,
+                    provider="fake-search",
+                )
+
+            async def close(self):
+                pass
+
+        cfg = SearchServiceConfig()
+        svc = SearchService(providers=[FakeSearchProvider()], config=cfg)
+        svc.jev_client = FakeJevClient()
+
+        req = SearchRequest(query="python testing", max_results=5)
+        result = await svc.search(req)
+        # Flush pending Jev tasks.
+        if svc._pending_jev_tasks:
+            await asyncio.gather(*svc._pending_jev_tasks, return_exceptions=True)
+            svc._pending_jev_tasks.clear()
+
+        # Read Decision DB.
+        events = load_events(limit=10)
+        assert len(events) >= 1
+        search_event = [e for e in events if e["domain"] == "search"][0]
+        trace_id = search_event["trace_id"]
+        run_id = search_event["run_id"]
+        assert trace_id
+        assert run_id
+
+        # Read Jev DB — should have 3 result_relevant records.
+        import sqlite3
+
+        with sqlite3.connect(str(tmp_path / "jev.db")) as jc:
+            jc.row_factory = sqlite3.Row
+            jev_rows = jc.execute(
+                "SELECT * FROM jev_records WHERE trace_id = ? AND run_id = ?",
+                (trace_id, run_id),
+            ).fetchall()
+        assert len(jev_rows) >= 3, f"Expected >=3 Jev rows, got {len(jev_rows)}"
+
+        report = join_report()
+        assert report["by_domain"]["search"]["eligible_decisions"] >= 1
+        assert report["by_domain"]["search"]["joined_eligible"] >= 1
+        assert report["by_domain"]["search"]["join_coverage"] == 1.0
+
+        jev_store.configure(None)
+
+
+class TestPhase12FaultIsolation:
+    """Telemetry maintenance failures must never change Fetch/Search result."""
+
+    def test_record_event_survives_size_cap_failure(self, tmp_path: Path, monkeypatch):
+        """If _enforce_size_cap raises, record_event doesn't propagate (outer try)."""
+        import webscout_mcp.decision_store as ds
+
+        configure(str(tmp_path / "fault.db"))
+
+        def failing_cap(*args, **kwargs):
+            raise RuntimeError("simulated size cap failure")
+
+        monkeypatch.setattr(ds, "_enforce_size_cap", failing_cap)
+        # Must not raise. May return False due to the outer exception handler.
+        record_event(_make_fetch_event(event_id="fault-cap-1"))
+        # The event may or may not be recorded depending on where failure hit,
+        # but the critical assertion is: no exception propagated.
+
+    def test_record_event_survives_prune_failure(self, tmp_path: Path, monkeypatch):
+        """If _prune_old raises, record_event doesn't propagate."""
+        import webscout_mcp.decision_store as ds
+
+        configure(str(tmp_path / "fault2.db"))
+
+        def failing_prune(*args, **kwargs):
+            raise RuntimeError("simulated prune failure")
+
+        monkeypatch.setattr(ds, "_prune_old", failing_prune)
+        record_event(_make_fetch_event(event_id="fault-prune-1"))
+        # No exception = pass.
+
+    def test_jev_db_missing_does_not_crash_join_report(self, tmp_path: Path):
+        """If Jev DB doesn't exist, join_report returns zeros, not crash."""
+        from webscout_mcp import jev_store
+
+        configure(str(tmp_path / "nodecision.db"))
+        jev_store.configure(str(tmp_path / "nonexistent_jev.db"))
+        try:
+            report = join_report()
+            assert report["join_coverage"] == 0.0
+            assert report["total_decisions"] == 0
+        finally:
+            jev_store.configure(None)

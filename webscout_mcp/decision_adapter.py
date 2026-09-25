@@ -65,6 +65,7 @@ def record_fetch_decision(
     fallback_used: bool,
     cache_hit: bool = False,
     snapshot_hit: bool = False,
+    jev_eligible: bool = True,
     trace_id: str = "",
     run_id: str = "",
     jev_call_id: str = "",
@@ -170,6 +171,7 @@ def record_fetch_decision(
             latency_ms=max(0.0, (time.time() - (started_at or time.time())) * 1000),
             request_features=request_features,
             outcome_features=outcome_features,
+            metadata={"jev_eligible": jev_eligible},
             jev_call_id=jev_call_id,
         )
         _safe_record(event)
@@ -270,6 +272,9 @@ def record_search_decision(
             "latency_ms": latency_ms,
         }
 
+        # Jev eligibility: only ACCEPT with results and non-cache-hit fires Jev.
+        search_jev_eligible = action == "ACCEPT" and result_count > 0 and not cache_hit
+
         event = DecisionEvent(
             trace_id=trace_id,
             run_id=run_id,
@@ -286,6 +291,7 @@ def record_search_decision(
             latency_ms=latency_ms or max(0.0, (time.time() - (started_at or time.time())) * 1000),
             request_features=request_features,
             outcome_features=outcome_features,
+            metadata={"jev_eligible": search_jev_eligible},
             jev_call_id=jev_call_id,
         )
         _safe_record(event)
