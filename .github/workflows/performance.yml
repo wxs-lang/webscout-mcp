@@ -233,7 +233,7 @@ jobs:
 
       - name: Upload benchmark results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: benchmark-results-py${{ matrix.python-version }}
           path: benchmark-results/
@@ -349,7 +349,7 @@ jobs:
 
       - name: Upload memory profiling results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: memory-profiling-results
           path: memory-profile-results.txt
