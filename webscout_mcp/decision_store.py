@@ -176,44 +176,72 @@ def _total_db_size(path: Path) -> int:
     return total
 
 
-def _enforce_size_cap(conn: sqlite3.Connection, max_mb: int, db_path: Path, *, force_vacuum: bool = False) -> None:
-    """If DB (+WAL) exceeds max_mb, prune oldest rows from BOTH tables.
+def _logical_used_bytes(conn: sqlite3.Connection) -> int:
+    """Compute logical data size: (page_count - freelist_count) * page_size.
 
-    Uses hysteresis: only triggers heavy maintenance (VACUUM) when size
-    exceeds 110% of cap. Normal writes just delete oldest rows; VACUUM
-    reclaims freed pages only when the file is materially over cap.
+    This reflects actual data, not the physical file which may retain freed
+    pages until VACUUM. Used as the DELETE-loop progress condition so we
+    don't delete until the file shrinks (which only happens at VACUUM).
+    """
+    try:
+        page_count = int(conn.execute("PRAGMA page_count").fetchone()[0])
+        freelist = int(conn.execute("PRAGMA freelist_count").fetchone()[0])
+        page_size = int(conn.execute("PRAGMA page_size").fetchone()[0])
+        return max(0, (page_count - freelist) * page_size)
+    except sqlite3.Error:
+        return 0
+
+
+def _enforce_size_cap(conn: sqlite3.Connection, max_mb: int, db_path: Path, *, force_vacuum: bool = False) -> None:
+    """Size-cap maintenance with logical-page-based pruning and hysteresis.
+
+    High watermark (110% of cap): trigger maintenance.
+    Target (90% of cap): stop deleting.
+    VACUUM: only after pruning, if physical size still > high watermark.
+
+    The DELETE loop uses LOGICAL used bytes (page_count - freelist_count) as
+    its progress condition, NOT physical file size. SQLite does not shrink
+    the file on DELETE; using physical size would cause delete-until-empty.
     """
     try:
         max_bytes = max_mb * 1024 * 1024
-        # Checkpoint WAL first so size reflects committed data, not transient
-        # uncheckpointed writes that would otherwise trigger premature pruning.
+        high_watermark = int(max_bytes * 1.10)
+        target_bytes = int(max_bytes * 0.90)
+
+        # Checkpoint WAL first so page_count reflects committed data.
         try:
             conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
         except sqlite3.Error:
             pass
-        current = _total_db_size(db_path)
-        if current <= max_bytes and not force_vacuum:
+
+        # Only trigger if physical size exceeds high watermark (or forced).
+        physical = _total_db_size(db_path)
+        if physical <= high_watermark and not force_vacuum:
             return
 
-        # Delete oldest rows from BOTH tables, proportional to their sizes.
-        vacuum_threshold = int(max_bytes * 1.1)
+        # Phase A: prune oldest rows until logical usage <= target.
         deleted_any = False
-        while _total_db_size(db_path) > max_bytes:
+        max_iterations = 50  # safety bound against infinite loops
+        for _ in range(max_iterations):
+            logical = _logical_used_bytes(conn)
+            if logical <= target_bytes:
+                break
             ev_count = conn.execute("SELECT COUNT(*) FROM decision_events").fetchone()[0]
             rp_count = conn.execute("SELECT COUNT(*) FROM replay_cases").fetchone()[0]
             if ev_count == 0 and rp_count == 0:
                 break
             total = ev_count + rp_count
-            # Delete from each table proportionally, at least 1 row each if non-empty.
+            # Delete 5-10% from each table proportionally.
+            batch = max(1, total // 10)
             if ev_count > 0:
-                ev_delete = max(1, int(ev_count / total * max(1, total // 10)))
+                ev_delete = max(1, int(ev_count / total * batch))
                 conn.execute(
                     "DELETE FROM decision_events WHERE id IN (SELECT id FROM decision_events ORDER BY created_at ASC LIMIT ?)",
                     (ev_delete,),
                 )
                 deleted_any = True
             if rp_count > 0:
-                rp_delete = max(1, int(rp_count / total * max(1, total // 10)))
+                rp_delete = max(1, int(rp_count / total * batch))
                 conn.execute(
                     "DELETE FROM replay_cases WHERE id IN (SELECT id FROM replay_cases ORDER BY created_at ASC LIMIT ?)",
                     (rp_delete,),
@@ -221,14 +249,13 @@ def _enforce_size_cap(conn: sqlite3.Connection, max_mb: int, db_path: Path, *, f
                 deleted_any = True
             conn.commit()
 
-        # Checkpoint WAL to flush to main DB.
+        # Phase B: checkpoint + VACUUM if still materially over cap.
         try:
             conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
         except sqlite3.Error:
             pass
 
-        # VACUUM only if still materially over cap (avoids hot-path vacuum).
-        if force_vacuum or (_total_db_size(db_path) > vacuum_threshold and deleted_any):
+        if force_vacuum or (_total_db_size(db_path) > high_watermark and deleted_any):
             try:
                 conn.execute("VACUUM")
                 conn.commit()
@@ -432,6 +459,7 @@ def count_events(domain: str | None = None) -> int:
 def summary() -> dict[str, Any]:
     """Aggregate summary for decision-report CLI."""
     try:
+        # Collect all decision DB data inside the lock.
         with _lock, _conn() as c:
             total = c.execute("SELECT COUNT(*) FROM decision_events").fetchone()[0]
             fetch_count = c.execute("SELECT COUNT(*) FROM decision_events WHERE domain='fetch'").fetchone()[0]
@@ -478,23 +506,33 @@ def summary() -> dict[str, Any]:
                 "SELECT COUNT(*) FROM decision_events WHERE jev_call_id IS NOT NULL AND jev_call_id != ''"
             ).fetchone()[0]
 
-            return {
-                "total_events": total,
-                "fetch_events": fetch_count,
-                "search_events": search_count,
-                "replay_cases": replay_count,
-                "fetch": {
-                    "reasons": fetch_reasons,
-                    "actions": fetch_actions,
-                    "outcomes": fetch_outcomes,
-                },
-                "search": {
-                    "reasons": search_reasons,
-                    "actions": search_actions,
-                    "outcomes": search_outcomes,
-                },
-                "jev_joined_events": jev_joined,
-            }
+        # Lock released — join_report() acquires its own lock (would deadlock otherwise).
+        # Eligibility-aware Jev correlation via join_report().
+        # jev_joined_events is deprecated (based on jev_call_id); kept for
+        # backward compatibility. Authoritative metrics are in jev_correlation.
+        try:
+            jev_corr = join_report()
+        except Exception:
+            jev_corr = {"join_coverage": 0.0, "eligible_decisions": 0, "joined_eligible": 0}
+
+        return {
+            "total_events": total,
+            "fetch_events": fetch_count,
+            "search_events": search_count,
+            "replay_cases": replay_count,
+            "fetch": {
+                "reasons": fetch_reasons,
+                "actions": fetch_actions,
+                "outcomes": fetch_outcomes,
+            },
+            "search": {
+                "reasons": search_reasons,
+                "actions": search_actions,
+                "outcomes": search_outcomes,
+            },
+            "jev_joined_events": jev_joined,  # deprecated: use jev_correlation
+            "jev_correlation": jev_corr,
+        }
     except Exception:
         log.warning("decision_events summary failed", exc_info=True)
         return {"total_events": 0, "fetch_events": 0, "search_events": 0, "replay_cases": 0}
@@ -527,27 +565,44 @@ def join_report() -> dict[str, Any]:
     """Read-only join report between DecisionEvents and Jev Shadow records.
 
     Join key: (run_id, trace_id). Does NOT copy Jev state into Decision DB.
-    Returns counts of decision_events, joined_events, unjoined decisions,
-    orphan_jev_records, and join_coverage, split by fetch/search.
+    Eligibility-aware: only DecisionEvents with metadata.jev_eligible=true
+    count toward the correlation denominator. Snapshot hits, cache hits,
+    EMPTY/ERROR/STOP are intentionally unjoined (not correlation failures).
     """
     try:
-        from .jev_store import _default_db_path as _jev_db_path
+        from .jev_store import db_path as jev_db_path
 
         decision_pairs: set[tuple[str, str]] = set()
-        decision_by_domain: dict[str, int] = {"fetch": 0, "search": 0}
+        eligible_pairs: set[tuple[str, str]] = set()
+        decision_by_domain: dict[str, dict[str, set]] = {
+            "fetch": {"all": set(), "eligible": set()},
+            "search": {"all": set(), "eligible": set()},
+        }
         with _lock, _conn() as c:
             rows = c.execute(
-                "SELECT DISTINCT run_id, trace_id, domain FROM decision_events WHERE run_id != '' AND trace_id != ''"
+                "SELECT DISTINCT run_id, trace_id, domain, metadata FROM decision_events WHERE run_id != '' AND trace_id != ''"
             ).fetchall()
             for row in rows:
-                decision_pairs.add((row["run_id"], row["trace_id"]))
+                pair = (row["run_id"], row["trace_id"])
+                decision_pairs.add(pair)
                 d = row["domain"]
                 if d in decision_by_domain:
-                    decision_by_domain[d] += 1
+                    decision_by_domain[d]["all"].add(pair)
+                # Check eligibility from metadata JSON.
+                eligible = False
+                try:
+                    meta = json.loads(row["metadata"]) if row["metadata"] else {}
+                    eligible = bool(meta.get("jev_eligible", False))
+                except (json.JSONDecodeError, TypeError):
+                    pass
+                if eligible:
+                    eligible_pairs.add(pair)
+                    if d in decision_by_domain:
+                        decision_by_domain[d]["eligible"].add(pair)
 
         jev_pairs: set[tuple[str, str]] = set()
-        jev_by_operation: dict[str, int] = {"fetch": 0, "search": 0}
-        jev_db = _jev_db_path()
+        jev_by_operation: dict[str, set] = {"fetch": set(), "search": set()}
+        jev_db = jev_db_path()
         if jev_db.exists():
             try:
                 with sqlite3.connect(str(jev_db), timeout=5.0) as jc:
@@ -556,41 +611,61 @@ def join_report() -> dict[str, Any]:
                         "SELECT DISTINCT run_id, trace_id, operation FROM jev_records WHERE run_id IS NOT NULL AND run_id != '' AND trace_id IS NOT NULL AND trace_id != ''"
                     ).fetchall()
                     for row in jrows:
-                        jev_pairs.add((row["run_id"], row["trace_id"]))
+                        pair = (row["run_id"], row["trace_id"])
+                        jev_pairs.add(pair)
                         op = row["operation"]
                         if op in jev_by_operation:
-                            jev_by_operation[op] += 1
+                            jev_by_operation[op].add(pair)
             except Exception:
                 log.warning("join_report: jev db read failed", exc_info=True)
 
         joined = decision_pairs & jev_pairs
+        joined_eligible = eligible_pairs & jev_pairs
         unjoined_decisions = decision_pairs - jev_pairs
         orphan_jev = jev_pairs - decision_pairs
+        intentional_unjoined = decision_pairs - eligible_pairs
+        unexpected_unjoined = eligible_pairs - jev_pairs
 
-        total_decisions = len(decision_pairs)
-        coverage = len(joined) / total_decisions if total_decisions else 0.0
+        total_eligible = len(eligible_pairs)
+        eligible_coverage = len(joined_eligible) / total_eligible if total_eligible else 0.0
+
+        by_domain: dict[str, dict[str, Any]] = {}
+        for domain in ("fetch", "search"):
+            d_all = decision_by_domain[domain]["all"]
+            d_eligible = decision_by_domain[domain]["eligible"]
+            j_domain = jev_by_operation.get(domain, set())
+            d_joined = d_all & j_domain
+            d_eligible_joined = d_eligible & j_domain
+            cov = len(d_eligible_joined) / len(d_eligible) if d_eligible else 0.0
+            by_domain[domain] = {
+                "decision_events": len(d_all),
+                "eligible_decisions": len(d_eligible),
+                "jev_records": len(j_domain),
+                "joined_pairs": len(d_joined),
+                "joined_eligible": len(d_eligible_joined),
+                "unjoined_decisions": len(d_all - j_domain),
+                "orphan_jev": len(j_domain - d_all),
+                "intentional_unjoined": len(d_all - d_eligible),
+                "unexpected_unjoined": len(d_eligible - j_domain),
+                "join_coverage": round(cov, 4),
+            }
 
         return {
-            "decision_event_pairs": total_decisions,
-            "jev_record_pairs": len(jev_pairs),
-            "joined_pairs": len(joined),
+            "total_decisions": len(decision_pairs),
+            "eligible_decisions": total_eligible,
+            "advisor_enabled_decisions": total_eligible,  # eligible path = would fire Jev if enabled
+            "joined_decisions": len(joined),
+            "joined_eligible": len(joined_eligible),
+            "intentional_unjoined": len(intentional_unjoined),
+            "unexpected_unjoined": len(unexpected_unjoined),
             "unjoined_decision_pairs": len(unjoined_decisions),
             "orphan_jev_pairs": len(orphan_jev),
-            "join_coverage": round(coverage, 4),
-            "by_domain": {
-                "fetch": {
-                    "decision_events": decision_by_domain.get("fetch", 0),
-                    "jev_records": jev_by_operation.get("fetch", 0),
-                },
-                "search": {
-                    "decision_events": decision_by_domain.get("search", 0),
-                    "jev_records": jev_by_operation.get("search", 0),
-                },
-            },
+            "join_coverage": round(eligible_coverage, 4),
+            "by_domain": by_domain,
         }
     except Exception:
         log.warning("join_report failed", exc_info=True)
-        return {"decision_event_pairs": 0, "jev_record_pairs": 0, "joined_pairs": 0, "join_coverage": 0.0}
+        return {"total_decisions": 0, "eligible_decisions": 0, "joined_eligible": 0, "join_coverage": 0.0}
 
 
 def db_path() -> Path:

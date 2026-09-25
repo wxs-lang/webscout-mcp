@@ -50,6 +50,11 @@ def configure(db_path: str | Path | None = None) -> Path:
     return _db_path
 
 
+def db_path() -> Path:
+    """Return the configured Jev DB path (or default if not configured)."""
+    return _db_path or _default_db_path()
+
+
 def _conn() -> sqlite3.Connection:
     global _db_path
     if _db_path is None:

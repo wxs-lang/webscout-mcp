@@ -586,7 +586,18 @@ async def _cmd_decision_report(args: argparse.Namespace) -> None:
     print(f"  Fetch events:  {s['fetch_events']}")
     print(f"  Search events: {s['search_events']}")
     print(f"Replay cases:    {s['replay_cases']}")
-    print(f"Jev-joined:      {s['jev_joined_events']}")
+    jev_corr = s.get("jev_correlation", {})
+    if jev_corr:
+        print(f"Jev eligible:    {jev_corr.get('eligible_decisions', 0)}")
+        print(f"Jev joined:      {jev_corr.get('joined_eligible', 0)}")
+        print(f"Jev coverage:    {jev_corr.get('join_coverage', 0.0):.2%}")
+        print(f"  Intentional unjoined: {jev_corr.get('intentional_unjoined', 0)}")
+        print(f"  Unexpected unjoined:  {jev_corr.get('unexpected_unjoined', 0)}")
+    else:
+        print(f"Jev-joined:      {s['jev_joined_events']} (deprecated metric)")
+    from .decision_event import hash_key_persistent
+
+    print(f"Hash key persistent: {hash_key_persistent()}")
     print()
     if domain in (None, "fetch"):
         print("--- Fetch ---")

@@ -86,6 +86,7 @@ _MAX_NOTES_LEN = 2000
 # ---------------------------------------------------------------------------
 
 _HASH_KEY: bytes | None = None
+_HASH_KEY_PERSISTENT: bool = False
 
 
 def _hash_key_path() -> Path:
@@ -94,35 +95,55 @@ def _hash_key_path() -> Path:
     return base / "webscout" / "decision_hash.key"
 
 
+def hash_key_persistent() -> bool:
+    """Return True if the HMAC key is persisted to disk (not in-memory only)."""
+    return _HASH_KEY_PERSISTENT
+
+
 def _get_hash_key() -> bytes:
     """Return the per-install HMAC key.
 
     Priority:
       1. WEBSCOUT_DECISION_HASH_KEY env var (for tests / reproducible deploys)
-      2. <data_dir>/webscout/decision_hash.key (created on first use, 0600)
+      2. <data_dir>/webscout/decision_hash.key (atomically created 0600)
       3. In-memory random key (last resort; not persisted)
+
+    Atomic creation uses os.open(O_WRONLY|O_CREAT|O_EXCL, 0o600) to avoid the
+    write-then-chmod permission window. If another process creates the file
+    concurrently, we read the existing key instead of overwriting it.
     """
-    global _HASH_KEY
+    global _HASH_KEY, _HASH_KEY_PERSISTENT
     if _HASH_KEY is not None:
         return _HASH_KEY
     env_key = os.environ.get("WEBSCOUT_DECISION_HASH_KEY")
     if env_key:
         _HASH_KEY = env_key.encode("utf-8")
+        _HASH_KEY_PERSISTENT = True  # env-provided key is stable across restarts
         return _HASH_KEY
     try:
         key_path = _hash_key_path()
         key_path.parent.mkdir(parents=True, exist_ok=True)
         if key_path.exists():
             _HASH_KEY = key_path.read_bytes().strip()
+            _HASH_KEY_PERSISTENT = True
         else:
-            _HASH_KEY = os.urandom(32)
-            key_path.write_bytes(_HASH_KEY)
+            new_key = os.urandom(32)
             try:
-                os.chmod(key_path, 0o600)
-            except OSError:
-                pass
+                # Atomic create with 0600 — no write-then-chmod window.
+                fd = os.open(str(key_path), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                try:
+                    os.write(fd, new_key)
+                finally:
+                    os.close(fd)
+                _HASH_KEY = new_key
+                _HASH_KEY_PERSISTENT = True
+            except FileExistsError:
+                # Another process created it concurrently — read theirs.
+                _HASH_KEY = key_path.read_bytes().strip()
+                _HASH_KEY_PERSISTENT = True
     except OSError:
         _HASH_KEY = os.urandom(32)
+        _HASH_KEY_PERSISTENT = False
     return _HASH_KEY
 
 

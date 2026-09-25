@@ -261,6 +261,7 @@ class FetchService:
                         fallback_used=False,
                         cache_hit=True,
                         snapshot_hit=True,
+                        jev_eligible=False,
                         trace_id=_trace_id,
                         run_id=PROCESS_RUN_ID,
                         started_at=_decision_started_at,
