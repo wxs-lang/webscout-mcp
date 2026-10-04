@@ -35,6 +35,50 @@ def _telemetry_enabled() -> bool:
     return val not in ("0", "false", "no", "off")
 
 
+def _web_result_chars_and_extraction(resp: Any) -> tuple[int, bool]:
+    """Return (content_chars, extraction_success) for a FetchResponse-like obj.
+
+    Reads sanitized metadata scalars only; never touches body text.
+    """
+    web_result = getattr(resp, "web_result", None)
+    if web_result is not None:
+        meta = getattr(web_result, "metadata", {}) or {}
+        chars = int(meta.get("content_chars", 0) or 0)
+        extracted = bool(meta.get("extracted", False))
+        return chars, extracted
+    content = getattr(resp, "content", "") or ""
+    chars = len(content) if isinstance(content, str) else 0
+    return chars, chars > 0
+
+
+def _sanitize_attempt_summary(route_trace: Any) -> list[dict[str, Any]]:
+    """Convert a SearchService route_trace into a sanitized per-attempt summary.
+
+    Keeps only ordinal / outcome / reason / recommended-action scalars. Drops
+    provider names, query text, snippets, headers. Never raises.
+    """
+    if not isinstance(route_trace, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for i, entry in enumerate(route_trace, start=1):
+        if not isinstance(entry, dict):
+            continue
+        result = str(entry.get("result", "")).upper()
+        reason = str(entry.get("reason") or entry.get("recovery_reason") or "")
+        action = str(entry.get("recommended_action") or "")
+        # Normalize outcome bucket.
+        outcome_bucket = result if result in ("SUCCESS", "EMPTY", "ERROR") else "OTHER"
+        out.append(
+            {
+                "ordinal": i,
+                "outcome": outcome_bucket.lower(),
+                "reason": reason,
+                "action": action,
+            }
+        )
+    return out
+
+
 def _safe_record(event: DecisionEvent) -> None:
     """Record a DecisionEvent best-effort. Never raises."""
     if not _telemetry_enabled():
@@ -63,6 +107,9 @@ def record_fetch_decision(
     browser_attempted: bool,
     browser_success: bool,
     fallback_used: bool,
+    fallback_success: bool = False,
+    browser_content_chars: int = 0,
+    primary_hard_signal: str = "",
     cache_hit: bool = False,
     snapshot_hit: bool = False,
     jev_eligible: bool = True,
@@ -131,6 +178,15 @@ def record_fetch_decision(
             elif primary_status_code >= 500:
                 http_group = "5xx"
 
+        # Additive Phase-2 telemetry: primary vs final char scalars and
+        # extraction success. No routing change, no body text stored.
+        primary_chars, primary_extraction_ok = _web_result_chars_and_extraction(primary)
+        final_extraction_ok = extraction_success
+        if not final_extraction_ok:
+            # Fall back: treat any non-empty final content as extracted.
+            final_extraction_ok = content_chars > 0
+        gain_chars = max(0, content_chars - primary_chars)
+
         request_features = {
             "url": sanitized_url_features(url),
             "extract": extract,
@@ -152,8 +208,20 @@ def record_fetch_decision(
             "truncated": truncated,
             "continuation_available": continuation_available,
             "extraction_success": extraction_success,
-            "browser_used": browser_attempted,
+            # Phase-2 additive scalars:
+            "primary_content_chars": primary_chars,
+            "final_content_chars": content_chars,
+            "content_gain_chars": gain_chars,
+            "primary_extraction_success": primary_extraction_ok,
+            "final_extraction_success": final_extraction_ok,
+            "browser_attempted": browser_attempted,
             "browser_success": browser_success,
+            "browser_content_chars": int(browser_content_chars or 0),
+            "fallback_attempted": fallback_used,
+            "fallback_success": fallback_success,
+            "primary_hard_signal": primary_hard_signal or reason_val or "",
+            # legacy aliases preserved:
+            "browser_used": browser_attempted,
             "fallback_used": fallback_used,
             "cache_hit": cache_hit,
             "snapshot_hit": snapshot_hit,
@@ -197,6 +265,7 @@ def record_search_decision(
     fallback_count: int = 0,
     circuit_skips: int = 0,
     unavailable_skips: int = 0,
+    route_trace: Any = None,
     trace_id: str = "",
     run_id: str = "",
     jev_call_id: str = "",
@@ -260,6 +329,10 @@ def record_search_decision(
         else:
             outcome = "no_action"
 
+        # Additive Phase-2 telemetry: per-attempt sanitized summary.
+        # No query/snippet/headers/provider-name leakage beyond a small ordinal.
+        attempt_summary = _sanitize_attempt_summary(route_trace)
+
         request_features = {
             "query_hash": query_hash(query),
             "query_length": len(query),
@@ -279,6 +352,10 @@ def record_search_decision(
             "circuit_skips": circuit_skips,
             "unavailable_skips": unavailable_skips,
             "latency_ms": latency_ms,
+            "deterministic_reason": reason,
+            "deterministic_action": action,
+            "production_action": action,
+            "attempt_summary": attempt_summary,
         }
 
         # Jev eligibility: only ACCEPT with results and non-cache-hit fires Jev.

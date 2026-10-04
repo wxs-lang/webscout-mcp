@@ -303,6 +303,7 @@ class SearchService:
                     fallback_count=max(0, len(tried_providers) - 1),
                     circuit_skips=circuit_skips,
                     unavailable_skips=unavailable_skips,
+                    route_trace=route_trace,
                     jev_enabled=_jev_enabled,
                     trace_id=_trace_id,
                     run_id=PROCESS_RUN_ID,
