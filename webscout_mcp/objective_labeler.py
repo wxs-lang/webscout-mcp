@@ -280,3 +280,68 @@ def jev_result_relevant_objective(facts: dict[str, Any]) -> ObjectiveLabelResult
         is_objective=False,
         ambiguity_reason="result_relevant_is_human_only",
     )
+
+
+# ---------------------------------------------------------------------------
+# Phase 2.1: materialize objective ReplayCases for one evaluation run.
+# ---------------------------------------------------------------------------
+
+# Questions that MAY receive an objective label. result_relevant is
+# deliberately ABSENT: a search-success / result_count>0 is never relevance
+# ground truth.
+_OBJECTIVE_QUESTIONS: tuple[tuple[str, Any], ...] = (
+    ("needs_escalation", jev_needs_escalation_objective),
+    ("result_usable", jev_result_usable_objective),
+)
+
+
+def materialize_objective_replay_cases(run_id: str) -> int:
+    """Materialize objective ReplayCases for one run (OFFLINE EVALUATION CLI).
+
+    Reads that run's DecisionEvents and, for each event, derives objective
+    Jev-question ground truth from its outcome facts for ``needs_escalation``
+    and ``result_usable`` ONLY. ``result_relevant`` is never materialized —
+    a SEARCH_SUCCESS / result_count>0 must never create a semantic case.
+
+    Idempotent: case_ids are deterministic ``<event_id>:<question>`` and rows
+    are INSERT OR REPLACE'd, so re-runs never duplicate. Returns the number of
+    objective cases written.
+
+    Lazily imports ``decision_store`` / ``ReplayCase`` to avoid import cycles.
+    This is evaluation-only: it MUST NOT be called on the production path.
+    """
+    import time
+
+    from . import decision_store
+    from .replay_case import ReplayCase
+
+    written = 0
+    for event in decision_store.load_events_for_run(run_id):
+        facts = dict(event.get("outcome_features") or {})
+        for question, objective_fn in _OBJECTIVE_QUESTIONS:
+            result = objective_fn(facts)
+            if not result.is_objective or not result.label:
+                continue
+            case = ReplayCase(
+                case_id=f"{event.get('event_id', '')}:{question}",
+                run_id=event.get("run_id", "") or run_id,
+                trace_id=event.get("trace_id", "") or "",
+                domain=event.get("domain", "fetch") or "fetch",
+                input_features=dict(event.get("request_features") or {}),
+                observed_outcome=facts,
+                production_decision={
+                    "deterministic_reason": event.get("deterministic_reason", ""),
+                    "deterministic_action": event.get("deterministic_action", ""),
+                    "production_action": event.get("production_action", ""),
+                    "production_outcome": event.get("production_outcome", ""),
+                    "question": question,
+                },
+                expected_label=result.label,
+                label_source=LabelSource.OBJECTIVE_OUTCOME,
+                label_confidence=float(result.confidence),
+                label_time=time.time(),
+                notes="",
+            )
+            if decision_store.record_replay_case(case):
+                written += 1
+    return written

@@ -298,3 +298,149 @@ def semantic_label_to_ground_truth(question: str, expected_label: str) -> bool |
     if canon == neg_map.get(question):
         return False
     return None
+
+
+# ---------------------------------------------------------------------------
+# Phase 2.1: run-scoped labeled-row join (evaluation-only).
+# ---------------------------------------------------------------------------
+
+EVALUATION_QUESTIONS: tuple[str, ...] = ("needs_escalation", "result_usable", "result_relevant")
+
+# Only trusted sources may mint ground truth. jev_verified is rejected upstream.
+_TRUSTED_LABEL_SOURCES = {"human_verified", "objective_outcome"}
+
+
+def join_labeled_rows(
+    events: list[dict[str, Any]],
+    jev_rows: list[dict[str, Any]],
+    replay_cases: list[Any],
+    run_id: str,
+) -> dict[str, list[LabeledPrediction]]:
+    """Pure join of trusted ReplayCases + Jev rows for ONE run.
+
+    The correlation key is strictly ``(run_id, trace_id[, jev_question])``;
+    ``case_id`` is NEVER used as a trace.
+
+    * For each trusted ReplayCase (``label_source`` human_verified /
+      objective_outcome), derive a boolean ground truth per question via
+      :func:`semantic_label_to_ground_truth`. When non-None AND a Jev row
+      exists for ``(rc.run_id, rc.trace_id, question)``, emit a
+      ``LabeledPrediction`` whose ``trace_id`` is the ReplayCase's TRACE_ID
+      (never its case_id) and whose ``run_id`` is the case's run_id.
+    * Every Jev row not consumed as a trusted label is appended with
+      ``ground_truth=None``. A Jev prediction can NEVER become a label.
+
+    Args:
+        events: DecisionEvents loaded for this run (used to validate that a
+            labeled trace corresponds to a real production decision).
+        jev_rows: raw Jev shadow rows for this run.
+        replay_cases: trusted ReplayCases for this run.
+        run_id: the scoped run id.
+    """
+    result: dict[str, list[LabeledPrediction]] = {q: [] for q in EVALUATION_QUESTIONS}
+
+    event_traces = {(e.get("run_id") or "", e.get("trace_id") or "") for e in events}
+
+    jev_index: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for row in jev_rows:
+        key = (
+            row.get("run_id") or "",
+            row.get("trace_id") or "",
+            row.get("jev_question") or "",
+        )
+        jev_index[key] = row  # duplicate keys: last wins (deterministic w/ input order)
+
+    used_jev_keys: set[tuple[str, str, str]] = set()
+
+    for rc in replay_cases:
+        label_source_value = getattr(rc.label_source, "value", rc.label_source)
+        if label_source_value not in _TRUSTED_LABEL_SOURCES:
+            continue
+        rc_run = rc.run_id or run_id
+        rc_trace = rc.trace_id or ""
+        if (rc_run, rc_trace) not in event_traces:
+            continue  # a label without a real production trace in this run: skip
+        for question in EVALUATION_QUESTIONS:
+            ground_truth = semantic_label_to_ground_truth(question, rc.expected_label or "")
+            if ground_truth is None:
+                continue
+            key = (rc_run, rc_trace, question)
+            jrow = jev_index.get(key)
+            if jrow is None:
+                continue  # ground truth cannot join without its Jev prediction
+            used_jev_keys.add(key)
+            result[question].append(
+                LabeledPrediction(
+                    question=question,
+                    ground_truth=ground_truth,
+                    label_source=label_source_value,
+                    jev_decision=jrow.get("jev_decision"),
+                    jev_probability=jrow.get("jev_probability"),
+                    rule_decision=jrow.get("rule_decision"),
+                    trace_id=rc_trace,
+                    run_id=rc_run,
+                )
+            )
+
+    # Ambiguous/unlabeled Jev predictions: appended, never relabeled.
+    for key, jrow in jev_index.items():
+        if key in used_jev_keys:
+            continue
+        bucket = result.get(key[2])
+        if bucket is None:
+            continue
+        bucket.append(
+            LabeledPrediction(
+                question=key[2],
+                ground_truth=None,
+                label_source="",
+                jev_decision=jrow.get("jev_decision"),
+                jev_probability=jrow.get("jev_probability"),
+                rule_decision=jrow.get("rule_decision"),
+                trace_id=key[1],
+                run_id=key[0],
+            )
+        )
+
+    return result
+
+
+def build_labeled_rows(run_id: str) -> dict[str, list[LabeledPrediction]]:
+    """Materialize run-scoped labeled rows for the OFFLINE EVALUATION CLI.
+
+    Read-only against production. Lazily imports ``decision_store`` /
+    ``jev_store`` / ``ReplayCase`` to avoid import cycles. Reads:
+      * DecisionEvents for the run via ``decision_store``,
+      * Jev shadow rows for the run via the configured jev_store DB,
+      * ReplayCases for the run via ``decision_store.load_replay_cases(run_id=...)``.
+
+    Returns a mapping ``question -> [LabeledPrediction]`` joined on
+    ``(run_id, trace_id[, question])``. See :func:`join_labeled_rows`.
+    """
+    import sqlite3
+
+    from . import decision_store, jev_store
+    from .logging_config import get_logger
+    from .replay_case import ReplayCase
+
+    events = decision_store.load_events_for_run(run_id)
+
+    jev_rows: list[dict[str, Any]] = []
+    try:
+        jev_db = jev_store.db_path()
+        if jev_db.exists():
+            with sqlite3.connect(str(jev_db), timeout=5.0) as jc:
+                jc.row_factory = sqlite3.Row
+                rows = jc.execute("SELECT * FROM jev_records WHERE run_id = ?", (run_id,)).fetchall()
+            for row in rows:
+                d = dict(row)
+                for k in ("jev_decision", "rule_decision", "browser_attempted", "browser_success"):
+                    if d.get(k) is not None:
+                        d[k] = bool(d[k])
+                jev_rows.append(d)
+    except Exception:
+        get_logger(__name__).warning("build_labeled_rows: jev store read failed", exc_info=True)
+
+    replay_cases = [ReplayCase.from_dict(d) for d in decision_store.load_replay_cases(run_id=run_id)]
+
+    return join_labeled_rows(events, jev_rows, replay_cases, run_id)

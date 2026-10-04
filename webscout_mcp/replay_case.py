@@ -45,6 +45,10 @@ class ReplayCase:
 
     Attributes:
         case_id: stable unique id.
+        run_id: evaluation/production run this case belongs to ("" = unlabeled
+            legacy row). Correlation to Jev is via (run_id, trace_id), NEVER
+            via case_id.
+        trace_id: the production trace id this case replays.
         domain: "fetch" or "search".
         input_features: sanitized request features (same shape as DecisionEvent.request_features).
         observed_outcome: sanitized outcome features (same shape as DecisionEvent.outcome_features).
@@ -59,6 +63,8 @@ class ReplayCase:
     """
 
     case_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    run_id: str = ""
+    trace_id: str = ""
     domain: str = "fetch"
     input_features: dict[str, Any] = field(default_factory=dict)
     observed_outcome: dict[str, Any] = field(default_factory=dict)
@@ -84,6 +90,8 @@ class ReplayCase:
         label_source = _validate_label_source(data.get("label_source", "objective_outcome"))
         return cls(
             case_id=data.get("case_id", str(uuid.uuid4())),
+            run_id=data.get("run_id", "") or "",
+            trace_id=data.get("trace_id", "") or "",
             domain=data.get("domain", "fetch"),
             input_features=dict(data.get("input_features", {})),
             observed_outcome=dict(data.get("observed_outcome", {})),

@@ -77,6 +77,8 @@ CREATE INDEX IF NOT EXISTS idx_decision_action ON decision_events(deterministic_
 CREATE TABLE IF NOT EXISTS replay_cases (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     case_id TEXT NOT NULL UNIQUE,
+    run_id TEXT,
+    trace_id TEXT,
     domain TEXT NOT NULL,
     input_features TEXT,
     observed_outcome TEXT,
@@ -90,19 +92,32 @@ CREATE TABLE IF NOT EXISTS replay_cases (
 );
 CREATE INDEX IF NOT EXISTS idx_replay_domain ON replay_cases(domain);
 CREATE INDEX IF NOT EXISTS idx_replay_label ON replay_cases(expected_label);
+CREATE INDEX IF NOT EXISTS idx_replay_run ON replay_cases(run_id);
+CREATE INDEX IF NOT EXISTS idx_replay_trace ON replay_cases(trace_id);
 """
 
 _MIGRATIONS = [
     # (table, column, ddl)
     ("replay_cases", "label_time", "ALTER TABLE replay_cases ADD COLUMN label_time REAL"),
+    ("replay_cases", "run_id", "ALTER TABLE replay_cases ADD COLUMN run_id TEXT"),
+    ("replay_cases", "trace_id", "ALTER TABLE replay_cases ADD COLUMN trace_id TEXT"),
 ]
 
 
 def _run_migrations(path: Path) -> None:
-    """Idempotent column migrations for existing DBs."""
+    """Idempotent column migrations for existing DBs.
+
+    Runs BEFORE ``_SCHEMA_BASE`` so that indexes added to the schema (which
+    reference these columns) are created only after the columns exist. Tables
+    created by ``_SCHEMA_BASE`` themselves already include the columns, so a
+    missing table simply means "fresh DB, skip".
+    """
     try:
         with sqlite3.connect(str(path), timeout=5.0) as c:
+            existing_tables = {row[0] for row in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
             for table, column, ddl in _MIGRATIONS:
+                if table not in existing_tables:
+                    continue
                 cols = {row[1] for row in c.execute(f"PRAGMA table_info({table})")}
                 if column not in cols:
                     c.execute(ddl)
@@ -149,10 +164,14 @@ def _conn() -> sqlite3.Connection:
 
 def _init_schema(path: Path) -> None:
     try:
+        # Migrations FIRST: existing DBs gain new columns before the schema
+        # script (which creates indexes over them) runs. Fresh DBs: table
+        # does not exist yet, migrations are skipped, CREATE TABLE below
+        # includes the columns already.
+        _run_migrations(path)
         with sqlite3.connect(str(path), timeout=5.0) as c:
             c.executescript(_SCHEMA_BASE)
             c.commit()
-        _run_migrations(path)
     except Exception:
         log.warning("decision_events schema init failed", exc_info=True)
 
@@ -357,12 +376,14 @@ def record_replay_case(case: Any, retention_days: int = DEFAULT_RETENTION_DAYS) 
             _prune_old(c, retention_days)
             c.execute(
                 """INSERT OR REPLACE INTO replay_cases (
-                    case_id, domain, input_features, observed_outcome,
+                    case_id, run_id, trace_id, domain, input_features, observed_outcome,
                     production_decision, expected_label, label_source,
                     label_confidence, label_time, notes, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     data.get("case_id"),
+                    data.get("run_id", "") or "",
+                    data.get("trace_id", "") or "",
                     data.get("domain", "fetch"),
                     input_features,
                     observed_outcome,
@@ -417,20 +438,59 @@ def load_events(
         return []
 
 
-def load_replay_cases(domain: str | None = None, limit: int = 1000) -> list[dict[str, Any]]:
-    """Load ReplayCases as dicts."""
+def load_events_for_run(run_id: str, limit: int = 10000) -> list[dict[str, Any]]:
+    """Load all DecisionEvents for one evaluation run as dicts (JSON parsed).
+
+    Used by the offline evaluator (objective materialization). Best-effort;
+    returns [] on failure.
+    """
+    if not run_id:
+        return []
     try:
         with _lock, _conn() as c:
+            rows = c.execute(
+                "SELECT * FROM decision_events WHERE run_id = ? ORDER BY created_at ASC LIMIT ?",
+                (run_id, limit),
+            ).fetchall()
+            result = []
+            for row in rows:
+                d = dict(row)
+                for key in ("request_features", "outcome_features", "metadata"):
+                    if d.get(key):
+                        try:
+                            d[key] = json.loads(d[key])
+                        except (json.JSONDecodeError, TypeError):
+                            d[key] = {}
+                result.append(d)
+            return result
+    except Exception:
+        log.warning("decision_events load_for_run failed", exc_info=True)
+        return []
+
+
+def load_replay_cases(domain: str | None = None, run_id: str | None = None, limit: int = 1000) -> list[dict[str, Any]]:
+    """Load ReplayCases as dicts, optionally filtered by domain and/or run_id.
+
+    ``run_id=None`` (default) keeps the prior global behavior. When ``run_id``
+    is given, rows are scoped to that evaluation run (composed with the
+    optional domain filter).
+    """
+    try:
+        with _lock, _conn() as c:
+            where: list[str] = []
+            params: list[Any] = []
             if domain:
-                rows = c.execute(
-                    "SELECT * FROM replay_cases WHERE domain = ? ORDER BY created_at DESC LIMIT ?",
-                    (domain, limit),
-                ).fetchall()
-            else:
-                rows = c.execute(
-                    "SELECT * FROM replay_cases ORDER BY created_at DESC LIMIT ?",
-                    (limit,),
-                ).fetchall()
+                where.append("domain = ?")
+                params.append(domain)
+            if run_id:
+                where.append("run_id = ?")
+                params.append(run_id)
+            sql = "SELECT * FROM replay_cases"
+            if where:
+                sql += " WHERE " + " AND ".join(where)
+            sql += " ORDER BY created_at DESC LIMIT ?"
+            params.append(limit)
+            rows = c.execute(sql, params).fetchall()
             result = []
             for row in rows:
                 d = dict(row)
@@ -564,10 +624,16 @@ def update_replay_label(
         return False
 
 
-def join_report() -> dict[str, Any]:
+def join_report(run_id: str | None = None) -> dict[str, Any]:
     """Read-only join report between DecisionEvents and Jev Shadow records.
 
     Join key: (run_id, trace_id). Does NOT copy Jev state into Decision DB.
+
+    Args:
+        run_id: when given, scope EVERY metric (DecisionEvent query, Jev query,
+            and the entire ``by_domain`` block) strictly to that run. When
+            None (default), the global behavior and exact returned keys are
+            preserved byte-for-byte.
 
     Two independent dimensions:
       * jev_eligible: this production path is theoretically applicable to Jev
@@ -598,9 +664,15 @@ def join_report() -> dict[str, Any]:
             "search": {"all": set(), "eligible": set(), "enabled_eligible": set()},
         }
         with _lock, _conn() as c:
-            rows = c.execute(
-                "SELECT DISTINCT run_id, trace_id, domain, metadata FROM decision_events WHERE run_id != '' AND trace_id != ''"
-            ).fetchall()
+            decision_sql = (
+                "SELECT DISTINCT run_id, trace_id, domain, metadata "
+                "FROM decision_events WHERE run_id != '' AND trace_id != ''"
+            )
+            decision_params: list[Any] = []
+            if run_id:
+                decision_sql += " AND run_id = ?"
+                decision_params.append(run_id)
+            rows = c.execute(decision_sql, decision_params).fetchall()
             for row in rows:
                 pair = (row["run_id"], row["trace_id"])
                 decision_pairs.add(pair)
@@ -632,9 +704,16 @@ def join_report() -> dict[str, Any]:
             try:
                 with sqlite3.connect(str(jev_db), timeout=5.0) as jc:
                     jc.row_factory = sqlite3.Row
-                    jrows = jc.execute(
-                        "SELECT DISTINCT run_id, trace_id, operation FROM jev_records WHERE run_id IS NOT NULL AND run_id != '' AND trace_id IS NOT NULL AND trace_id != ''"
-                    ).fetchall()
+                    jev_sql = (
+                        "SELECT DISTINCT run_id, trace_id, operation FROM jev_records "
+                        "WHERE run_id IS NOT NULL AND run_id != '' "
+                        "AND trace_id IS NOT NULL AND trace_id != ''"
+                    )
+                    jev_params: list[Any] = []
+                    if run_id:
+                        jev_sql += " AND run_id = ?"
+                        jev_params.append(run_id)
+                    jrows = jc.execute(jev_sql, jev_params).fetchall()
                     for row in jrows:
                         pair = (row["run_id"], row["trace_id"])
                         jev_pairs.add(pair)
