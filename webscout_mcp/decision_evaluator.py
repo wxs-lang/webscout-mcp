@@ -17,6 +17,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
+from .labels import action_matches, outcome_holds, split_label
 from .replay_case import ReplayCase
 
 
@@ -45,6 +46,9 @@ class EvaluationResult:
     uncovered_cases: int = 0
     overall_agreement: int = 0
     overall_disagreement: int = 0
+    # Semantic-* labels are Jev-question ground truth; they are NOT comparable
+    # by rule-action agreement and are evaluated by advisor_evaluator instead.
+    semantic_skipped: int = 0
     per_label: dict[str, LabelMetrics] = field(default_factory=dict)
     per_domain: dict[str, dict[str, int]] = field(default_factory=dict)
     disagreements: list[dict[str, Any]] = field(default_factory=list)
@@ -54,6 +58,7 @@ class EvaluationResult:
             "total_cases": self.total_cases,
             "covered_cases": self.covered_cases,
             "uncovered_cases": self.uncovered_cases,
+            "semantic_skipped": self.semantic_skipped,
             "coverage_rate": self.covered_cases / self.total_cases if self.total_cases else 0.0,
             "overall_agreement": self.overall_agreement,
             "overall_disagreement": self.overall_disagreement,
@@ -115,6 +120,14 @@ def evaluate_cases(cases: Iterable[ReplayCase | dict[str, Any]]) -> EvaluationRe
             result.uncovered_cases += 1
             continue
 
+        # Semantic labels are Jev-question ground truth, not rule-action
+        # agreement. They belong to advisor_evaluator and must NOT be mixed
+        # into rule accuracy here.
+        ns, canon = split_label(expected)
+        if ns == "semantic":
+            result.semantic_skipped += 1
+            continue
+
         result.covered_cases += 1
 
         # Determine agreement.
@@ -165,47 +178,35 @@ def evaluate_cases(cases: Iterable[ReplayCase | dict[str, Any]]) -> EvaluationRe
 def _check_agreement(case: ReplayCase, expected: str, prod_action: str) -> bool:
     """Check if the production decision agrees with the expected label.
 
-    Supports both action labels (direct match) and outcome labels
-    (checked against observed_outcome).
+    Strict namespaced semantics (Phase 2):
+
+      * ``action/X`` / legacy action labels  -> compare ONLY
+        ``production_action == X``. No aliases.
+      * ``outcome/X`` / legacy outcome labels -> compare ONLY against the
+        observed objective facts (``observed_outcome``). Never consult the
+        action. This fixes the historical bug where ``browser_rescued`` was
+        folded into the ``BROWSER`` action alias set, so a production
+        ``BROWSER`` with ``browser_success=false`` could be counted as
+        agreement.
+      * ``semantic/X`` -> never compared here (handled by advisor_evaluator).
     """
-    expected_upper = expected.upper().replace("-", "_").replace(" ", "_")
+    ns, canon = split_label(expected)
 
-    # Direct action match.
-    action_aliases = {
-        "ACCEPT": {"ACCEPT", "SUCCESS", "OK"},
-        "BROWSER": {"BROWSER", "BROWSER_RESCUED", "BROWSER_SUCCESS"},
-        "CONTINUE_CONTENT": {"CONTINUE_CONTENT", "CONTINUATION", "TRUNCATED"},
-        "STOP": {"STOP", "INVALID_QUERY", "TERMINAL"},
-        "TRY_NEXT_PROVIDER": {"TRY_NEXT_PROVIDER", "FALLBACK", "NEXT_PROVIDER"},
-        "RETURN_EMPTY": {"RETURN_EMPTY", "ALL_EMPTY", "EMPTY"},
-        "RETURN_ERROR": {"RETURN_ERROR", "ALL_FAILED", "ERROR"},
-        "PROVIDER_FALLBACK": {"PROVIDER_FALLBACK", "FALLBACK_RESCUED"},
-        "RETRY": {"RETRY", "RETRY_LATER"},
-        "REQUIRE_AUTH": {"REQUIRE_AUTH", "AUTH"},
-        "NONE": {"NONE", "AMBIGUOUS", "NO_ACTION"},
-    }
+    if ns in ("action", "legacy_action"):
+        return action_matches(prod_action, canon)
 
-    for canonical, aliases in action_aliases.items():
-        if expected_upper in aliases:
-            return prod_action.upper() == canonical or prod_action.upper() in aliases
+    if ns in ("outcome", "legacy_outcome"):
+        outcome = case.observed_outcome or {}
+        # Carry deterministic reason/action so predicates like
+        # INVALID_QUERY / RETURN_ERROR can be evaluated from the observed row.
+        facts = dict(outcome)
+        pd = case.production_decision or {}
+        facts.setdefault("deterministic_reason", pd.get("deterministic_reason") or pd.get("reason") or "")
+        facts.setdefault("production_action", pd.get("action") or prod_action)
+        return outcome_holds(canon, facts, domain=case.domain or "fetch")
 
-    # Outcome labels: check observed_outcome.
-    outcome = case.observed_outcome or {}
-    if expected_upper in {"BROWSER_RESCUED", "BROWSER_SUCCESS"}:
-        return bool(outcome.get("browser_success") or outcome.get("browser_used"))
-    if expected_upper in {"FALLBACK_RESCUED", "FALLBACK_SUCCESS"}:
-        return bool(outcome.get("fallback_used") and outcome.get("status") in ("success", "ok"))
-    if expected_upper in {"ALL_EMPTY", "EMPTY_RESULT"}:
-        return bool(outcome.get("status") == "empty" or outcome.get("result_count", 1) == 0)
-    if expected_upper in {"ALL_FAILED", "ALL_BACKENDS_FAILED"}:
-        return bool(outcome.get("status") == "error")
-    if expected_upper in {"CONTINUATION_AVAILABLE", "HAS_MORE"}:
-        return bool(outcome.get("continuation_available") or outcome.get("truncated"))
-    if expected_upper in {"CACHE_HIT", "SERVED_FROM_CACHE"}:
-        return bool(outcome.get("cache_hit"))
-
-    # Fallback: case-insensitive exact match.
-    return expected_upper == prod_action.upper()
+    # Unknown label: fall back to case-insensitive direct action equality.
+    return bool(canon) and canon == prod_action.strip().upper()
 
 
 def evaluate_from_store(domain: str | None = None, limit: int = 1000) -> EvaluationResult:
