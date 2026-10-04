@@ -259,6 +259,9 @@ def _enforce_size_cap(conn: sqlite3.Connection, max_mb: int, db_path: Path, *, f
             try:
                 conn.execute("VACUUM")
                 conn.commit()
+                # VACUUM writes the rebuilt DB to the WAL; checkpoint it back
+                # into the main file and truncate the WAL so total size shrinks.
+                conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
             except sqlite3.Error:
                 pass
     except Exception:
@@ -565,18 +568,34 @@ def join_report() -> dict[str, Any]:
     """Read-only join report between DecisionEvents and Jev Shadow records.
 
     Join key: (run_id, trace_id). Does NOT copy Jev state into Decision DB.
-    Eligibility-aware: only DecisionEvents with metadata.jev_eligible=true
-    count toward the correlation denominator. Snapshot hits, cache hits,
-    EMPTY/ERROR/STOP are intentionally unjoined (not correlation failures).
+
+    Two independent dimensions:
+      * jev_eligible: this production path is theoretically applicable to Jev
+        Shadow (e.g. normal Fetch ACCEPT, Search ACCEPT with results).
+        Snapshot/cache hits, EMPTY, ERROR, STOP are NOT eligible.
+      * jev_enabled: a non-Noop Jev client was actually configured at runtime
+        for this operation.
+
+    The formal correlation denominator is eligible AND enabled. A DecisionEvent
+    that is eligible but has Jev disabled is "advisor_disabled" — not a
+    correlation failure. A DecisionEvent that is eligible AND enabled but has
+    no Jev record is "unexpected_unjoined" — a genuine correlation failure.
+
+    Four categories (mutually exclusive among non-joined):
+      * intentional_unjoined: not eligible (snapshot/cache/empty/error/stop)
+      * advisor_disabled: eligible but Jev not enabled at runtime
+      * unexpected_unjoined: eligible AND enabled but no Jev record
+      * joined_enabled_eligible: eligible AND enabled AND has Jev record
     """
     try:
         from .jev_store import db_path as jev_db_path
 
         decision_pairs: set[tuple[str, str]] = set()
         eligible_pairs: set[tuple[str, str]] = set()
+        enabled_eligible_pairs: set[tuple[str, str]] = set()
         decision_by_domain: dict[str, dict[str, set]] = {
-            "fetch": {"all": set(), "eligible": set()},
-            "search": {"all": set(), "eligible": set()},
+            "fetch": {"all": set(), "eligible": set(), "enabled_eligible": set()},
+            "search": {"all": set(), "eligible": set(), "enabled_eligible": set()},
         }
         with _lock, _conn() as c:
             rows = c.execute(
@@ -588,17 +607,23 @@ def join_report() -> dict[str, Any]:
                 d = row["domain"]
                 if d in decision_by_domain:
                     decision_by_domain[d]["all"].add(pair)
-                # Check eligibility from metadata JSON.
+                # Check eligibility and enabled from metadata JSON.
                 eligible = False
+                enabled = False
                 try:
                     meta = json.loads(row["metadata"]) if row["metadata"] else {}
                     eligible = bool(meta.get("jev_eligible", False))
+                    enabled = bool(meta.get("jev_enabled", False))
                 except (json.JSONDecodeError, TypeError):
                     pass
                 if eligible:
                     eligible_pairs.add(pair)
                     if d in decision_by_domain:
                         decision_by_domain[d]["eligible"].add(pair)
+                    if enabled:
+                        enabled_eligible_pairs.add(pair)
+                        if d in decision_by_domain:
+                            decision_by_domain[d]["enabled_eligible"].add(pair)
 
         jev_pairs: set[tuple[str, str]] = set()
         jev_by_operation: dict[str, set] = {"fetch": set(), "search": set()}
@@ -620,52 +645,71 @@ def join_report() -> dict[str, Any]:
                 log.warning("join_report: jev db read failed", exc_info=True)
 
         joined = decision_pairs & jev_pairs
-        joined_eligible = eligible_pairs & jev_pairs
+        joined_enabled_eligible = enabled_eligible_pairs & jev_pairs
         unjoined_decisions = decision_pairs - jev_pairs
         orphan_jev = jev_pairs - decision_pairs
+
+        # Four mutually exclusive categories.
         intentional_unjoined = decision_pairs - eligible_pairs
-        unexpected_unjoined = eligible_pairs - jev_pairs
+        advisor_disabled = eligible_pairs - enabled_eligible_pairs
+        unexpected_unjoined = enabled_eligible_pairs - jev_pairs
 
         total_eligible = len(eligible_pairs)
-        eligible_coverage = len(joined_eligible) / total_eligible if total_eligible else 0.0
+        advisor_enabled = len(enabled_eligible_pairs)
+        join_coverage = len(joined_enabled_eligible) / advisor_enabled if advisor_enabled else 0.0
 
         by_domain: dict[str, dict[str, Any]] = {}
         for domain in ("fetch", "search"):
             d_all = decision_by_domain[domain]["all"]
             d_eligible = decision_by_domain[domain]["eligible"]
+            d_enabled_eligible = decision_by_domain[domain]["enabled_eligible"]
             j_domain = jev_by_operation.get(domain, set())
             d_joined = d_all & j_domain
-            d_eligible_joined = d_eligible & j_domain
-            cov = len(d_eligible_joined) / len(d_eligible) if d_eligible else 0.0
+            d_joined_enabled = d_enabled_eligible & j_domain
+            d_intentional = d_all - d_eligible
+            d_advisor_disabled = d_eligible - d_enabled_eligible
+            d_unexpected = d_enabled_eligible - j_domain
+            d_cov = len(d_joined_enabled) / len(d_enabled_eligible) if d_enabled_eligible else 0.0
             by_domain[domain] = {
                 "decision_events": len(d_all),
                 "eligible_decisions": len(d_eligible),
+                "advisor_enabled_decisions": len(d_enabled_eligible),
                 "jev_records": len(j_domain),
                 "joined_pairs": len(d_joined),
-                "joined_eligible": len(d_eligible_joined),
+                "joined_enabled_eligible": len(d_joined_enabled),
+                "joined_eligible": len(d_joined_enabled),  # deprecated alias
+                "intentional_unjoined": len(d_intentional),
+                "advisor_disabled": len(d_advisor_disabled),
+                "unexpected_unjoined": len(d_unexpected),
                 "unjoined_decisions": len(d_all - j_domain),
                 "orphan_jev": len(j_domain - d_all),
-                "intentional_unjoined": len(d_all - d_eligible),
-                "unexpected_unjoined": len(d_eligible - j_domain),
-                "join_coverage": round(cov, 4),
+                "join_coverage": round(d_cov, 4),
             }
 
         return {
             "total_decisions": len(decision_pairs),
             "eligible_decisions": total_eligible,
-            "advisor_enabled_decisions": total_eligible,  # eligible path = would fire Jev if enabled
+            "advisor_enabled_decisions": advisor_enabled,
             "joined_decisions": len(joined),
-            "joined_eligible": len(joined_eligible),
+            "joined_enabled_eligible": len(joined_enabled_eligible),
+            "joined_eligible": len(joined_enabled_eligible),  # deprecated alias
             "intentional_unjoined": len(intentional_unjoined),
+            "advisor_disabled": len(advisor_disabled),
             "unexpected_unjoined": len(unexpected_unjoined),
             "unjoined_decision_pairs": len(unjoined_decisions),
             "orphan_jev_pairs": len(orphan_jev),
-            "join_coverage": round(eligible_coverage, 4),
+            "join_coverage": round(join_coverage, 4),
             "by_domain": by_domain,
         }
     except Exception:
         log.warning("join_report failed", exc_info=True)
-        return {"total_decisions": 0, "eligible_decisions": 0, "joined_eligible": 0, "join_coverage": 0.0}
+        return {
+            "total_decisions": 0,
+            "eligible_decisions": 0,
+            "advisor_enabled_decisions": 0,
+            "joined_enabled_eligible": 0,
+            "join_coverage": 0.0,
+        }
 
 
 def db_path() -> Path:

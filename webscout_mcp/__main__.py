@@ -588,11 +588,13 @@ async def _cmd_decision_report(args: argparse.Namespace) -> None:
     print(f"Replay cases:    {s['replay_cases']}")
     jev_corr = s.get("jev_correlation", {})
     if jev_corr:
-        print(f"Jev eligible:    {jev_corr.get('eligible_decisions', 0)}")
-        print(f"Jev joined:      {jev_corr.get('joined_eligible', 0)}")
-        print(f"Jev coverage:    {jev_corr.get('join_coverage', 0.0):.2%}")
-        print(f"  Intentional unjoined: {jev_corr.get('intentional_unjoined', 0)}")
-        print(f"  Unexpected unjoined:  {jev_corr.get('unexpected_unjoined', 0)}")
+        print(f"Jev eligible:              {jev_corr.get('eligible_decisions', 0)}")
+        print(f"Jev enabled (advisor on):  {jev_corr.get('advisor_enabled_decisions', 0)}")
+        print(f"Jev joined (enabled+elig): {jev_corr.get('joined_enabled_eligible', 0)}")
+        print(f"Jev coverage:              {jev_corr.get('join_coverage', 0.0):.2%}")
+        print(f"  Intentional unjoined:    {jev_corr.get('intentional_unjoined', 0)}")
+        print(f"  Advisor disabled:        {jev_corr.get('advisor_disabled', 0)}")
+        print(f"  Unexpected unjoined:     {jev_corr.get('unexpected_unjoined', 0)}")
     else:
         print(f"Jev-joined:      {s['jev_joined_events']} (deprecated metric)")
     from .decision_event import hash_key_persistent
@@ -719,15 +721,24 @@ async def _cmd_decision_join_report(args: argparse.Namespace) -> None:
     else:
         print("Decision ↔ Jev Join Report")
         print("=" * 50)
-        print(f"Decision event pairs:      {report.get('decision_event_pairs', 0)}")
-        print(f"Jev record pairs:          {report.get('jev_record_pairs', 0)}")
-        print(f"Joined pairs:              {report.get('joined_pairs', 0)}")
-        print(f"Unjoined decision pairs:   {report.get('unjoined_decision_pairs', 0)}")
-        print(f"Orphan Jev pairs:          {report.get('orphan_jev_pairs', 0)}")
+        print(f"Total decisions:           {report.get('total_decisions', 0)}")
+        print(f"Eligible decisions:        {report.get('eligible_decisions', 0)}")
+        print(f"Advisor enabled (elig+on): {report.get('advisor_enabled_decisions', 0)}")
+        print(f"Joined (enabled+elig):     {report.get('joined_enabled_eligible', 0)}")
         print(f"Join coverage:             {report.get('join_coverage', 0.0):.2%}")
+        print(f"  Intentional unjoined:    {report.get('intentional_unjoined', 0)}")
+        print(f"  Advisor disabled:        {report.get('advisor_disabled', 0)}")
+        print(f"  Unexpected unjoined:     {report.get('unexpected_unjoined', 0)}")
+        print(f"Orphan Jev pairs:          {report.get('orphan_jev_pairs', 0)}")
         by_domain = report.get("by_domain", {})
         for domain, stats in by_domain.items():
-            print(f"  {domain}: decisions={stats.get('decision_events', 0)}, jev={stats.get('jev_records', 0)}")
+            print(
+                f"  {domain}: decisions={stats.get('decision_events', 0)}, "
+                f"eligible={stats.get('eligible_decisions', 0)}, "
+                f"enabled={stats.get('advisor_enabled_decisions', 0)}, "
+                f"joined={stats.get('joined_enabled_eligible', 0)}, "
+                f"coverage={stats.get('join_coverage', 0.0):.2%}"
+            )
 
 
 def main() -> None:
