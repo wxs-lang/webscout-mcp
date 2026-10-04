@@ -242,6 +242,10 @@ class FetchService:
                 try:
                     from .decision_adapter import record_fetch_decision
 
+                    _jev_enabled = self._jev_client is not None and getattr(self._jev_client, "name", "") not in (
+                        "noop",
+                        "",
+                    )
                     record_fetch_decision(
                         request=request,
                         primary=primary,
@@ -262,6 +266,7 @@ class FetchService:
                         cache_hit=True,
                         snapshot_hit=True,
                         jev_eligible=False,
+                        jev_enabled=_jev_enabled,
                         trace_id=_trace_id,
                         run_id=PROCESS_RUN_ID,
                         started_at=_decision_started_at,
@@ -425,6 +430,7 @@ class FetchService:
         try:
             from .decision_adapter import record_fetch_decision
 
+            _jev_enabled = self._jev_client is not None and getattr(self._jev_client, "name", "") not in ("noop", "")
             record_fetch_decision(
                 request=request,
                 primary=primary,
@@ -437,6 +443,7 @@ class FetchService:
                 fallback_used=fallback_used,
                 cache_hit=getattr(primary, "from_cache", False),
                 snapshot_hit=used_legacy and getattr(request, "start_char", 0) > 0,
+                jev_enabled=_jev_enabled,
                 trace_id=_trace_id,
                 run_id=PROCESS_RUN_ID,
                 started_at=_decision_started_at,

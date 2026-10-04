@@ -66,6 +66,7 @@ def record_fetch_decision(
     cache_hit: bool = False,
     snapshot_hit: bool = False,
     jev_eligible: bool = True,
+    jev_enabled: bool = False,
     trace_id: str = "",
     run_id: str = "",
     jev_call_id: str = "",
@@ -74,6 +75,9 @@ def record_fetch_decision(
     """Record a Fetch DecisionEvent from FetchService.fetch() state.
 
     All arguments are read-only references; this function never mutates them.
+
+    jev_eligible: this production path is theoretically applicable to Jev Shadow.
+    jev_enabled: a non-Noop Jev client was actually configured at runtime.
     """
     try:
         url = getattr(request, "url", "") or ""
@@ -171,7 +175,7 @@ def record_fetch_decision(
             latency_ms=max(0.0, (time.time() - (started_at or time.time())) * 1000),
             request_features=request_features,
             outcome_features=outcome_features,
-            metadata={"jev_eligible": jev_eligible},
+            metadata={"jev_eligible": jev_eligible, "jev_enabled": jev_enabled},
             jev_call_id=jev_call_id,
         )
         _safe_record(event)
@@ -198,8 +202,13 @@ def record_search_decision(
     jev_call_id: str = "",
     started_at: float = 0.0,
     cache_hit: bool = False,
+    jev_enabled: bool = False,
 ) -> None:
-    """Record a Search DecisionEvent from SearchService.search() state."""
+    """Record a Search DecisionEvent from SearchService.search() state.
+
+    jev_eligible: ACCEPT + results + non-cache-hit path is theoretically Jev-applicable.
+    jev_enabled: a non-Noop Jev client was actually configured at runtime.
+    """
     try:
         query = getattr(request, "query", "") or ""
         max_results = getattr(request, "max_results", 10)
@@ -291,7 +300,7 @@ def record_search_decision(
             latency_ms=latency_ms or max(0.0, (time.time() - (started_at or time.time())) * 1000),
             request_features=request_features,
             outcome_features=outcome_features,
-            metadata={"jev_eligible": search_jev_eligible},
+            metadata={"jev_eligible": search_jev_eligible, "jev_enabled": jev_enabled},
             jev_call_id=jev_call_id,
         )
         _safe_record(event)

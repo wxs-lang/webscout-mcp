@@ -1139,6 +1139,63 @@ class TestSizeCapRealOverCap:
             after = ds._logical_used_bytes(c)
         assert after < before, f"logical usage did not decrease: {before} -> {after}"
 
+    def test_manual_maintenance_captures_true_before_after(self, tmp_path: Path, monkeypatch):
+        """Disable auto-enforcement, write past cap, then manually run maintenance.
+
+        This truly captures pre-maintenance physical size (> cap) and
+        post-maintenance size (<= cap * 1.15), unlike the auto-enforcement
+        path where maintenance runs on every write and pre-size is never
+        observable.
+        """
+        import sqlite3
+
+        import webscout_mcp.decision_store as ds
+
+        db = tmp_path / "manualcap.db"
+        configure(str(db))
+        original_cap = ds.DEFAULT_MAX_DB_SIZE_MB
+        real_enforce = ds._enforce_size_cap
+        try:
+            ds.DEFAULT_MAX_DB_SIZE_MB = 1
+            # Disable automatic enforcement during writes.
+            monkeypatch.setattr(ds, "_enforce_size_cap", lambda *a, **kw: None)
+
+            big_meta = {"padding": "x" * 3000}
+            for i in range(600):
+                e = _make_fetch_event(event_id=f"man-{i:04d}")
+                e.metadata = dict(big_meta)
+                record_event(e)
+            for i in range(150):
+                record_replay_case(ReplayCase(case_id=f"man-rp-{i:04d}", expected_label="ACCEPT", notes="z" * 800))
+
+            # Measure true pre-maintenance physical size.
+            before_size = ds._total_db_size(db)
+            assert before_size > 1 * 1024 * 1024, f"Test setup error: DB did not exceed cap. size={before_size}"
+
+            # Now manually run real maintenance with a fresh connection.
+            with sqlite3.connect(str(db)) as c:
+                real_enforce(c, 1, db, force_vacuum=True)
+                c.commit()
+
+            after_size = ds._total_db_size(db)
+            assert after_size <= 1 * 1024 * 1024 * 1.15, f"DB still too large after maintenance: {after_size}"
+            assert after_size < before_size, "Maintenance did not reduce physical size"
+
+            # Both tables must still have rows.
+            ev_count = count_events("fetch")
+            rp_count = len(load_replay_cases(limit=10000))
+            assert ev_count > 0, "decision_events fully deleted!"
+            assert rp_count > 0, "replay_cases fully deleted!"
+
+            # Newest rows preserved.
+            events = load_events(limit=10000)
+            event_ids = [e["event_id"] for e in events]
+            assert any(i > 500 for i in [int(eid.split("-")[1]) for eid in event_ids if eid.startswith("man-")]), (
+                "Newest events were not preserved"
+            )
+        finally:
+            ds.DEFAULT_MAX_DB_SIZE_MB = original_cap
+
 
 class TestHashKeyAtomicCreation:
     """Hash key must be created atomically with 0600 permissions."""
@@ -1299,12 +1356,14 @@ class TestEligibilityAwareJoin:
             browser_success=False,
             fallback_used=False,
             jev_eligible=True,
+            jev_enabled=True,
             trace_id="elig-trace-1",
             run_id="run-elig-1",
         )
-        # No Jev record → this is unexpected_unjoined.
+        # No Jev record + eligible + enabled → this is unexpected_unjoined.
         report = join_report()
         assert report["eligible_decisions"] >= 1
+        assert report["advisor_enabled_decisions"] >= 1
         assert report["unexpected_unjoined"] >= 1
 
 
@@ -1608,3 +1667,203 @@ class TestPhase12FaultIsolation:
             assert report["total_decisions"] == 0
         finally:
             jev_store.configure(None)
+
+
+class TestAdvisorEnablementSemantics:
+    """jev_eligible != jev_enabled. Coverage denominator = eligible AND enabled.
+
+    A normal Fetch/Search ACCEPT with JEV_ENABLED=false must be classified as
+    advisor_disabled, NOT unexpected_unjoined. Only eligible AND enabled with
+    no Jev record is a genuine correlation failure.
+    """
+
+    def _record_fetch(self, *, trace_id: str, run_id: str, eligible: bool, enabled: bool) -> None:
+        from webscout_mcp.decision_adapter import record_fetch_decision
+
+        class FakeRequest:
+            url = "https://example.com/page"
+            max_chars = 8000
+            start_char = 0
+            output_format = "markdown"
+            extract = True
+            bypass_cache = False
+
+        class FakeRecovery:
+            class reason:
+                value = "COMPLETE_CONTENT"
+
+            class action:
+                value = "ACCEPT"
+
+        class FakeResponse:
+            status = "success"
+            status_code = 200
+            content = "x" * 100
+            web_result = None
+
+        record_fetch_decision(
+            request=FakeRequest(),
+            primary=FakeResponse(),
+            final=FakeResponse(),
+            recovery=FakeRecovery(),
+            recovery_outcome="accepted",
+            primary_provider="http",
+            browser_attempted=False,
+            browser_success=False,
+            fallback_used=False,
+            jev_eligible=eligible,
+            jev_enabled=enabled,
+            trace_id=trace_id,
+            run_id=run_id,
+        )
+
+    def _record_search(self, *, trace_id: str, run_id: str, enabled: bool, cache_hit: bool = False) -> None:
+        from webscout_mcp.decision_adapter import record_search_decision
+
+        class FakeRequest:
+            query = "python"
+            max_results = 10
+            safe_search = True
+            region = "wt-wt"
+            language = ""
+            country = ""
+
+        class FakeResponse:
+            status = type("S", (), {"value": "success"})()
+            results = ["r1", "r2", "r3"]
+            provider = "bing"
+            latency_ms = 12.5
+
+        class FakeDecision:
+            class reason:
+                value = "RESULT_AVAILABLE"
+
+            class action:
+                value = "ACCEPT"
+
+        record_search_decision(
+            request=FakeRequest(),
+            response=FakeResponse(),
+            final_decision=FakeDecision(),
+            provider_attempt_count=1,
+            fallback_count=0,
+            cache_hit=cache_hit,
+            jev_enabled=enabled,
+            trace_id=trace_id,
+            run_id=run_id,
+        )
+
+    def test_fetch_jev_disabled_is_advisor_disabled_not_failure(self, tmp_db: Path):
+        """Normal Fetch ACCEPT + Jev disabled → advisor_disabled=1, unexpected=0."""
+        self._record_fetch(trace_id="fetch-disabled-1", run_id="run-fd-1", eligible=True, enabled=False)
+        report = join_report()
+        assert report["eligible_decisions"] >= 1
+        assert report["advisor_enabled_decisions"] == 0
+        assert report["advisor_disabled"] >= 1
+        assert report["unexpected_unjoined"] == 0
+        # Coverage 0/0 → 0.0, but not a failure.
+        assert report["join_coverage"] == 0.0
+
+    def test_search_jev_disabled_is_advisor_disabled_not_failure(self, tmp_db: Path):
+        """Normal Search ACCEPT + Jev disabled → advisor_disabled=1, unexpected=0."""
+        self._record_search(trace_id="search-disabled-1", run_id="run-sd-1", enabled=False)
+        report = join_report()
+        assert report["by_domain"]["search"]["eligible_decisions"] >= 1
+        assert report["by_domain"]["search"]["advisor_enabled_decisions"] == 0
+        assert report["by_domain"]["search"]["advisor_disabled"] >= 1
+        assert report["by_domain"]["search"]["unexpected_unjoined"] == 0
+
+    def test_enabled_but_missing_jev_row_is_unexpected_failure(self, tmp_db: Path):
+        """eligible=true, enabled=true, but no Jev row → unexpected_unjoined=1."""
+        self._record_fetch(trace_id="fetch-enabled-missing-1", run_id="run-fem-1", eligible=True, enabled=True)
+        report = join_report()
+        assert report["advisor_enabled_decisions"] >= 1
+        assert report["joined_enabled_eligible"] == 0
+        assert report["unexpected_unjoined"] >= 1
+        assert report["advisor_disabled"] == 0
+        # Coverage 0/1 → 0.0, genuine failure.
+        assert report["join_coverage"] == 0.0
+
+    def test_enabled_and_joined_has_coverage_1(self, tmp_db: Path, tmp_path: Path):
+        """eligible=true, enabled=true, with Jev row → joined, coverage=1.0."""
+        import sqlite3
+
+        from webscout_mcp import jev_store
+
+        jev_db = tmp_path / "jev_enabled.db"
+        jev_store.configure(str(jev_db))
+        try:
+            self._record_fetch(
+                trace_id="fetch-enabled-joined-1",
+                run_id="run-fej-1",
+                eligible=True,
+                enabled=True,
+            )
+            with sqlite3.connect(str(jev_db)) as jc:
+                jc.execute(
+                    "INSERT INTO jev_records (run_id, trace_id, operation, jev_question, timestamp) VALUES (?, ?, ?, ?, ?)",
+                    ("run-fej-1", "fetch-enabled-joined-1", "fetch", "needs_escalation", time.time()),
+                )
+                jc.commit()
+            report = join_report()
+            assert report["advisor_enabled_decisions"] >= 1
+            assert report["joined_enabled_eligible"] >= 1
+            assert report["unexpected_unjoined"] == 0
+            assert report["join_coverage"] == 1.0
+        finally:
+            jev_store.configure(None)
+
+    def test_coverage_denominator_is_enabled_not_eligible(self, tmp_db: Path):
+        """Mix: 2 eligible (1 enabled, 1 disabled) + 1 Jev row for enabled.
+        Denominator must be 1 (enabled), not 2 (eligible). Coverage = 1.0."""
+        import sqlite3
+
+        from webscout_mcp import jev_store
+
+        tmp_dir = Path(tempfile.mkdtemp())
+        jev_db = tmp_dir / "jev_mix.db"
+        jev_store.configure(str(jev_db))
+        try:
+            # Enabled + eligible → will have Jev row.
+            self._record_fetch(trace_id="mix-enabled", run_id="run-mix-1", eligible=True, enabled=True)
+            # Disabled + eligible → no Jev row, should be advisor_disabled.
+            self._record_fetch(trace_id="mix-disabled", run_id="run-mix-2", eligible=True, enabled=False)
+            with sqlite3.connect(str(jev_db)) as jc:
+                jc.execute(
+                    "INSERT INTO jev_records (run_id, trace_id, operation, jev_question, timestamp) VALUES (?, ?, ?, ?, ?)",
+                    ("run-mix-1", "mix-enabled", "fetch", "needs_escalation", time.time()),
+                )
+                jc.commit()
+            report = join_report()
+            assert report["eligible_decisions"] >= 2
+            assert report["advisor_enabled_decisions"] == 1
+            assert report["advisor_disabled"] >= 1
+            assert report["joined_enabled_eligible"] == 1
+            assert report["unexpected_unjoined"] == 0
+            # Coverage = 1/1 = 1.0, NOT 1/2 = 0.5.
+            assert report["join_coverage"] == 1.0
+        finally:
+            jev_store.configure(None)
+
+    def test_cache_hit_is_intentional_not_advisor_disabled(self, tmp_db: Path):
+        """Search cache hit: eligible=false regardless of Jev enabled → intentional_unjoined."""
+        self._record_search(trace_id="search-cache-1", run_id="run-sc-1", enabled=True, cache_hit=True)
+        report = join_report()
+        assert report["by_domain"]["search"]["eligible_decisions"] == 0
+        assert report["by_domain"]["search"]["advisor_enabled_decisions"] == 0
+        assert report["by_domain"]["search"]["intentional_unjoined"] >= 1
+        assert report["by_domain"]["search"]["advisor_disabled"] == 0
+        assert report["by_domain"]["search"]["unexpected_unjoined"] == 0
+
+    def test_by_domain_advisor_disabled_separate_from_unexpected(self, tmp_db: Path):
+        """Fetch disabled + Search enabled-but-missing → by_domain categories correct."""
+        self._record_fetch(trace_id="bd-fetch-dis", run_id="run-bd-1", eligible=True, enabled=False)
+        self._record_search(trace_id="bd-search-miss", run_id="run-bd-2", enabled=True)
+        report = join_report()
+        fetch_d = report["by_domain"]["fetch"]
+        search_d = report["by_domain"]["search"]
+        assert fetch_d["advisor_disabled"] >= 1
+        assert fetch_d["unexpected_unjoined"] == 0
+        assert search_d["advisor_enabled_decisions"] >= 1
+        assert search_d["unexpected_unjoined"] >= 1
+        assert search_d["advisor_disabled"] == 0

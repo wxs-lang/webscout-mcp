@@ -252,6 +252,7 @@ class SearchService:
             try:
                 from .decision_adapter import record_search_decision
 
+                _jev_enabled = self.jev_client is not None and getattr(self.jev_client, "name", "") not in ("noop", "")
                 record_search_decision(
                     request=request,
                     response=cached,
@@ -259,6 +260,7 @@ class SearchService:
                     provider_attempt_count=0,
                     fallback_count=0,
                     cache_hit=True,
+                    jev_enabled=_jev_enabled,
                     trace_id=_trace_id,
                     run_id=PROCESS_RUN_ID,
                     started_at=_decision_started_at,
@@ -292,6 +294,7 @@ class SearchService:
 
                 circuit_skips = sum(1 for e in route_trace if e.get("execution_outcome") == "circuit_skipped")
                 unavailable_skips = sum(1 for e in route_trace if e.get("execution_outcome") == "unavailable_skipped")
+                _jev_enabled = self.jev_client is not None and getattr(self.jev_client, "name", "") not in ("noop", "")
                 record_search_decision(
                     request=request,
                     response=resp,
@@ -300,6 +303,7 @@ class SearchService:
                     fallback_count=max(0, len(tried_providers) - 1),
                     circuit_skips=circuit_skips,
                     unavailable_skips=unavailable_skips,
+                    jev_enabled=_jev_enabled,
                     trace_id=_trace_id,
                     run_id=PROCESS_RUN_ID,
                     started_at=_decision_started_at,
