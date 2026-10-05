@@ -41,6 +41,7 @@ sys.path.insert(0, str(REPO))
 
 from webscout_mcp import decision_store, eval_human, jev_store  # noqa: E402
 from webscout_mcp.advisor_evaluator import (  # noqa: E402
+    build_jev_prediction_index,
     build_labeled_rows,
     check_join_gate,
     evaluate_question,
@@ -62,10 +63,12 @@ REPORT_JSON = "objective-eval-report.json"
 REPORT_MD = "objective-eval-report.md"
 
 # Real-run gate thresholds (Phase 2.1 acceptance bar).
+# The Search real-run gate counts Jev result_relevant PREDICTIONS (distinct
+# resolved trace+position keys), NOT raw result rows. result rows are observability.
 REAL_RUN_THRESHOLDS = {
     "fetch_total": 60,
     "search_total": 40,
-    "search_result_rows": 100,
+    "search_relevance_predictions": 100,
     "browser_counterfactual": 20,
 }
 # Human-label gate thresholds.
@@ -178,6 +181,53 @@ def _browser_counterfactual_count(run_dir: Path) -> int:
         return 0
 
 
+def _search_relevance_prediction_stats(
+    jev_rows: list[dict[str, Any]],
+) -> tuple[int, int, set[tuple[Any, ...]]]:
+    """Count distinct Jev ``result_relevant`` predictions.
+
+    A prediction requires jev_question=result_relevant AND (jev_probability IS
+    NOT NULL OR jev_decision IS NOT NULL), counted per resolved distinct
+    (trace, position) key with latest-by-timestamp duplicate resolution (so
+    duplicate rows cannot inflate the count). Returns
+    ``(prediction_count, duplicate_prediction_keys, prediction_keys)``.
+    """
+    rel_rows = [
+        j
+        for j in jev_rows
+        if j.get("jev_question") == "result_relevant"
+        and (j.get("jev_probability") is not None or j.get("jev_decision") is not None)
+    ]
+    index, dupes = build_jev_prediction_index(rel_rows)
+    return len(index), dupes, set(index.keys())
+
+
+def _expected_shadow_rows(search_events: list[dict[str, Any]]) -> tuple[int, int, str]:
+    """Expected per-result shadow denominator.
+
+    ``sum over search events of min(result_count, jev_search_shadow_max_results)``.
+    The cap is read from Config (default 10). Returns ``(expected, cap, source)``
+    where source is ``config`` or ``default``.
+    """
+    cap = 10
+    source = "default"
+    try:
+        from webscout_mcp.config import Config
+
+        cap = int(Config.from_env().jev_search_shadow_max_results)
+        source = "config"
+    except Exception:  # noqa: BLE001 - never fabricate a precise denominator
+        cap = 10
+    expected = 0
+    for e in search_events:
+        try:
+            rc = int((e.get("outcome_features") or {}).get("result_count") or 0)
+        except (TypeError, ValueError):
+            rc = 0
+        expected += min(max(rc, 0), cap)
+    return expected, cap, source
+
+
 # ---------------------------------------------------------------------------
 # Report assembly.
 # ---------------------------------------------------------------------------
@@ -231,6 +281,25 @@ def build_run_report(run_id: str) -> dict[str, Any]:
     objective_materialized = sum(1 for rc in replay_cases if rc.get("label_source") == "objective_outcome")
     browser_cf_count = _browser_counterfactual_count(run_dir)
 
+    # Search relevance: Jev PREDICTIONS (distinct trace+position), not result rows.
+    (
+        search_relevance_predictions,
+        duplicate_prediction_keys,
+        relevance_prediction_keys,
+    ) = _search_relevance_prediction_stats(jev_rows)
+    expected_shadow_rows, shadow_cap, shadow_cap_source = _expected_shadow_rows(search_events)
+    if expected_shadow_rows > 0:
+        prediction_coverage: float | None = round(search_relevance_predictions / expected_shadow_rows, 4)
+        coverage_denominator_upper_bound = False
+    else:
+        # No reliable per-result denominator: report predictions over raw result
+        # rows and explicitly flag it as an UPPER-BOUND denominator — never a
+        # fabricated precise coverage.
+        prediction_coverage = (
+            round(search_relevance_predictions / search_result_rows, 4) if search_result_rows > 0 else None
+        )
+        coverage_denominator_upper_bound = True
+
     counts = {
         "events_total": len(events),
         "fetch_events": len(fetch_events),
@@ -239,6 +308,12 @@ def build_run_report(run_id: str) -> dict[str, Any]:
         "replay_cases": len(replay_cases),
         "objective_materialized": objective_materialized,
         "search_result_rows": search_result_rows,
+        "search_relevance_predictions": search_relevance_predictions,
+        "expected_shadow_rows": expected_shadow_rows,
+        "jev_search_shadow_max_results": shadow_cap,
+        "prediction_coverage": prediction_coverage,
+        "prediction_coverage_denominator_is_upper_bound": coverage_denominator_upper_bound,
+        "duplicate_prediction_keys": duplicate_prediction_keys,
         "browser_counterfactual_cases": browser_cf_count,
     }
 
@@ -249,15 +324,19 @@ def build_run_report(run_id: str) -> dict[str, Any]:
     real_run_gate = {
         "fetch_total": counts["fetch_events"],
         "search_total": counts["search_events"],
-        "search_result_rows": counts["search_result_rows"],
-        "browser_counterfactual_cases": counts["browser_counterfactual_cases"],
+        "search_result_rows": search_result_rows,
+        "search_relevance_predictions": search_relevance_predictions,
+        "prediction_coverage": prediction_coverage,
+        "prediction_coverage_denominator_is_upper_bound": coverage_denominator_upper_bound,
+        "browser_counterfactual_cases": browser_cf_count,
         "advisor_enabled_decisions": advisor_enabled,
         "unexpected_unjoined": unexpected_unjoined,
         "join_coverage": join_coverage,
         "thresholds": dict(REAL_RUN_THRESHOLDS),
         "passed_fetch_total": counts["fetch_events"] >= REAL_RUN_THRESHOLDS["fetch_total"],
         "passed_search_total": counts["search_events"] >= REAL_RUN_THRESHOLDS["search_total"],
-        "passed_search_result_rows": counts["search_result_rows"] >= REAL_RUN_THRESHOLDS["search_result_rows"],
+        "passed_search_relevance_predictions": search_relevance_predictions
+        >= REAL_RUN_THRESHOLDS["search_relevance_predictions"],
         "passed_browser_counterfactual": browser_cf_count >= REAL_RUN_THRESHOLDS["browser_counterfactual"],
         "passed_advisor_enabled": advisor_enabled > 0,
         "passed_no_unexpected_unjoined": unexpected_unjoined == 0,
@@ -265,19 +344,67 @@ def build_run_report(run_id: str) -> dict[str, Any]:
     }
     real_run_pass = all(v for k, v in real_run_gate.items() if k.startswith("passed_"))
 
-    # --- Human-label gate ----------------------------------------------------
-    fetch_usable_labels = sum(
-        1 for rc in replay_cases if _replay_question(rc) == "result_usable" and rc.get("expected_label")
+    # --- Human-label gate (STRICTLY human_verified) --------------------------
+    # A label counts toward the human gate ONLY when label_source == human_verified.
+    # Objective/materialized result_usable labels must NOT inflate the Fetch human
+    # count, and objective result_relevant must always be 0 (relevance is human-only).
+    def _is_human(rc: dict[str, Any]) -> bool:
+        return rc.get("label_source") == "human_verified"
+
+    def _is_objective(rc: dict[str, Any]) -> bool:
+        return rc.get("label_source") == "objective_outcome"
+
+    human_fetch_usable = sum(
+        1
+        for rc in replay_cases
+        if _replay_question(rc) == "result_usable" and rc.get("expected_label") and _is_human(rc)
     )
-    search_relevance_labels = sum(
-        1 for rc in replay_cases if _replay_question(rc) == "result_relevant" and rc.get("expected_label")
+    objective_fetch_usable = sum(
+        1
+        for rc in replay_cases
+        if _replay_question(rc) == "result_usable" and rc.get("expected_label") and _is_objective(rc)
     )
+    human_search_relevant = sum(
+        1
+        for rc in replay_cases
+        if _replay_question(rc) == "result_relevant" and rc.get("expected_label") and _is_human(rc)
+    )
+    objective_search_relevant = sum(
+        1
+        for rc in replay_cases
+        if _replay_question(rc) == "result_relevant" and rc.get("expected_label") and _is_objective(rc)
+    )
+
+    # Operation-level vs per-result coverage: the (run,trace) join_report proves
+    # >=1 Jev row per Search operation; here we separately count how many human
+    # relevance labels actually joined a per-result prediction (by position).
+    human_relevance_joined = 0
+    human_relevance_missing_prediction = 0
+    for rc in replay_cases:
+        if _replay_question(rc) != "result_relevant" or not rc.get("expected_label") or not _is_human(rc):
+            continue
+        ctx = (rc.get("input_features") or {}).get("context") or {}
+        position = ctx.get("position")
+        if isinstance(position, bool) or not isinstance(position, int):
+            position = None
+        key = (rc.get("run_id") or run_id, rc.get("trace_id") or "", "result_relevant", position)
+        if key in relevance_prediction_keys:
+            human_relevance_joined += 1
+        else:
+            human_relevance_missing_prediction += 1
+
     human_gate = {
-        "fetch_usable_labels": fetch_usable_labels,
-        "search_relevance_labels": search_relevance_labels,
+        "human_fetch_usable": human_fetch_usable,
+        "objective_fetch_usable": objective_fetch_usable,
+        "human_search_relevant": human_search_relevant,
+        "objective_search_relevant": objective_search_relevant,
+        "search_relevance_prediction_count": search_relevance_predictions,
+        "human_relevance_joined_count": human_relevance_joined,
+        "human_relevance_missing_prediction": human_relevance_missing_prediction,
+        "operation_join_coverage": join_coverage,
         "thresholds": dict(HUMAN_LABEL_THRESHOLDS),
-        "passed_fetch_usable": fetch_usable_labels >= HUMAN_LABEL_THRESHOLDS["fetch_usable"],
-        "passed_search_relevance": search_relevance_labels >= HUMAN_LABEL_THRESHOLDS["search_relevant"],
+        "passed_fetch_usable": human_fetch_usable >= HUMAN_LABEL_THRESHOLDS["fetch_usable"],
+        "passed_search_relevance": human_search_relevant >= HUMAN_LABEL_THRESHOLDS["search_relevant"],
     }
     human_pass = human_gate["passed_fetch_usable"] and human_gate["passed_search_relevance"]
 
@@ -423,12 +550,22 @@ def _handle_report_only(args: argparse.Namespace) -> int:
     run_dir = _resolve_run_dir(out_dir, args.run_id)
     decision_db = run_dir / "decision.db"
     jev_db = run_dir / "jev.db"
-    if decision_db.exists() and jev_db.exists():
-        # Read-only intent: configure only runs CREATE IF NOT EXISTS. No network,
-        # no service construction.
-        decision_store.configure(decision_db)
-        jev_store.configure(jev_db)
-    # else: leave the currently configured stores untouched.
+    if not (decision_db.exists() and jev_db.exists()):
+        # FAIL CLOSED: never fall back to the global/default decision DB or any
+        # other run's DB. The run DBs are configured only when BOTH exist for
+        # the requested run; otherwise refuse (and never let --import-human-labels
+        # write elsewhere).
+        missing = [p.name for p in (decision_db, jev_db) if not p.exists()]
+        print(
+            f"error: report-only requires per-run DBs in {run_dir}; missing: {', '.join(missing)}. "
+            "Refusing to fall back to the global/default DB or another run's DB.",
+            file=sys.stderr,
+        )
+        return 2
+    # Both run DBs exist: configure them (CREATE IF NOT EXISTS); no network,
+    # no service construction.
+    decision_store.configure(decision_db)
+    jev_store.configure(jev_db)
 
     if args.import_human_labels:
         n = eval_human.import_human_labels(args.run_id, args.import_human_labels)

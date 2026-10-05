@@ -14,6 +14,7 @@ Each emitted label carries:
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Any
 
@@ -84,6 +85,9 @@ _FETCH_EVIDENCE_KEYS = (
     "browser_attempted",
     "browser_success",
     "browser_content_chars",
+    "browser_gain_chars",
+    "browser_status",
+    "browser_counterfactual_observed",
     "fallback_attempted",
     "fallback_success",
     "primary_extraction_success",
@@ -206,10 +210,36 @@ def label_outcomes(domain: str, facts: dict[str, Any]) -> list[ObjectiveLabelRes
 # everything else is AMBIGUOUS and excluded from accuracy.
 
 
+def has_browser_counterfactual(facts: dict[str, Any]) -> bool:
+    """True only when a browser counterfactual was ACTUALLY observed.
+
+    "The browser never ran" must NOT be read as "the browser ran and found no
+    gain". A counterfactual was observed when EITHER:
+      * ``browser_counterfactual_observed`` is truthy (merged from the run's
+        ``browser-counterfactual.jsonl`` artifact), OR
+      * the explicit observation triple is present: ``browser_status``,
+        ``browser_content_chars`` (or ``browser_chars``) and
+        ``browser_extraction_success``. Presence of the triple means the browser
+        backend actually executed (success OR explicit error) in the sweep.
+    """
+    if facts.get("browser_counterfactual_observed"):
+        return True
+    status = facts.get("browser_status")
+    chars = facts.get("browser_content_chars", facts.get("browser_chars"))
+    ext = facts.get("browser_extraction_success")
+    triple_present = status is not None and chars is not None and ext is not None
+    return bool(triple_present)
+
+
 def jev_needs_escalation_objective(facts: dict[str, Any]) -> ObjectiveLabelResult:
     """YES: primary hard failure AND actual recovery (browser/fallback) rescued,
     OR an explicit continuation-required. NO: primary structurally complete AND
-    counterfactual browser had no rescue / no material gain. Otherwise AMBIGUOUS.
+    a browser counterfactual was ACTUALLY observed AND the browser neither rescued
+    nor produced a material gain. Otherwise AMBIGUOUS.
+
+    Critically, when no browser counterfactual was observed we MUST NOT treat
+    "the browser never ran" as "the browser ran with no gain": the result is
+    then AMBIGUOUS with ``ambiguity_reason="missing_browser_counterfactual"``.
     """
     rescued = fetch_browser_rescued(facts) or fetch_fallback_rescued(facts)
     continuation = fetch_continuation_required(facts)
@@ -221,6 +251,15 @@ def jev_needs_escalation_objective(facts: dict[str, Any]) -> ObjectiveLabelResul
             is_objective=True,
         )
     primary_ok = fetch_primary_complete(facts)
+    if not has_browser_counterfactual(facts):
+        # "Browser never ran" is not evidence of "browser ran, no gain".
+        return ObjectiveLabelResult(
+            label=None,
+            confidence=0.0,
+            evidence=_evidence(facts, _FETCH_EVIDENCE_KEYS),
+            is_objective=False,
+            ambiguity_reason="missing_browser_counterfactual",
+        )
     browser_no_gain = (not fetch_browser_material_gain(facts)) and (not fetch_browser_rescued(facts))
     if primary_ok and browser_no_gain:
         return ObjectiveLabelResult(
@@ -295,13 +334,104 @@ _OBJECTIVE_QUESTIONS: tuple[tuple[str, Any], ...] = (
 )
 
 
-def materialize_objective_replay_cases(run_id: str) -> int:
+def _load_browser_counterfactual_index(
+    run_id: str,
+    browser_counterfactual_path: str | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Load the run's ``browser-counterfactual.jsonl`` keyed by ``source_trace_id``.
+
+    Join authority is ``source_trace_id`` (the production trace minted by the
+    fetch path) — NOT a URL hash. The default location is the run directory next
+    to the decision DB; an explicit path may be supplied. Any read failure yields
+    an empty index (events then keep facts WITHOUT browser evidence, so the
+    needs_escalation label is correctly ambiguous rather than a fake NO).
+    """
+    from pathlib import Path
+
+    from . import decision_store
+
+    index: dict[str, dict[str, Any]] = {}
+    path: Path | None = None
+    if browser_counterfactual_path:
+        path = Path(browser_counterfactual_path)
+    else:
+        # Run dir = parent of the configured decision DB.
+        path = decision_store.db_path().parent / "browser-counterfactual.jsonl"
+    if not path.exists():
+        return index
+    try:
+        with path.open("r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                trace = row.get("source_trace_id")
+                if trace:
+                    index[str(trace)] = row
+    except OSError:
+        return {}
+    return index
+
+
+def _merged_objective_facts(
+    event: dict[str, Any],
+    cf_by_trace: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    """Build evaluation-only facts for one event, merging the browser CF row.
+
+    The merge exists ONLY during materialization for objective labeling. It is
+    never written back to the production DecisionEvent / outcome_features /
+    telemetry. Only sanitized scalars are merged; the raw browser body / URL
+    path never enters a label.
+    """
+    facts = dict(event.get("outcome_features") or {})
+    cf = cf_by_trace.get(event.get("trace_id"))
+    if not cf:
+        return facts
+    # Artifact uses browser_chars / gain; map to the scalar names the objective
+    # predicates read.
+    browser_status = cf.get("browser_status")
+    browser_chars = cf.get("browser_chars")
+    browser_extraction_success = cf.get("browser_extraction_success")
+    merged = dict(facts)
+    merged["browser_counterfactual_observed"] = True
+    if browser_status is not None:
+        merged["browser_status"] = browser_status
+    if browser_chars is not None:
+        merged["browser_content_chars"] = browser_chars
+    if cf.get("gain") is not None:
+        merged["browser_gain_chars"] = cf.get("gain")
+    if browser_extraction_success is not None:
+        merged["browser_extraction_success"] = bool(browser_extraction_success)
+    # Derived safe booleans so the deterministic predicates can see the observed
+    # browser execution. The browser actually ran in the CF sweep; whether it
+    # succeeded is encoded by browser_status.
+    merged["browser_attempted"] = True
+    merged["browser_success"] = bool(browser_status == "success")
+    return merged
+
+
+def materialize_objective_replay_cases(
+    run_id: str,
+    browser_counterfactual_path: str | None = None,
+) -> int:
     """Materialize objective ReplayCases for one run (OFFLINE EVALUATION CLI).
 
-    Reads that run's DecisionEvents and, for each event, derives objective
-    Jev-question ground truth from its outcome facts for ``needs_escalation``
-    and ``result_usable`` ONLY. ``result_relevant`` is never materialized —
-    a SEARCH_SUCCESS / result_count>0 must never create a semantic case.
+    Reads that run's DecisionEvents AND its ``browser-counterfactual.jsonl``
+    artifact (default: run dir next to the decision DB; override via
+    ``browser_counterfactual_path``). Each CF row is joined to a DecisionEvent by
+    ``(run_id, source_trace_id) == event(run_id, trace_id)`` — ``source_trace_id``
+    is the authority, never a URL hash. Joined events get MERGED evaluation facts
+    (see :func:`_merged_objective_facts`) used ONLY for objective labeling.
+
+    For each event, derives objective Jev-question ground truth from its outcome
+    facts for ``needs_escalation`` and ``result_usable`` ONLY. ``result_relevant``
+    is never materialized — a SEARCH_SUCCESS / result_count>0 must never create a
+    semantic case.
 
     Idempotent: case_ids are deterministic ``<event_id>:<question>`` and rows
     are INSERT OR REPLACE'd, so re-runs never duplicate. Returns the number of
@@ -315,9 +445,11 @@ def materialize_objective_replay_cases(run_id: str) -> int:
     from . import decision_store
     from .replay_case import ReplayCase
 
+    cf_by_trace = _load_browser_counterfactual_index(run_id, browser_counterfactual_path)
+
     written = 0
     for event in decision_store.load_events_for_run(run_id):
-        facts = dict(event.get("outcome_features") or {})
+        facts = _merged_objective_facts(event, cf_by_trace)
         for question, objective_fn in _OBJECTIVE_QUESTIONS:
             result = objective_fn(facts)
             if not result.is_objective or not result.label:
