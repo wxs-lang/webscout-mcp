@@ -20,6 +20,8 @@ from typing import Any
 
 from .decision_event import LabelSource
 from .labels import (
+    BROWSER_MATERIAL_GAIN_MIN_EXTRA_CHARS,
+    BROWSER_MATERIAL_GAIN_MIN_RATIO,
     fetch_browser_failed,
     fetch_browser_material_gain,
     fetch_browser_rescued,
@@ -27,6 +29,7 @@ from .labels import (
     fetch_fallback_failed,
     fetch_fallback_rescued,
     fetch_primary_complete,
+    primary_objectively_failed,
     search_all_empty,
     search_all_failed,
     search_circuit_skip,
@@ -231,9 +234,37 @@ def has_browser_counterfactual(facts: dict[str, Any]) -> bool:
     return bool(triple_present)
 
 
+def _cf_rescued(facts: dict[str, Any]) -> bool:
+    """Browser counterfactual actually rescued a failed primary.
+
+    Derived ONLY from the merged safe scalars: the primary objectively failed,
+    the CF browser succeeded (``browser_status == "success"``) and extracted.
+    """
+    return (
+        primary_objectively_failed(facts)
+        and bool(facts.get("browser_extraction_success"))
+        and str(facts.get("browser_status")) == "success"
+    )
+
+
+def _cf_material_gain(facts: dict[str, Any]) -> bool:
+    """Apply the SAME gain thresholds as ``fetch_browser_material_gain`` but using
+    the merged counterfactual scalars (``browser_gain_chars`` /
+    ``browser_content_chars`` vs ``primary_content_chars``)."""
+    browser_chars = float(facts.get("browser_content_chars") or 0)
+    primary_chars = float(facts.get("primary_content_chars") or 0)
+    gain = facts.get("browser_gain_chars")
+    extra = float(gain) if gain is not None else (browser_chars - primary_chars)
+    if extra < BROWSER_MATERIAL_GAIN_MIN_EXTRA_CHARS:
+        return False
+    if primary_chars <= 0:
+        return browser_chars >= BROWSER_MATERIAL_GAIN_MIN_EXTRA_CHARS
+    return browser_chars >= primary_chars * BROWSER_MATERIAL_GAIN_MIN_RATIO
+
+
 def jev_needs_escalation_objective(facts: dict[str, Any]) -> ObjectiveLabelResult:
-    """YES: primary hard failure AND actual recovery (browser/fallback) rescued,
-    OR an explicit continuation-required. NO: primary structurally complete AND
+    """YES: production fallback rescue, explicit continuation, OR a browser CF
+    that actually rescued a failed primary. NO: primary structurally complete AND
     a browser counterfactual was ACTUALLY observed AND the browser neither rescued
     nor produced a material gain. Otherwise AMBIGUOUS.
 
@@ -241,16 +272,13 @@ def jev_needs_escalation_objective(facts: dict[str, Any]) -> ObjectiveLabelResul
     "the browser never ran" as "the browser ran with no gain": the result is
     then AMBIGUOUS with ``ambiguity_reason="missing_browser_counterfactual"``.
     """
-    rescued = fetch_browser_rescued(facts) or fetch_fallback_rescued(facts)
-    continuation = fetch_continuation_required(facts)
-    if rescued or continuation:
+    if fetch_continuation_required(facts) or fetch_fallback_rescued(facts) or _cf_rescued(facts):
         return ObjectiveLabelResult(
             label="semantic/needs_more_content",
             confidence=0.8,
             evidence=_evidence(facts, _FETCH_EVIDENCE_KEYS),
             is_objective=True,
         )
-    primary_ok = fetch_primary_complete(facts)
     if not has_browser_counterfactual(facts):
         # "Browser never ran" is not evidence of "browser ran, no gain".
         return ObjectiveLabelResult(
@@ -260,8 +288,8 @@ def jev_needs_escalation_objective(facts: dict[str, Any]) -> ObjectiveLabelResul
             is_objective=False,
             ambiguity_reason="missing_browser_counterfactual",
         )
-    browser_no_gain = (not fetch_browser_material_gain(facts)) and (not fetch_browser_rescued(facts))
-    if primary_ok and browser_no_gain:
+    primary_ok = fetch_primary_complete(facts)
+    if primary_ok and not _cf_material_gain(facts):
         return ObjectiveLabelResult(
             label="semantic/no_more_content_needed",
             confidence=0.7,
@@ -337,20 +365,24 @@ _OBJECTIVE_QUESTIONS: tuple[tuple[str, Any], ...] = (
 def _load_browser_counterfactual_index(
     run_id: str,
     browser_counterfactual_path: str | None = None,
-) -> dict[str, dict[str, Any]]:
-    """Load the run's ``browser-counterfactual.jsonl`` keyed by ``source_trace_id``.
+) -> dict[tuple[str, str], dict[str, Any]]:
+    """Load the run's ``browser-counterfactual.jsonl`` keyed by
+    ``(run_id, source_trace_id)``.
 
-    Join authority is ``source_trace_id`` (the production trace minted by the
-    fetch path) — NOT a URL hash. The default location is the run directory next
-    to the decision DB; an explicit path may be supplied. Any read failure yields
-    an empty index (events then keep facts WITHOUT browser evidence, so the
+    Join authority is BOTH ``run_id`` AND ``source_trace_id`` — NOT a URL hash,
+    and NOT trace alone. A row whose artifact ``run_id`` is PRESENT and DIFFERENT
+    from the requested run is rejected (never indexed) so it cannot leak into
+    another run's DecisionEvent. An empty/absent artifact run_id is treated as
+    the requested run. The default location is the run directory next to the
+    decision DB; an explicit path may be supplied. Any read failure yields an
+    empty index (events then keep facts WITHOUT browser evidence, so the
     needs_escalation label is correctly ambiguous rather than a fake NO).
     """
     from pathlib import Path
 
     from . import decision_store
 
-    index: dict[str, dict[str, Any]] = {}
+    index: dict[tuple[str, str], dict[str, Any]] = {}
     path: Path | None = None
     if browser_counterfactual_path:
         path = Path(browser_counterfactual_path)
@@ -370,8 +402,13 @@ def _load_browser_counterfactual_index(
                 except json.JSONDecodeError:
                     continue
                 trace = row.get("source_trace_id")
-                if trace:
-                    index[str(trace)] = row
+                if not trace:
+                    continue
+                row_run = str(row.get("run_id") or "").strip()
+                if row_run and row_run != run_id:
+                    # Cross-run artifact row: never join into this run.
+                    continue
+                index[(run_id, str(trace))] = row
     except OSError:
         return {}
     return index
@@ -379,39 +416,33 @@ def _load_browser_counterfactual_index(
 
 def _merged_objective_facts(
     event: dict[str, Any],
-    cf_by_trace: dict[str, dict[str, Any]],
+    cf_by_run_trace: dict[tuple[str, str], dict[str, Any]],
+    run_id: str,
 ) -> dict[str, Any]:
     """Build evaluation-only facts for one event, merging the browser CF row.
 
     The merge exists ONLY during materialization for objective labeling. It is
     never written back to the production DecisionEvent / outcome_features /
-    telemetry. Only sanitized scalars are merged; the raw browser body / URL
-    path never enters a label.
+    telemetry. Only the five documented safe scalars are merged; the raw browser
+    body / URL path never enters a label. Lookup requires BOTH run_id and
+    trace_id to match.
     """
     facts = dict(event.get("outcome_features") or {})
-    cf = cf_by_trace.get(event.get("trace_id"))
+    event_run = event.get("run_id") or run_id
+    cf = cf_by_run_trace.get((event_run, event.get("trace_id")))
     if not cf:
         return facts
-    # Artifact uses browser_chars / gain; map to the scalar names the objective
-    # predicates read.
-    browser_status = cf.get("browser_status")
-    browser_chars = cf.get("browser_chars")
-    browser_extraction_success = cf.get("browser_extraction_success")
+    # Artifact uses browser_chars / gain; map to the five documented scalars.
     merged = dict(facts)
     merged["browser_counterfactual_observed"] = True
-    if browser_status is not None:
-        merged["browser_status"] = browser_status
-    if browser_chars is not None:
-        merged["browser_content_chars"] = browser_chars
+    if cf.get("browser_status") is not None:
+        merged["browser_status"] = cf.get("browser_status")
+    if cf.get("browser_chars") is not None:
+        merged["browser_content_chars"] = cf.get("browser_chars")
+    if cf.get("browser_extraction_success") is not None:
+        merged["browser_extraction_success"] = bool(cf.get("browser_extraction_success"))
     if cf.get("gain") is not None:
         merged["browser_gain_chars"] = cf.get("gain")
-    if browser_extraction_success is not None:
-        merged["browser_extraction_success"] = bool(browser_extraction_success)
-    # Derived safe booleans so the deterministic predicates can see the observed
-    # browser execution. The browser actually ran in the CF sweep; whether it
-    # succeeded is encoded by browser_status.
-    merged["browser_attempted"] = True
-    merged["browser_success"] = bool(browser_status == "success")
     return merged
 
 
@@ -445,11 +476,11 @@ def materialize_objective_replay_cases(
     from . import decision_store
     from .replay_case import ReplayCase
 
-    cf_by_trace = _load_browser_counterfactual_index(run_id, browser_counterfactual_path)
+    cf_by_run_trace = _load_browser_counterfactual_index(run_id, browser_counterfactual_path)
 
     written = 0
     for event in decision_store.load_events_for_run(run_id):
-        facts = _merged_objective_facts(event, cf_by_trace)
+        facts = _merged_objective_facts(event, cf_by_run_trace, run_id)
         for question, objective_fn in _OBJECTIVE_QUESTIONS:
             result = objective_fn(facts)
             if not result.is_objective or not result.label:

@@ -283,7 +283,76 @@ def test_06_materializer_joins_cf_by_source_trace_id(hermetic_stores, tmp_path):
     cases = decision_store.load_replay_cases(run_id="run-cf")
     ne = [c for c in cases if c["case_id"].endswith("needs_escalation")][0]
     assert ne["expected_label"] == "semantic/no_more_content_needed"
-    assert ne["observed_outcome"]["browser_counterfactual_observed"] is True
+    obs = ne["observed_outcome"]
+    assert obs["browser_counterfactual_observed"] is True
+    # Merged evaluation facts carry EXACTLY the five documented safe scalars.
+    merged_keys = {k for k in obs if k.startswith("browser_") and k != "browser_content_chars"}
+    assert {
+        "browser_counterfactual_observed",
+        "browser_status",
+        "browser_extraction_success",
+        "browser_gain_chars",
+    } <= merged_keys
+    assert "browser_attempted" not in obs
+    assert "browser_success" not in obs
+
+
+# ===========================================================================
+# 6b. cross-run CF row must NOT leak into another run's event
+# ===========================================================================
+
+
+def test_16_cross_run_cf_row_does_not_merge(hermetic_stores, tmp_path):
+    _, _, _ = hermetic_stores
+    # Event in run-x on trace t-x.
+    decision_store.record_event(_fetch_event("run-x", "t-x", outcome=dict(_PRIMARY_COMPLETE_NO_CF)))
+    # Event in run-y on trace t-y.
+    decision_store.record_event(_fetch_event("run-y", "t-y", outcome=dict(_PRIMARY_COMPLETE_NO_CF)))
+
+    cf_path = tmp_path / "browser-counterfactual.jsonl"
+    cf_path.write_text(
+        "\n".join(
+            [
+                # Same trace t-x but tagged run-OTHER: must be REJECTED for run-x.
+                json.dumps(
+                    {
+                        "case_id": "cf:other",
+                        "run_id": "run-OTHER",
+                        "source_trace_id": "t-x",
+                        "browser_status": "success",
+                        "browser_chars": 1000,
+                        "gain": 0,
+                        "browser_extraction_success": True,
+                    }
+                ),
+                # Same-run row for run-y: must merge.
+                json.dumps(
+                    {
+                        "case_id": "cf:y",
+                        "run_id": "run-y",
+                        "source_trace_id": "t-y",
+                        "browser_status": "success",
+                        "browser_chars": 1000,
+                        "gain": 0,
+                        "browser_extraction_success": True,
+                    }
+                ),
+            ]
+        )
+        + "\n"
+    )
+
+    # run-x: the only CF row on t-x is tagged run-OTHER -> no merge -> ambiguous.
+    written_x = materialize_objective_replay_cases("run-x", browser_counterfactual_path=str(cf_path))
+    assert written_x == 0
+    assert decision_store.load_replay_cases(run_id="run-x") == []
+
+    # run-y: same-run row merges -> needs_escalation NO.
+    written_y = materialize_objective_replay_cases("run-y", browser_counterfactual_path=str(cf_path))
+    assert written_y == 1
+    cases_y = decision_store.load_replay_cases(run_id="run-y")
+    ne = [c for c in cases_y if c["case_id"].endswith("needs_escalation")][0]
+    assert ne["expected_label"] == "semantic/no_more_content_needed"
 
 
 # ===========================================================================
