@@ -100,14 +100,14 @@ class QuestionMetrics:
     # --- Advisor error integrity (Phase 2.1.2) ------------------------------
     # Trusted labels that actually resolved to a *valid* prediction. An API
     # / timeout / malformed error is NEVER a model error, so the accuracy
-    # denominator is trusted_labels_with_valid_prediction, not n_labeled.
-    trusted_labels_with_valid_prediction: int = 0
-    trusted_labels_missing_prediction: int = 0
+    # denominator is verified_labels_with_valid_prediction, not n_labeled.
+    verified_labels_with_valid_prediction: int = 0
+    verified_labels_missing_prediction: int = 0
     # Valid predictions vs advisor_error records over ALL rows in the bucket
     # (labeled + unlabeled observations).
     valid_predictions: int = 0
     error_records: int = 0
-    # trusted_labels_with_valid_prediction / trusted_labels (0.0 when no label).
+    # verified_labels_with_valid_prediction / verified_labels (0.0 when no label).
     advisor_prediction_coverage: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
@@ -115,9 +115,9 @@ class QuestionMetrics:
             "question": self.question,
             "n_total": self.n_total,
             "n_labeled": self.n_labeled,
-            "trusted_labels": self.n_labeled,
-            "trusted_labels_with_valid_prediction": self.trusted_labels_with_valid_prediction,
-            "trusted_labels_missing_prediction": self.trusted_labels_missing_prediction,
+            "verified_labels": self.n_labeled,
+            "verified_labels_with_valid_prediction": self.verified_labels_with_valid_prediction,
+            "verified_labels_missing_prediction": self.verified_labels_missing_prediction,
             "valid_predictions": self.valid_predictions,
             "error_records": self.error_records,
             "advisor_prediction_coverage": self.advisor_prediction_coverage,
@@ -239,10 +239,10 @@ def evaluate_question(question: str, rows: list[LabeledPrediction]) -> QuestionM
     m.error_records = m.n_total - m.valid_predictions
 
     labeled_valid = [r for r in labeled if is_valid_labeled_prediction(r)]
-    m.trusted_labels_with_valid_prediction = len(labeled_valid)
-    m.trusted_labels_missing_prediction = m.n_labeled - m.trusted_labels_with_valid_prediction
+    m.verified_labels_with_valid_prediction = len(labeled_valid)
+    m.verified_labels_missing_prediction = m.n_labeled - m.verified_labels_with_valid_prediction
     m.advisor_prediction_coverage = (
-        round(m.trusted_labels_with_valid_prediction / m.n_labeled, 4) if m.n_labeled else 0.0
+        round(m.verified_labels_with_valid_prediction / m.n_labeled, 4) if m.n_labeled else 0.0
     )
 
     # Disagreement without ground truth: rule and jev differ but no label.

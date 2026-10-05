@@ -3,7 +3,7 @@
 Deterministic, hermetic, offline. Covers the 8 acceptance scenarios:
 
  1  timeout row (GT=True, decision False, prob 0.0, error "timeout"):
-    tp=tn=fp=fn=0, brier None, trusted_labels_missing_prediction=1,
+    tp=tn=fp=fn=0, brier None, verified_labels_missing_prediction=1,
     error_records=1, advisor_prediction_coverage=0.0
  2  same timeout row PLUS one valid GT=True prob 0.9 row: Brier == 0.01 and
     tp=1 (timeout excluded)
@@ -112,8 +112,8 @@ def test_01_timeout_row_excluded_from_all_metrics():
     assert m.tp == m.tn == m.fp == m.fn == 0
     assert m.brier is None
     assert m.n_labeled == 1
-    assert m.trusted_labels_with_valid_prediction == 0
-    assert m.trusted_labels_missing_prediction == 1
+    assert m.verified_labels_with_valid_prediction == 0
+    assert m.verified_labels_missing_prediction == 1
     assert m.valid_predictions == 0
     assert m.error_records == 1
     assert m.advisor_prediction_coverage == 0.0
@@ -139,8 +139,8 @@ def test_02_timeout_excluded_valid_counts():
     assert m.tp == 1  # only the valid 0.9 row; timeout excluded
     assert m.brier == round((0.9 - 1.0) ** 2, 5)  # 0.01
     assert m.n_labeled == 2
-    assert m.trusted_labels_with_valid_prediction == 1
-    assert m.trusted_labels_missing_prediction == 1
+    assert m.verified_labels_with_valid_prediction == 1
+    assert m.verified_labels_missing_prediction == 1
 
 
 # ===========================================================================
@@ -159,7 +159,7 @@ def test_03_malformed_response_excluded_identically():
 
     assert m.tp == m.tn == m.fp == m.fn == 0
     assert m.brier is None
-    assert m.trusted_labels_missing_prediction == 1
+    assert m.verified_labels_missing_prediction == 1
     assert m.error_records == 1
 
 
@@ -184,7 +184,7 @@ def test_04_strong_no_is_a_valid_prediction():
     assert m.brier == 0.0
     assert m.valid_predictions == 1
     assert m.error_records == 0
-    assert m.trusted_labels_with_valid_prediction == 1
+    assert m.verified_labels_with_valid_prediction == 1
 
 
 # ===========================================================================
