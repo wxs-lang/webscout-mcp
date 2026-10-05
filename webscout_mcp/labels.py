@@ -95,8 +95,50 @@ SEMANTIC_LABELS = frozenset(
         "RESULT_NOT_RELEVANT",
         "NEEDS_MORE_CONTENT",
         "NO_MORE_CONTENT_NEEDED",
+        "BROWSER_ESCALATION_WARRANTED",
+        "BROWSER_ESCALATION_NOT_WARRANTED",
     }
 )
+
+# ---------------------------------------------------------------------------
+# Allowed human-label vocabulary per Jev question (Phase 2.1.2 PART B).
+#
+# ``needs_escalation`` literally asks whether BROWSER escalation is warranted
+# given the fetched page state. Its human ground truth MUST therefore be one of
+# the two browser-escalation labels — the legacy ``semantic/needs_more_content``
+# (generic "any recovery needed") is no longer an accepted human answer here.
+# Strings are exact lowercase as written in the JSONL; ``import_human_labels``
+# lower-cases/strips before membership.
+# ---------------------------------------------------------------------------
+HUMAN_LABELS_BY_QUESTION: dict[str, frozenset[str]] = {
+    "needs_escalation": frozenset(
+        {
+            "semantic/browser_escalation_warranted",
+            "semantic/browser_escalation_not_warranted",
+        }
+    ),
+    "result_usable": frozenset(
+        {
+            "semantic/result_usable",
+            "semantic/result_not_usable",
+        }
+    ),
+    "result_relevant": frozenset(
+        {
+            "semantic/result_relevant",
+            "semantic/result_not_relevant",
+        }
+    ),
+}
+
+
+def allowed_human_labels(question: str) -> frozenset[str]:
+    """Return the allowed exact lowercase human labels for a Jev question.
+
+    Unknown questions yield an empty frozenset (which rejects every label).
+    """
+    return HUMAN_LABELS_BY_QUESTION.get((question or "").strip(), frozenset())
+
 
 # Legacy outcome aliases (pre-namespace fixtures) -> canonical outcome.
 _LEGACY_OUTCOME_ALIASES = {

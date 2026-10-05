@@ -186,6 +186,45 @@ def _int(v: Any) -> int | None:
     return 1 if bool(v) else 0
 
 
+def is_valid_jev_prediction(row: dict[str, Any]) -> bool:
+    """Return True iff a raw Jev shadow row is a *valid prediction*.
+
+    Error rows (``timeout`` / ``missing_answer`` / ``malformed_response`` / any
+    API or SDK exception) are persisted by ``TypeSafeJevClient`` as
+    ``jev_decision=False, jev_probability=0.0`` WITH a non-empty ``jev_error``.
+    They are advisor_error RECORDS, never predictions, and must be provably
+    excluded from every offline metric.
+
+    A row is a valid prediction ONLY when ALL hold:
+      * ``jev_error`` is None or whitespace-empty,
+      * ``jev_probability`` is present (``bool`` rejected defensively), float
+        convertible, and within ``[0.0, 1.0]``,
+      * ``jev_decision`` is present.
+
+    Critically, a legitimate strong-NO row (``probability=0.0, decision=False,
+    error=None``) PASSES: ``jev_error`` is the sole discriminator for that case.
+    Everything else (any non-empty error string, missing/non-float probability,
+    missing decision) is an advisor_error record, not a prediction.
+    """
+    err = row.get("jev_error")
+    if err is not None and str(err).strip() != "":
+        return False
+    prob = row.get("jev_probability")
+    if isinstance(prob, bool):  # bool is an int subclass: reject defensively
+        return False
+    if prob is None:
+        return False
+    try:
+        p = float(prob)
+    except (TypeError, ValueError):
+        return False
+    if not (0.0 <= p <= 1.0):
+        return False
+    if row.get("jev_decision") is None:
+        return False
+    return True
+
+
 def _rows_to_dicts(rows: list[sqlite3.Row]) -> list[dict[str, Any]]:
     out = []
     for r in rows:

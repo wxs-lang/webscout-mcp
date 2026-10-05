@@ -5,7 +5,7 @@ Deterministic, hermetic, offline. Covers the 15 acceptance scenarios:
  1  result_relevant positions 1/2/3 join to their own predictions
     (the merge-blocker scenario)
  2  duplicate Jev position -> latest-by-timestamp chosen + duplicate count
- 3  missing browser CF -> needs_escalation ambiguous (missing_browser_counterfactual)
+ 3  missing browser CF -> needs_escalation ambiguous (missing_browser_evidence)
  4  observed browser no-gain -> objective NO
  5  observed browser rescue -> objective YES
  6  browser CF artifact -> materializer joins by source_trace_id
@@ -200,7 +200,7 @@ def test_03_missing_browser_cf_is_ambiguous():
     assert has_browser_counterfactual(_PRIMARY_COMPLETE_NO_CF) is False
     r = jev_needs_escalation_objective(dict(_PRIMARY_COMPLETE_NO_CF))
     assert r.label is None
-    assert r.ambiguity_reason == "missing_browser_counterfactual"
+    assert r.ambiguity_reason == "missing_browser_evidence"
 
 
 # ===========================================================================
@@ -221,7 +221,7 @@ def test_04_observed_browser_no_gain_is_objective_no():
     )
     assert has_browser_counterfactual(facts) is True
     r = jev_needs_escalation_objective(facts)
-    assert r.label == "semantic/no_more_content_needed"
+    assert r.label == "semantic/browser_escalation_not_warranted"
     assert r.is_objective is True
 
 
@@ -246,7 +246,7 @@ def test_05_observed_browser_rescue_is_objective_yes():
         "browser_success": True,
     }
     r = jev_needs_escalation_objective(facts)
-    assert r.label == "semantic/needs_more_content"
+    assert r.label == "semantic/browser_escalation_warranted"
     assert r.is_objective is True
 
 
@@ -282,7 +282,7 @@ def test_06_materializer_joins_cf_by_source_trace_id(hermetic_stores, tmp_path):
     assert written == 1  # needs_escalation NO (would be ambiguous without the CF join)
     cases = decision_store.load_replay_cases(run_id="run-cf")
     ne = [c for c in cases if c["case_id"].endswith("needs_escalation")][0]
-    assert ne["expected_label"] == "semantic/no_more_content_needed"
+    assert ne["expected_label"] == "semantic/browser_escalation_not_warranted"
     obs = ne["observed_outcome"]
     assert obs["browser_counterfactual_observed"] is True
     # Merged evaluation facts carry EXACTLY the five documented safe scalars.
@@ -352,7 +352,7 @@ def test_16_cross_run_cf_row_does_not_merge(hermetic_stores, tmp_path):
     assert written_y == 1
     cases_y = decision_store.load_replay_cases(run_id="run-y")
     ne = [c for c in cases_y if c["case_id"].endswith("needs_escalation")][0]
-    assert ne["expected_label"] == "semantic/no_more_content_needed"
+    assert ne["expected_label"] == "semantic/browser_escalation_not_warranted"
 
 
 # ===========================================================================

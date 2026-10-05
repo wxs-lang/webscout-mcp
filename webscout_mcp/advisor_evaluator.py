@@ -21,6 +21,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from .jev_store import is_valid_jev_prediction
+
 JevQuestion = Literal["needs_escalation", "result_usable", "result_relevant"]
 
 # Calibration bins (edges inclusive left, exclusive right).
@@ -50,6 +52,28 @@ class LabeledPrediction:
     # Search result_relevant correlation position (1-based). None for Fetch
     # questions (needs_escalation / result_usable), which have no position.
     position: int | None = None
+    # Non-empty when the resolved Jev row was an advisor_error record
+    # (timeout / missing_answer / malformed_response / API / SDK exception)
+    # rather than a prediction. Such rows are provably excluded from every
+    # metric; ``jev_probability`` is left None rather than fabricated as 0.0.
+    jev_error: str | None = None
+
+
+def is_valid_labeled_prediction(row: LabeledPrediction) -> bool:
+    """Mirror :func:`webscout_mcp.jev_store.is_valid_jev_prediction` for a
+    :class:`LabeledPrediction`.
+
+    A row is a valid prediction ONLY when: ``jev_error`` is empty,
+    ``jev_probability`` is present (bool rejected) & within ``[0,1]``, and
+    ``jev_decision`` is present. Error records never enter any metric.
+    """
+    return is_valid_jev_prediction(
+        {
+            "jev_error": row.jev_error,
+            "jev_probability": row.jev_probability,
+            "jev_decision": row.jev_decision,
+        }
+    )
 
 
 @dataclass
@@ -73,12 +97,30 @@ class QuestionMetrics:
     calibration: list[dict[str, Any]] = field(default_factory=list)
     head_to_head: dict[str, int] = field(default_factory=dict)
     conclusion: str = ""
+    # --- Advisor error integrity (Phase 2.1.2) ------------------------------
+    # Trusted labels that actually resolved to a *valid* prediction. An API
+    # / timeout / malformed error is NEVER a model error, so the accuracy
+    # denominator is verified_labels_with_valid_prediction, not n_labeled.
+    verified_labels_with_valid_prediction: int = 0
+    verified_labels_missing_prediction: int = 0
+    # Valid predictions vs advisor_error records over ALL rows in the bucket
+    # (labeled + unlabeled observations).
+    valid_predictions: int = 0
+    error_records: int = 0
+    # verified_labels_with_valid_prediction / verified_labels (0.0 when no label).
+    advisor_prediction_coverage: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "question": self.question,
             "n_total": self.n_total,
             "n_labeled": self.n_labeled,
+            "verified_labels": self.n_labeled,
+            "verified_labels_with_valid_prediction": self.verified_labels_with_valid_prediction,
+            "verified_labels_missing_prediction": self.verified_labels_missing_prediction,
+            "valid_predictions": self.valid_predictions,
+            "error_records": self.error_records,
+            "advisor_prediction_coverage": self.advisor_prediction_coverage,
             "n_excluded_ambiguous": self.n_excluded_ambiguous,
             "n_no_ground_truth_disagreement": self.n_no_ground_truth_disagreement,
             "coverage": round(self.coverage, 4),
@@ -109,7 +151,7 @@ def _safe_div(a: float, b: float) -> float | None:
 def confusion_at_threshold(rows: list[LabeledPrediction], threshold: float = 0.5) -> dict[str, int]:
     tp = tn = fp = fn = 0
     for r in rows:
-        if r.ground_truth is None or r.jev_probability is None:
+        if r.ground_truth is None or not is_valid_labeled_prediction(r):
             continue
         pred_yes = r.jev_probability >= threshold
         actual_yes = bool(r.ground_truth)
@@ -128,7 +170,7 @@ def brier_score(rows: list[LabeledPrediction]) -> float | None:
     diffs = [
         (float(r.jev_probability) - (1.0 if r.ground_truth else 0.0)) ** 2
         for r in rows
-        if r.ground_truth is not None and r.jev_probability is not None
+        if r.ground_truth is not None and is_valid_labeled_prediction(r)
     ]
     if not diffs:
         return None
@@ -136,7 +178,7 @@ def brier_score(rows: list[LabeledPrediction]) -> float | None:
 
 
 def calibration_bins(rows: list[LabeledPrediction]) -> list[dict[str, Any]]:
-    labeled = [r for r in rows if r.ground_truth is not None and r.jev_probability is not None]
+    labeled = [r for r in rows if r.ground_truth is not None and is_valid_labeled_prediction(r)]
     out: list[dict[str, Any]] = []
     for lo, hi in CALIBRATION_BINS:
         bucket = [r for r in labeled if lo <= float(r.jev_probability) < hi]
@@ -158,7 +200,7 @@ def head_to_head(rows: list[LabeledPrediction]) -> dict[str, int]:
     """Deterministic rule vs Jev on cases that have BOTH + trusted label."""
     both_correct = rule_only = jev_only = both_wrong = 0
     for r in rows:
-        if r.ground_truth is None or r.jev_probability is None or r.rule_decision is None:
+        if r.ground_truth is None or not is_valid_labeled_prediction(r) or r.rule_decision is None:
             continue
         jev_yes = r.jev_probability >= 0.5
         gt_yes = bool(r.ground_truth)
@@ -188,9 +230,25 @@ def evaluate_question(question: str, rows: list[LabeledPrediction]) -> QuestionM
     m.n_excluded_ambiguous = len(rows) - len(labeled)
     m.coverage = _safe_div(len(labeled), len(rows)) or 0.0
 
+    # Advisor error integrity: a resolved row is either a valid prediction or
+    # an advisor_error record (timeout / missing_answer / malformed_response /
+    # API / SDK exception). Error rows NEVER enter confusion / Brier /
+    # calibration / head-to-head; an API failure is not a model error.
+    valid_rows = [r for r in rows if is_valid_labeled_prediction(r)]
+    m.valid_predictions = len(valid_rows)
+    m.error_records = m.n_total - m.valid_predictions
+
+    labeled_valid = [r for r in labeled if is_valid_labeled_prediction(r)]
+    m.verified_labels_with_valid_prediction = len(labeled_valid)
+    m.verified_labels_missing_prediction = m.n_labeled - m.verified_labels_with_valid_prediction
+    m.advisor_prediction_coverage = (
+        round(m.verified_labels_with_valid_prediction / m.n_labeled, 4) if m.n_labeled else 0.0
+    )
+
     # Disagreement without ground truth: rule and jev differ but no label.
+    # Requires a VALID prediction — an error record is not a disagreement.
     for r in rows:
-        if r.ground_truth is None and r.rule_decision is not None and r.jev_probability is not None:
+        if r.ground_truth is None and r.rule_decision is not None and is_valid_labeled_prediction(r):
             if bool(r.rule_decision) != (r.jev_probability >= 0.5):
                 m.n_no_ground_truth_disagreement += 1
 
@@ -275,9 +333,22 @@ def check_join_gate(join_report: dict[str, Any], coverage_target: float = 1.0) -
 # ---------------------------------------------------------------------------
 
 _SEMANTIC_POSITIVE: dict[str, set[str]] = {
-    "needs_escalation": {"SEMANTIC/NEEDS_MORE_CONTENT"},
+    "needs_escalation": {"SEMANTIC/NEEDS_MORE_CONTENT", "SEMANTIC/BROWSER_ESCALATION_WARRANTED"},
     "result_usable": {"SEMANTIC/RESULT_USABLE"},
     "result_relevant": {"SEMANTIC/RESULT_RELEVANT"},
+}
+
+# Negative canonical labels per question. needs_escalation accepts BOTH the
+# legacy ``NO_MORE_CONTENT_NEEDED`` alias and the newer
+# ``BROWSER_ESCALATION_NOT_WARRANTED`` canonical name; the other questions keep
+# exactly one negative label.
+_SEMANTIC_NEGATIVE: dict[str, set[str]] = {
+    "needs_escalation": {
+        "SEMANTIC/NO_MORE_CONTENT_NEEDED",
+        "SEMANTIC/BROWSER_ESCALATION_NOT_WARRANTED",
+    },
+    "result_usable": {"SEMANTIC/RESULT_NOT_USABLE"},
+    "result_relevant": {"SEMANTIC/RESULT_NOT_RELEVANT"},
 }
 
 
@@ -286,19 +357,21 @@ def semantic_label_to_ground_truth(question: str, expected_label: str) -> bool |
 
     Only semantic/* labels map. outcome/* labels are not Jev-question answers.
     result_relevant requires label_source=human_verified (enforced by caller).
+
+    Canonical names are matched after upper-casing and normalizing
+    ``-``/spaces to ``_``. For ``needs_escalation`` the positive set includes
+    both the legacy ``NEEDS_MORE_CONTENT`` alias and the newer
+    ``BROWSER_ESCALATION_WARRANTED`` name, and the negative set includes both
+    ``NO_MORE_CONTENT_NEEDED`` (legacy) and ``BROWSER_ESCALATION_NOT_WARRANTED``
+    (new) — so both naming generations remain readable. Anything else (any
+    other semantic/*, any outcome/*, or an unknown label) returns None.
     """
     if not expected_label:
         return None
     canon = expected_label.strip().upper().replace("-", "_").replace(" ", "_")
-    pos = _SEMANTIC_POSITIVE.get(question, set())
-    neg_map = {
-        "needs_escalation": "SEMANTIC/NO_MORE_CONTENT_NEEDED",
-        "result_usable": "SEMANTIC/RESULT_NOT_USABLE",
-        "result_relevant": "SEMANTIC/RESULT_NOT_RELEVANT",
-    }
-    if canon in pos:
+    if canon in _SEMANTIC_POSITIVE.get(question, set()):
         return True
-    if canon == neg_map.get(question):
+    if canon in _SEMANTIC_NEGATIVE.get(question, set()):
         return False
     return None
 
@@ -355,35 +428,45 @@ def build_jev_prediction_index(
 ) -> tuple[dict[tuple[Any, ...], dict[str, Any]], int]:
     """Build the resolved-key Jev prediction index.
 
-    Duplicate rows sharing a resolved key are NOT silently last-wins: the record
-    with the greatest ``timestamp`` is selected deterministically, breaking ties
-    by input row order (a later row wins an exact timestamp tie). The number of
-    duplicated keys (i.e. rows dropped as duplicates) is returned so it is
-    reported, not hidden.
+    Duplicate rows sharing a resolved key are resolved deterministically by a
+    3-level priority (an older valid prediction must NEVER be replaced by a
+    newer error record):
+
+      1. a VALID prediction beats an advisor_error record,
+      2. both valid -> greatest ``timestamp`` wins,
+      3. both error -> greatest ``timestamp`` wins,
+      4. exact ties -> later input row order wins.
+
+    The number of duplicated keys (i.e. rows dropped as duplicates) is
+    returned so it is reported, not hidden. Deterministic, no randomness.
 
     Returns ``(index, duplicate_prediction_keys)``.
     """
     best: dict[tuple[Any, ...], dict[str, Any]] = {}
-    best_order: dict[tuple[Any, ...], int] = {}
+    best_key: dict[tuple[Any, ...], tuple[int, float, int]] = {}
     duplicate_prediction_keys = 0
 
-    def _sortable(ts: Any, order: int) -> tuple[float, int]:
+    def _sortable(row: dict[str, Any], order: int) -> tuple[int, float, int]:
+        # (validity rank, timestamp, input order). Valid (1) > error (0).
+        valid_rank = 1 if is_valid_jev_prediction(row) else 0
+        ts = row.get("timestamp")
         if isinstance(ts, (int, float)) and not isinstance(ts, bool):
-            return (float(ts), order)
-        return (float("-inf"), order)
+            ts_f: float = float(ts)
+        else:
+            ts_f = float("-inf")
+        return (valid_rank, ts_f, order)
 
     for order, row in enumerate(jev_rows):
         key = _jev_resolved_key(row)
-        candidate = (_sortable(row.get("timestamp"), order), row)
+        cand = _sortable(row, order)
         if key not in best:
             best[key] = row
-            best_order[key] = order
+            best_key[key] = cand
             continue
         duplicate_prediction_keys += 1
-        cur_sort = _sortable(best[key].get("timestamp"), best_order[key])
-        if candidate[0] >= cur_sort:
+        if cand >= best_key[key]:
             best[key] = row
-            best_order[key] = order
+            best_key[key] = cand
     return best, duplicate_prediction_keys
 
 
@@ -393,6 +476,15 @@ class JoinResult:
 
     rows: dict[str, list[LabeledPrediction]]
     duplicate_prediction_keys: int
+    # Per-question raw + join accounting. ``rows``/``valid_predictions``/
+    # ``errors`` are over the RAW jev rows for that question (before dedup);
+    # ``labeled_with_valid_prediction`` / ``labeled_missing_valid_prediction``
+    # / ``invalid_ground_truth_source`` are over trusted labels.
+    stats: dict[str, dict[str, int]] = field(default_factory=dict)
+
+    def __getitem__(self, question: str) -> list[LabeledPrediction]:
+        """Backwards-compatible dict-style access to ``rows``."""
+        return self.rows[question]
 
 
 def join_labeled_rows(
@@ -408,18 +500,26 @@ def join_labeled_rows(
       * Search ``result_relevant``: ``(run_id, trace_id, question, position)``
 
     ``case_id`` is NEVER used as a trace. Duplicate Jev prediction keys are
-    resolved latest-by-timestamp (see :func:`build_jev_prediction_index`) and the
-    dropped-duplicate count is surfaced on ``JoinResult.duplicate_prediction_keys``.
+    resolved with the valid-beats-error priority (see
+    :func:`build_jev_prediction_index`) and the dropped-duplicate count is
+    surfaced on ``JoinResult.duplicate_prediction_keys``.
 
-    * For each trusted ReplayCase (``label_source`` human_verified /
-      objective_outcome), derive a boolean ground truth per question via
-      :func:`semantic_label_to_ground_truth`. When non-None AND a Jev row
-      exists for the resolved key, emit a ``LabeledPrediction`` whose
-      ``trace_id`` is the ReplayCase's TRACE_ID (never its case_id), whose
-      ``run_id`` is the case's run_id, and (for result_relevant) whose
-      ``position`` is the human Search result position.
-    * Every Jev row not consumed as a trusted label is appended with
-      ``ground_truth=None``. A Jev prediction can NEVER become a label.
+    Advisor error integrity (Phase 2.1.2):
+      * A trusted label whose resolved Jev row is a VALID prediction emits a
+        full ``LabeledPrediction`` (``jev_error`` populated from the row, which
+        is None for valid rows) and counts as ``labeled_with_valid_prediction``.
+      * A trusted label whose resolved Jev row is MISSING or an advisor_error
+        record (timeout / missing_answer / malformed_response / API / SDK)
+        emits a DIAGNOSTIC row carrying the trusted label + the error string but
+        with ``jev_probability=None`` (never a fabricated 0.0). It counts as
+        ``labeled_missing_valid_prediction`` and is provably excluded from every
+        metric.
+      * ``result_relevant`` ground truth is HUMAN-ONLY: an objective_outcome
+        (or any non-human_verified) label that would otherwise map is dropped
+        silently and counted as ``invalid_ground_truth_source``.
+      * Unused jev rows (valid AND error) are still appended with
+        ``ground_truth=None`` so availability can be counted; metric functions
+        skip them via :func:`is_valid_labeled_prediction`.
 
     Args:
         events: DecisionEvents loaded for this run (used to validate that a
@@ -429,6 +529,28 @@ def join_labeled_rows(
         run_id: the scoped run id.
     """
     result: dict[str, list[LabeledPrediction]] = {q: [] for q in EVALUATION_QUESTIONS}
+    stats: dict[str, dict[str, int]] = {
+        q: {
+            "rows": 0,
+            "valid_predictions": 0,
+            "errors": 0,
+            "labeled_with_valid_prediction": 0,
+            "labeled_missing_valid_prediction": 0,
+            "invalid_ground_truth_source": 0,
+        }
+        for q in EVALUATION_QUESTIONS
+    }
+
+    # Raw (pre-dedup) jev row accounting per question.
+    for jrow in jev_rows:
+        q = jrow.get("jev_question")
+        if q not in stats:
+            continue
+        stats[q]["rows"] += 1
+        if is_valid_jev_prediction(jrow):
+            stats[q]["valid_predictions"] += 1
+        else:
+            stats[q]["errors"] += 1
 
     event_traces = {(e.get("run_id") or "", e.get("trace_id") or "") for e in events}
 
@@ -453,23 +575,49 @@ def join_labeled_rows(
             if question == "result_relevant":
                 position = _rc_position(rc)
                 key = key + (position,)
+                # Defense-in-depth: result_relevant ground truth is HUMAN-ONLY.
+                if label_source_value != "human_verified":
+                    stats[question]["invalid_ground_truth_source"] += 1
+                    used_jev_keys.add(key)  # consume so it is not re-appended
+                    continue
             jrow = jev_index.get(key)
-            if jrow is None:
-                continue  # ground truth cannot join without its Jev prediction
-            used_jev_keys.add(key)
-            result[question].append(
-                LabeledPrediction(
-                    question=question,
-                    ground_truth=ground_truth,
-                    label_source=label_source_value,
-                    jev_decision=jrow.get("jev_decision"),
-                    jev_probability=jrow.get("jev_probability"),
-                    rule_decision=jrow.get("rule_decision"),
-                    trace_id=rc_trace,
-                    run_id=rc_run,
-                    position=position,
+            if jrow is not None and is_valid_jev_prediction(jrow):
+                used_jev_keys.add(key)
+                result[question].append(
+                    LabeledPrediction(
+                        question=question,
+                        ground_truth=ground_truth,
+                        label_source=label_source_value,
+                        jev_decision=jrow.get("jev_decision"),
+                        jev_probability=jrow.get("jev_probability"),
+                        jev_error=jrow.get("jev_error"),
+                        rule_decision=jrow.get("rule_decision"),
+                        trace_id=rc_trace,
+                        run_id=rc_run,
+                        position=position,
+                    )
                 )
-            )
+                stats[question]["labeled_with_valid_prediction"] += 1
+            else:
+                # Missing jev row OR advisor_error record: do NOT fabricate a
+                # probability. Emit a diagnostic row so the trusted label is
+                # counted as missing a valid prediction, but metrics skip it.
+                used_jev_keys.add(key)
+                result[question].append(
+                    LabeledPrediction(
+                        question=question,
+                        ground_truth=ground_truth,
+                        label_source=label_source_value,
+                        jev_decision=jrow.get("jev_decision") if jrow else None,
+                        jev_probability=None,
+                        jev_error=(jrow or {}).get("jev_error"),
+                        rule_decision=(jrow or {}).get("rule_decision"),
+                        trace_id=rc_trace,
+                        run_id=rc_run,
+                        position=position,
+                    )
+                )
+                stats[question]["labeled_missing_valid_prediction"] += 1
 
     # Ambiguous/unlabeled Jev predictions: appended, never relabeled.
     for key, jrow in jev_index.items():
@@ -485,6 +633,7 @@ def join_labeled_rows(
                 label_source="",
                 jev_decision=jrow.get("jev_decision"),
                 jev_probability=jrow.get("jev_probability"),
+                jev_error=jrow.get("jev_error"),
                 rule_decision=jrow.get("rule_decision"),
                 trace_id=key[1],
                 run_id=key[0],
@@ -492,10 +641,10 @@ def join_labeled_rows(
             )
         )
 
-    return JoinResult(rows=result, duplicate_prediction_keys=duplicate_prediction_keys)
+    return JoinResult(rows=result, duplicate_prediction_keys=duplicate_prediction_keys, stats=stats)
 
 
-def build_labeled_rows(run_id: str) -> dict[str, list[LabeledPrediction]]:
+def build_labeled_rows(run_id: str) -> JoinResult:
     """Materialize run-scoped labeled rows for the OFFLINE EVALUATION CLI.
 
     Read-only against production. Lazily imports ``decision_store`` /
@@ -504,11 +653,13 @@ def build_labeled_rows(run_id: str) -> dict[str, list[LabeledPrediction]]:
       * Jev shadow rows for the run via the configured jev_store DB,
       * ReplayCases for the run via ``decision_store.load_replay_cases(run_id=...)``.
 
-    Returns a mapping ``question -> [LabeledPrediction]`` joined on the resolved
-    correlation key (3-tuple for Fetch, 4-tuple incl. position for Search
-    ``result_relevant``). See :func:`join_labeled_rows`.
+    Returns the full :class:`JoinResult`: ``.rows`` is a mapping
+    ``question -> [LabeledPrediction]`` joined on the resolved correlation key
+    (3-tuple for Fetch, 4-tuple incl. position for Search ``result_relevant``),
+    ``.duplicate_prediction_keys`` the dropped-duplicate count, and ``.stats``
+    the per-question raw/join accounting. See :func:`join_labeled_rows`.
 
-    Duplicate Jev prediction keys are resolved latest-by-timestamp internally;
+    Duplicate Jev prediction keys are resolved valid-beats-error internally;
     the dropped-duplicate count is surfaced by the report via
     :func:`build_jev_prediction_index`.
     """
@@ -538,4 +689,4 @@ def build_labeled_rows(run_id: str) -> dict[str, list[LabeledPrediction]]:
 
     replay_cases = [ReplayCase.from_dict(d) for d in decision_store.load_replay_cases(run_id=run_id)]
 
-    return join_labeled_rows(events, jev_rows, replay_cases, run_id).rows
+    return join_labeled_rows(events, jev_rows, replay_cases, run_id)
