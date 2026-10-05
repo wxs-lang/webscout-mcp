@@ -263,43 +263,86 @@ def _cf_material_gain(facts: dict[str, Any]) -> bool:
 
 
 def jev_needs_escalation_objective(facts: dict[str, Any]) -> ObjectiveLabelResult:
-    """YES: production fallback rescue, explicit continuation, OR a browser CF
-    that actually rescued a failed primary. NO: primary structurally complete AND
-    a browser counterfactual was ACTUALLY observed AND the browser neither rescued
-    nor produced a material gain. Otherwise AMBIGUOUS.
+    """Browser-escalation-only objective YES/NO for the ``needs_escalation`` question.
 
-    Critically, when no browser counterfactual was observed we MUST NOT treat
-    "the browser never ran" as "the browser ran with no gain": the result is
-    then AMBIGUOUS with ``ambiguity_reason="missing_browser_counterfactual"``.
+    The question literally asks: "given this fetched page state, is the content
+    insufficient for a general AI agent to use directly, such that *browser*
+    escalation is warranted?" The ground truth below means BROWSER escalation
+    specifically — NOT "any recovery was needed".
+
+    Decision structure (strict, conservative):
+
+      1. YES (``semantic/browser_escalation_warranted``) ONLY when browser-specific
+         rescue evidence exists:
+           * ``fetch_browser_rescued`` — a production browser was actually attempted,
+             the primary objectively failed, and the browser actually rescued it; OR
+           * ``_cf_rescued`` — a browser counterfactual was observed, the primary
+             objectively failed, and the counterfactual browser rescued it.
+         "The browser content was longer" alone is never sufficient.
+
+      2. When NEITHER a browser counterfactual was observed
+         (``has_browser_counterfactual``) NOR a production browser was attempted
+         (``browser_attempted``/``browser_used`` truthy), the result is AMBIGUOUS
+         (``missing_browser_evidence``). This deliberately means:
+           * truncated + continuation available (no browser evidence) proves a
+             continuation was needed, NOT that a browser was warranted; and
+           * primary failed + provider fallback rescued (no browser evidence)
+             proves a provider fallback rescued it, NOT that a browser was warranted.
+
+      3. NO (``semantic/browser_escalation_not_warranted``) ONLY when a browser
+         counterfactual was observed AND the primary is structurally complete AND
+         the browser neither rescued the primary nor produced a material gain.
+
+      4. Otherwise AMBIGUOUS (``needs_escalation_objective_subset_inconclusive``) —
+         e.g. a production browser was attempted but failed, or a CF was observed
+         with a failed primary but no rescue.
+
+    A provider fallback AND a browser CF both present is decided by the CF
+    branches above, never by the generic provider-fallback outcome.
     """
-    if fetch_continuation_required(facts) or fetch_fallback_rescued(facts) or _cf_rescued(facts):
+    evidence = _evidence(facts, _FETCH_EVIDENCE_KEYS)
+
+    # 1. Browser-specific rescue evidence -> YES.
+    if fetch_browser_rescued(facts) or _cf_rescued(facts):
         return ObjectiveLabelResult(
-            label="semantic/needs_more_content",
-            confidence=0.8,
-            evidence=_evidence(facts, _FETCH_EVIDENCE_KEYS),
+            label="semantic/browser_escalation_warranted",
+            confidence=0.85,
+            evidence=evidence,
             is_objective=True,
         )
-    if not has_browser_counterfactual(facts):
-        # "Browser never ran" is not evidence of "browser ran, no gain".
+
+    # 2. No browser evidence at all -> AMBIGUOUS. Continuation-required and
+    #    provider-fallback-rescued do NOT prove a browser was warranted.
+    production_browser_attempted = bool(facts.get("browser_attempted") or facts.get("browser_used"))
+    if not has_browser_counterfactual(facts) and not production_browser_attempted:
         return ObjectiveLabelResult(
             label=None,
             confidence=0.0,
-            evidence=_evidence(facts, _FETCH_EVIDENCE_KEYS),
+            evidence=evidence,
             is_objective=False,
-            ambiguity_reason="missing_browser_counterfactual",
+            ambiguity_reason="missing_browser_evidence",
         )
-    primary_ok = fetch_primary_complete(facts)
-    if primary_ok and not _cf_material_gain(facts):
+
+    # 3. Observed browser counterfactual on a structurally complete primary, with
+    #    no rescue and no material gain -> NO browser escalation warranted.
+    if (
+        has_browser_counterfactual(facts)
+        and fetch_primary_complete(facts)
+        and not _cf_rescued(facts)
+        and not _cf_material_gain(facts)
+    ):
         return ObjectiveLabelResult(
-            label="semantic/no_more_content_needed",
-            confidence=0.7,
-            evidence=_evidence(facts, _FETCH_EVIDENCE_KEYS),
+            label="semantic/browser_escalation_not_warranted",
+            confidence=0.70,
+            evidence=evidence,
             is_objective=True,
         )
+
+    # 4. Inconclusive objective subset.
     return ObjectiveLabelResult(
         label=None,
         confidence=0.0,
-        evidence=_evidence(facts, _FETCH_EVIDENCE_KEYS),
+        evidence=evidence,
         is_objective=False,
         ambiguity_reason="needs_escalation_objective_subset_inconclusive",
     )

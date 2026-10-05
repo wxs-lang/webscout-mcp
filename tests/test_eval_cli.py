@@ -625,6 +625,10 @@ class TestStatusGating:
             _seed_event(ddb, run_id="runFull", trace_id=f"s{i}", domain="search", outcome={"result_count": 3})
         for i in range(60):
             _seed_jev(jdb, run_id="runFull", trace_id=f"f{i}", question="needs_escalation", operation="fetch")
+        # A fetch call asks both Fetch questions; seed result_usable predictions
+        # too so the real-run gate has >0 valid predictions per question.
+        for i in range(60):
+            _seed_jev(jdb, run_id="runFull", trace_id=f"f{i}", question="result_usable", operation="fetch")
         # 120 result_relevant predictions across the 40 search traces, keyed by
         # result position (the real gate counts predictions, not result rows).
         for i in range(120):

@@ -46,6 +46,7 @@ from webscout_mcp.advisor_evaluator import (  # noqa: E402
     check_join_gate,
     evaluate_question,
 )
+from webscout_mcp.jev_store import is_valid_jev_prediction  # noqa: E402
 from webscout_mcp.eval_preflight import run_preflight, to_text  # noqa: E402
 from webscout_mcp.eval_runners import (  # noqa: E402
     run_browser_counterfactual,
@@ -181,25 +182,36 @@ def _browser_counterfactual_count(run_dir: Path) -> int:
         return 0
 
 
+def _valid_prediction_stats(jev_rows: list[dict[str, Any]], question: str) -> tuple[int, int, set[tuple[Any, ...]]]:
+    """Count distinct resolved-key VALID predictions for one Jev question.
+
+    Only rows where ``jev_question == question`` AND
+    :func:`is_valid_jev_prediction` holds are eligible (timeout /
+    missing_answer / malformed_response / API / SDK error rows are NOT
+    predictions). Duplicate keys are resolved with the valid-beats-error
+    priority so a newer error row cannot un-seat an older valid one.
+
+    Returns ``(valid_prediction_count, duplicate_prediction_keys, keys)``.
+    """
+    rel_rows = [j for j in jev_rows if j.get("jev_question") == question and is_valid_jev_prediction(j)]
+    index, dupes = build_jev_prediction_index(rel_rows)
+    return len(index), dupes, set(index.keys())
+
+
 def _search_relevance_prediction_stats(
     jev_rows: list[dict[str, Any]],
 ) -> tuple[int, int, set[tuple[Any, ...]]]:
-    """Count distinct Jev ``result_relevant`` predictions.
+    """Count distinct valid Jev ``result_relevant`` predictions.
 
-    A prediction requires jev_question=result_relevant AND (jev_probability IS
-    NOT NULL OR jev_decision IS NOT NULL), counted per resolved distinct
-    (trace, position) key with latest-by-timestamp duplicate resolution (so
-    duplicate rows cannot inflate the count). Returns
+    A prediction requires jev_question=result_relevant AND a valid prediction
+    (empty error, float probability in [0,1], decision present), counted per
+    resolved distinct (trace, position) key with duplicate resolution. Returns
     ``(prediction_count, duplicate_prediction_keys, prediction_keys)``.
+
+    100 malformed rows (prob 0.0 / decision False / error malformed_response)
+    yield count 0.
     """
-    rel_rows = [
-        j
-        for j in jev_rows
-        if j.get("jev_question") == "result_relevant"
-        and (j.get("jev_probability") is not None or j.get("jev_decision") is not None)
-    ]
-    index, dupes = build_jev_prediction_index(rel_rows)
-    return len(index), dupes, set(index.keys())
+    return _valid_prediction_stats(jev_rows, "result_relevant")
 
 
 def _expected_shadow_rows(search_events: list[dict[str, Any]]) -> tuple[int, int, str]:
@@ -263,7 +275,8 @@ def build_run_report(run_id: str) -> dict[str, Any]:
     join_gate = check_join_gate(join_report).to_dict()
 
     # --- Labeled rows / per-question metrics --------------------------------
-    rows = build_labeled_rows(run_id)
+    join_result = build_labeled_rows(run_id)
+    rows = join_result.rows
     jev_question_metrics = {q: evaluate_question(q, rows[q]).to_dict() for q in rows}
 
     # --- Objective outcome summary (from production facts, never Jev) --------
@@ -287,6 +300,17 @@ def build_run_report(run_id: str) -> dict[str, Any]:
         duplicate_prediction_keys,
         relevance_prediction_keys,
     ) = _search_relevance_prediction_stats(jev_rows)
+    # Fetch questions: distinct valid predictions per resolved (run,trace,question).
+    (
+        needs_escalation_predictions,
+        _ne_dupes,
+        _ne_keys,
+    ) = _valid_prediction_stats(jev_rows, "needs_escalation")
+    (
+        result_usable_predictions,
+        _ru_dupes,
+        _ru_keys,
+    ) = _valid_prediction_stats(jev_rows, "result_usable")
     expected_shadow_rows, shadow_cap, shadow_cap_source = _expected_shadow_rows(search_events)
     if expected_shadow_rows > 0:
         prediction_coverage: float | None = round(search_relevance_predictions / expected_shadow_rows, 4)
@@ -309,6 +333,8 @@ def build_run_report(run_id: str) -> dict[str, Any]:
         "objective_materialized": objective_materialized,
         "search_result_rows": search_result_rows,
         "search_relevance_predictions": search_relevance_predictions,
+        "needs_escalation_predictions": needs_escalation_predictions,
+        "result_usable_predictions": result_usable_predictions,
         "expected_shadow_rows": expected_shadow_rows,
         "jev_search_shadow_max_results": shadow_cap,
         "prediction_coverage": prediction_coverage,
@@ -316,6 +342,28 @@ def build_run_report(run_id: str) -> dict[str, Any]:
         "duplicate_prediction_keys": duplicate_prediction_keys,
         "browser_counterfactual_cases": browser_cf_count,
     }
+
+    # --- Advisor availability: valid predictions vs error records -----------
+    # Over the run's RAW jev_rows (observability), NOT the labeled subset.
+    advisor_valid = sum(1 for j in jev_rows if is_valid_jev_prediction(j))
+    advisor_stats = {
+        "jev_records_total": len(jev_rows),
+        "jev_valid_predictions": advisor_valid,
+        "jev_error_records": len(jev_rows) - advisor_valid,
+        "jev_valid_rate": round(advisor_valid / len(jev_rows), 4) if jev_rows else None,
+    }
+
+    # Per-question join stats + the evaluation advisor_prediction_coverage.
+    advisor_by_question: dict[str, dict[str, Any]] = {}
+    for q, s in join_result.stats.items():
+        advisor_by_question[q] = {
+            "rows": s["rows"],
+            "valid_predictions": s["valid_predictions"],
+            "errors": s["errors"],
+            "labeled_with_valid_prediction": s["labeled_with_valid_prediction"],
+            "labeled_missing_valid_prediction": s["labeled_missing_valid_prediction"],
+            "advisor_prediction_coverage": jev_question_metrics[q]["advisor_prediction_coverage"],
+        }
 
     # --- Real-run gate -------------------------------------------------------
     advisor_enabled = int(join_report.get("advisor_enabled_decisions", 0) or 0)
@@ -326,6 +374,8 @@ def build_run_report(run_id: str) -> dict[str, Any]:
         "search_total": counts["search_events"],
         "search_result_rows": search_result_rows,
         "search_relevance_predictions": search_relevance_predictions,
+        "needs_escalation_predictions": needs_escalation_predictions,
+        "result_usable_predictions": result_usable_predictions,
         "prediction_coverage": prediction_coverage,
         "prediction_coverage_denominator_is_upper_bound": coverage_denominator_upper_bound,
         "browser_counterfactual_cases": browser_cf_count,
@@ -337,6 +387,8 @@ def build_run_report(run_id: str) -> dict[str, Any]:
         "passed_search_total": counts["search_events"] >= REAL_RUN_THRESHOLDS["search_total"],
         "passed_search_relevance_predictions": search_relevance_predictions
         >= REAL_RUN_THRESHOLDS["search_relevance_predictions"],
+        "passed_needs_escalation_predictions": needs_escalation_predictions > 0,
+        "passed_result_usable_predictions": result_usable_predictions > 0,
         "passed_browser_counterfactual": browser_cf_count >= REAL_RUN_THRESHOLDS["browser_counterfactual"],
         "passed_advisor_enabled": advisor_enabled > 0,
         "passed_no_unexpected_unjoined": unexpected_unjoined == 0,
@@ -430,6 +482,8 @@ def build_run_report(run_id: str) -> dict[str, Any]:
         "join_report": join_report,
         "join_gate": join_gate,
         "jev_question_metrics": jev_question_metrics,
+        "advisor_stats": advisor_stats,
+        "advisor_by_question": advisor_by_question,
         "objective_outcomes": objective_outcomes,
         "counts": counts,
         "real_run_gate": real_run_gate,
@@ -509,6 +563,16 @@ def _to_markdown(r: dict[str, Any]) -> str:
         "",
         "```json",
         json.dumps(r["jev_question_metrics"], indent=2),
+        "```",
+        "",
+        "## Advisor availability",
+        "",
+        "```json",
+        json.dumps(r.get("advisor_stats", {}), indent=2),
+        "```",
+        "",
+        "```json",
+        json.dumps(r.get("advisor_by_question", {}), indent=2),
         "```",
         "",
     ]

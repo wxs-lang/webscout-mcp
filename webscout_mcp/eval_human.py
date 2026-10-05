@@ -28,6 +28,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from .labels import allowed_human_labels
 from .logging_config import get_logger
 
 log = get_logger(__name__)
@@ -130,12 +131,19 @@ def import_human_labels(run_id: str, path: str | Path) -> int:
     original ``run_id`` / ``trace_id`` / ``question`` so the offline join on the
     resolved correlation key can correlate it with the Jev shadow record.
 
-    Integrity guards (Phase 2.1.1):
+    Integrity guards (Phase 2.1.1 / 2.1.2 PART B):
       * A row carrying a non-empty ``run_id`` that DIFFERS from the requested
         ``run_id`` is skipped — never import run-B labels into run-A's DB.
       * For ``result_relevant`` rows, ``context.position`` MUST be an integer
         > 0; rows missing/invalid position are skipped as invalid.
         ``result_usable`` rows do not require a position.
+      * The ``(question, expected_label)`` pair MUST be one of the question's
+        allowed human labels (see :data:`webscout_mcp.labels.HUMAN_LABELS_BY_QUESTION`).
+        Anything else — a wrong-namespace label, a typo, the legacy generic
+        ``semantic/needs_more_content`` on a ``needs_escalation`` row, or an
+        unknown question — is skipped as ``skipped_invalid_label`` with no silent
+        entry. This makes ``needs_escalation`` human ground truth mean BROWSER
+        escalation specifically, not generic "any recovery needed".
 
     Returns the number of imported cases.
     """
@@ -147,6 +155,7 @@ def import_human_labels(run_id: str, path: str | Path) -> int:
     imported = 0
     skipped_wrong_run = 0
     skipped_bad_position = 0
+    skipped_invalid_label = 0
     with src.open("r", encoding="utf-8") as fh:
         for line in fh:
             line = line.strip()
@@ -184,6 +193,18 @@ def import_human_labels(run_id: str, path: str | Path) -> int:
                     )
                     continue
 
+            allowed = allowed_human_labels(question)
+            if not allowed or expected.lower() not in allowed:
+                skipped_invalid_label += 1
+                log.warning(
+                    "eval: skipping human-label row in %s: question=%r has invalid expected_label=%r (allowed=%s)",
+                    src,
+                    question,
+                    expected,
+                    sorted(allowed),
+                )
+                continue
+
             case = ReplayCase(
                 case_id=str(row.get("case_id") or ""),
                 run_id=row_run or run_id,
@@ -201,10 +222,11 @@ def import_human_labels(run_id: str, path: str | Path) -> int:
             if decision_store.record_replay_case(case):
                 imported += 1
     log.info(
-        "eval: imported %d human labels from %s (skipped wrong_run=%d bad_position=%d)",
+        "eval: imported %d human labels from %s (skipped wrong_run=%d bad_position=%d invalid_label=%d)",
         imported,
         src,
         skipped_wrong_run,
         skipped_bad_position,
+        skipped_invalid_label,
     )
     return imported
