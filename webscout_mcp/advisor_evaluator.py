@@ -47,6 +47,9 @@ class LabeledPrediction:
     rule_decision: bool | None
     trace_id: str = ""
     run_id: str = ""
+    # Search result_relevant correlation position (1-based). None for Fetch
+    # questions (needs_escalation / result_usable), which have no position.
+    position: int | None = None
 
 
 @dataclass
@@ -310,23 +313,111 @@ EVALUATION_QUESTIONS: tuple[str, ...] = ("needs_escalation", "result_usable", "r
 _TRUSTED_LABEL_SOURCES = {"human_verified", "objective_outcome"}
 
 
+def _jev_resolved_key(row: dict[str, Any]) -> tuple[Any, ...]:
+    """Correlation key for a raw Jev shadow row.
+
+    Fetch questions (``needs_escalation`` / ``result_usable``) have NO search
+    result position, so they stay on the 3-tuple
+    ``(run_id, trace_id, question)``.
+
+    Search ``result_relevant`` predictions are per search *result position*
+    (position 1/2/3 ... of one query trace). Keying on the 3-tuple would make
+    every position collapse onto the last prediction for that trace, so we use
+    the 4-tuple ``(run_id, trace_id, question, position)``.
+    """
+    run_id = row.get("run_id") or ""
+    trace_id = row.get("trace_id") or ""
+    question = row.get("jev_question") or ""
+    base: tuple[Any, ...] = (run_id, trace_id, question)
+    if question == "result_relevant":
+        return base + (row.get("position"),)
+    return base
+
+
+def _rc_position(rc: Any) -> Any:
+    """Read the human Search result position from a ReplayCase.
+
+    ``import_human_labels`` stores the reviewer's per-row context at
+    ``input_features["context"]`` including ``position``. Fetch cases carry no
+    position. Returns ``None`` when absent/invalid.
+    """
+    context = (getattr(rc, "input_features", None) or {}).get("context") or {}
+    pos = context.get("position")
+    if isinstance(pos, bool):  # bool is an int subclass; reject it as a position
+        return None
+    if isinstance(pos, int):
+        return pos
+    return None
+
+
+def build_jev_prediction_index(
+    jev_rows: list[dict[str, Any]],
+) -> tuple[dict[tuple[Any, ...], dict[str, Any]], int]:
+    """Build the resolved-key Jev prediction index.
+
+    Duplicate rows sharing a resolved key are NOT silently last-wins: the record
+    with the greatest ``timestamp`` is selected deterministically, breaking ties
+    by input row order (a later row wins an exact timestamp tie). The number of
+    duplicated keys (i.e. rows dropped as duplicates) is returned so it is
+    reported, not hidden.
+
+    Returns ``(index, duplicate_prediction_keys)``.
+    """
+    best: dict[tuple[Any, ...], dict[str, Any]] = {}
+    best_order: dict[tuple[Any, ...], int] = {}
+    duplicate_prediction_keys = 0
+
+    def _sortable(ts: Any, order: int) -> tuple[float, int]:
+        if isinstance(ts, (int, float)) and not isinstance(ts, bool):
+            return (float(ts), order)
+        return (float("-inf"), order)
+
+    for order, row in enumerate(jev_rows):
+        key = _jev_resolved_key(row)
+        candidate = (_sortable(row.get("timestamp"), order), row)
+        if key not in best:
+            best[key] = row
+            best_order[key] = order
+            continue
+        duplicate_prediction_keys += 1
+        cur_sort = _sortable(best[key].get("timestamp"), best_order[key])
+        if candidate[0] >= cur_sort:
+            best[key] = row
+            best_order[key] = order
+    return best, duplicate_prediction_keys
+
+
+@dataclass
+class JoinResult:
+    """Result of joining trusted ReplayCases with Jev shadow predictions."""
+
+    rows: dict[str, list[LabeledPrediction]]
+    duplicate_prediction_keys: int
+
+
 def join_labeled_rows(
     events: list[dict[str, Any]],
     jev_rows: list[dict[str, Any]],
     replay_cases: list[Any],
     run_id: str,
-) -> dict[str, list[LabeledPrediction]]:
+) -> JoinResult:
     """Pure join of trusted ReplayCases + Jev rows for ONE run.
 
-    The correlation key is strictly ``(run_id, trace_id[, jev_question])``;
-    ``case_id`` is NEVER used as a trace.
+    The correlation key is strictly:
+      * Fetch questions: ``(run_id, trace_id, question)``
+      * Search ``result_relevant``: ``(run_id, trace_id, question, position)``
+
+    ``case_id`` is NEVER used as a trace. Duplicate Jev prediction keys are
+    resolved latest-by-timestamp (see :func:`build_jev_prediction_index`) and the
+    dropped-duplicate count is surfaced on ``JoinResult.duplicate_prediction_keys``.
 
     * For each trusted ReplayCase (``label_source`` human_verified /
       objective_outcome), derive a boolean ground truth per question via
       :func:`semantic_label_to_ground_truth`. When non-None AND a Jev row
-      exists for ``(rc.run_id, rc.trace_id, question)``, emit a
-      ``LabeledPrediction`` whose ``trace_id`` is the ReplayCase's TRACE_ID
-      (never its case_id) and whose ``run_id`` is the case's run_id.
+      exists for the resolved key, emit a ``LabeledPrediction`` whose
+      ``trace_id`` is the ReplayCase's TRACE_ID (never its case_id), whose
+      ``run_id`` is the case's run_id, and (for result_relevant) whose
+      ``position`` is the human Search result position.
     * Every Jev row not consumed as a trusted label is appended with
       ``ground_truth=None``. A Jev prediction can NEVER become a label.
 
@@ -341,16 +432,9 @@ def join_labeled_rows(
 
     event_traces = {(e.get("run_id") or "", e.get("trace_id") or "") for e in events}
 
-    jev_index: dict[tuple[str, str, str], dict[str, Any]] = {}
-    for row in jev_rows:
-        key = (
-            row.get("run_id") or "",
-            row.get("trace_id") or "",
-            row.get("jev_question") or "",
-        )
-        jev_index[key] = row  # duplicate keys: last wins (deterministic w/ input order)
+    jev_index, duplicate_prediction_keys = build_jev_prediction_index(jev_rows)
 
-    used_jev_keys: set[tuple[str, str, str]] = set()
+    used_jev_keys: set[tuple[Any, ...]] = set()
 
     for rc in replay_cases:
         label_source_value = getattr(rc.label_source, "value", rc.label_source)
@@ -364,7 +448,11 @@ def join_labeled_rows(
             ground_truth = semantic_label_to_ground_truth(question, rc.expected_label or "")
             if ground_truth is None:
                 continue
-            key = (rc_run, rc_trace, question)
+            key: tuple[Any, ...] = (rc_run, rc_trace, question)
+            position: int | None = None
+            if question == "result_relevant":
+                position = _rc_position(rc)
+                key = key + (position,)
             jrow = jev_index.get(key)
             if jrow is None:
                 continue  # ground truth cannot join without its Jev prediction
@@ -379,6 +467,7 @@ def join_labeled_rows(
                     rule_decision=jrow.get("rule_decision"),
                     trace_id=rc_trace,
                     run_id=rc_run,
+                    position=position,
                 )
             )
 
@@ -399,10 +488,11 @@ def join_labeled_rows(
                 rule_decision=jrow.get("rule_decision"),
                 trace_id=key[1],
                 run_id=key[0],
+                position=(key[3] if len(key) == 4 else None),
             )
         )
 
-    return result
+    return JoinResult(rows=result, duplicate_prediction_keys=duplicate_prediction_keys)
 
 
 def build_labeled_rows(run_id: str) -> dict[str, list[LabeledPrediction]]:
@@ -414,8 +504,13 @@ def build_labeled_rows(run_id: str) -> dict[str, list[LabeledPrediction]]:
       * Jev shadow rows for the run via the configured jev_store DB,
       * ReplayCases for the run via ``decision_store.load_replay_cases(run_id=...)``.
 
-    Returns a mapping ``question -> [LabeledPrediction]`` joined on
-    ``(run_id, trace_id[, question])``. See :func:`join_labeled_rows`.
+    Returns a mapping ``question -> [LabeledPrediction]`` joined on the resolved
+    correlation key (3-tuple for Fetch, 4-tuple incl. position for Search
+    ``result_relevant``). See :func:`join_labeled_rows`.
+
+    Duplicate Jev prediction keys are resolved latest-by-timestamp internally;
+    the dropped-duplicate count is surfaced by the report via
+    :func:`build_jev_prediction_index`.
     """
     import sqlite3
 
@@ -443,4 +538,4 @@ def build_labeled_rows(run_id: str) -> dict[str, list[LabeledPrediction]]:
 
     replay_cases = [ReplayCase.from_dict(d) for d in decision_store.load_replay_cases(run_id=run_id)]
 
-    return join_labeled_rows(events, jev_rows, replay_cases, run_id)
+    return join_labeled_rows(events, jev_rows, replay_cases, run_id).rows

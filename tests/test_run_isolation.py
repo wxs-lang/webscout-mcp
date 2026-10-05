@@ -263,30 +263,32 @@ _RESCUED_FACTS = {
 
 class TestObjectiveMaterialization:
     def test_deterministic_case_ids_and_idempotency(self, hermetic_stores):
+        # Production browser-rescue facts with NO observed browser counterfactual:
+        # needs_escalation is now AMBIGUOUS (missing_browser_counterfactual) rather
+        # than a fake YES; only result_usable NO is materialized.
         decision_store.record_event(_make_event("run-obj", "t-obj", event_id="obj-ev-1", outcome=dict(_RESCUED_FACTS)))
 
         n = materialize_objective_replay_cases("run-obj")
-        assert n == 2  # needs_escalation YES + result_usable NO
+        assert n == 1  # result_usable NO only; needs_escalation requires an observed CF
         cases = decision_store.load_replay_cases(run_id="run-obj")
         by_id = {c["case_id"]: c for c in cases}
 
-        assert set(by_id) == {"obj-ev-1:needs_escalation", "obj-ev-1:result_usable"}
-        ne = by_id["obj-ev-1:needs_escalation"]
-        assert ne["run_id"] == "run-obj"
-        assert ne["trace_id"] == "t-obj"
-        assert ne["domain"] == "fetch"
-        assert ne["expected_label"] == "semantic/needs_more_content"
-        assert ne["label_source"] == "objective_outcome"
-        assert ne["label_confidence"] > 0
+        assert set(by_id) == {"obj-ev-1:result_usable"}
+        assert "obj-ev-1:needs_escalation" not in by_id
         ru = by_id["obj-ev-1:result_usable"]
+        assert ru["run_id"] == "run-obj"
+        assert ru["trace_id"] == "t-obj"
+        assert ru["domain"] == "fetch"
         assert ru["expected_label"] == "semantic/result_not_usable"
+        assert ru["label_source"] == "objective_outcome"
+        assert ru["label_confidence"] > 0
         assert ru["observed_outcome"]["browser_success"] is True
         assert ru["production_decision"]["deterministic_action"] == "ACCEPT"
 
         # Idempotent: re-run replaces, never duplicates.
         n2 = materialize_objective_replay_cases("run-obj")
-        assert n2 == 2
-        assert len(decision_store.load_replay_cases(run_id="run-obj")) == 2
+        assert n2 == 1
+        assert len(decision_store.load_replay_cases(run_id="run-obj")) == 1
 
     def test_search_success_creates_no_semantic_case(self, hermetic_stores):
         search_event = DecisionEvent(

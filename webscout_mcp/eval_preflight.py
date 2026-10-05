@@ -107,9 +107,26 @@ def run_preflight() -> dict[str, Any]:
         jev_ready = False
         jev_reasons.append("missing TypeSafe credential")
     if jev_ready and not jev_enabled:
-        jev_reasons.append("JEV_ENABLED=false; shadow wired but disabled at runtime")
-    if not jev_reasons:
-        jev_reasons.append("TypeSafe SDK present and credential configured")
+        jev_ready = False
+        jev_reasons.append("JEV_ENABLED=false")
+    provider = str(getattr(cfg, "jev_provider", "typesafe") or "typesafe").lower()
+    if jev_ready and provider == "noop":
+        jev_ready = False
+        jev_reasons.append("jev_provider=noop")
+    if jev_ready:
+        # Defensively construct the real client and confirm it is non-noop.
+        try:
+            from .jev_client import make_jev_client
+
+            client = make_jev_client(cfg)
+            if getattr(client, "name", "noop") == "noop":
+                jev_ready = False
+                jev_reasons.append("jev client resolved to noop")
+        except Exception as exc:  # noqa: BLE001 - construction error -> BLOCKED
+            jev_ready = False
+            jev_reasons.append(f"jev client construction failed: {type(exc).__name__}")
+    if jev_ready:
+        jev_reasons.append("TypeSafe SDK present, credential configured, JEV_ENABLED=true, non-noop client built")
     jev_shadow = _verdict(jev_ready, jev_reasons)
 
     browser_reasons: list[str] = []

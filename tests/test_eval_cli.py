@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sqlite3
 import sys
 import time
@@ -107,16 +108,18 @@ def _seed_jev(
     probability: float = 0.9,
     model_requested: str = "typesafe-small",
     model_resolved: str = "typesafe-small",
+    position: int | None = None,
+    timestamp: float | None = None,
 ) -> None:
     with sqlite3.connect(str(db_path)) as c:
         c.execute(
             """INSERT INTO jev_records (
                 timestamp, trace_id, operation, jev_question, jev_decision,
                 jev_probability, rule_decision, run_id, model_requested,
-                model_resolved)
-               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                model_resolved, position)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
             (
-                time.time(),
+                timestamp if timestamp is not None else time.time(),
                 trace_id,
                 operation,
                 question,
@@ -126,6 +129,7 @@ def _seed_jev(
                 run_id,
                 model_requested,
                 model_resolved,
+                position,
             ),
         )
 
@@ -374,11 +378,15 @@ class TestScopedJoin:
         assert repA["counts"]["events_total"] == 2
         assert repA["join_report"]["advisor_enabled_decisions"] == 2
 
-        # runB: out/runB/decision.db does not exist -> stores stay pointed at the
-        # shared DB; the report itself must still be scoped to runB.
+        # runB shares the SAME physical DB files (symlinked into its own per-run
+        # dir). report-only now FAILS CLOSED when a run's own DBs are absent; the
+        # scoped report must still only see runB's events.
+        runB_dir = out_dir / "runB"
+        runB_dir.mkdir(parents=True)
+        os.symlink(ddb, runB_dir / "decision.db")
+        os.symlink(jdb, runB_dir / "jev.db")
         rc = cli.main(["--report-only", "--run-id", "runB", "--out-dir", str(out_dir)])
         assert rc == 0
-        runB_dir = out_dir / "runB"
         repB = json.loads((runB_dir / cli.REPORT_JSON).read_text())
         assert repB["counts"]["events_total"] == 4
         assert repB["join_report"]["advisor_enabled_decisions"] == 4
@@ -610,15 +618,24 @@ class TestStatusGating:
         out_dir = tmp_path / "out"
         ddb, jdb = _make_run_db(out_dir, "runFull")
 
-        # fetch>=60, search>=40, search_result_rows>=100, browser cf>=20.
+        # fetch>=60, search>=40, search result_relevant predictions>=100, browser cf>=20.
         for i in range(60):
             _seed_event(ddb, run_id="runFull", trace_id=f"f{i}", domain="fetch")
         for i in range(40):
             _seed_event(ddb, run_id="runFull", trace_id=f"s{i}", domain="search", outcome={"result_count": 3})
         for i in range(60):
             _seed_jev(jdb, run_id="runFull", trace_id=f"f{i}", question="needs_escalation", operation="fetch")
-        for i in range(40):
-            _seed_jev(jdb, run_id="runFull", trace_id=f"s{i}", question="result_relevant", operation="search")
+        # 120 result_relevant predictions across the 40 search traces, keyed by
+        # result position (the real gate counts predictions, not result rows).
+        for i in range(120):
+            _seed_jev(
+                jdb,
+                run_id="runFull",
+                trace_id=f"s{i % 40}",
+                question="result_relevant",
+                operation="search",
+                position=(i % 3) + 1,
+            )
 
         # Browser counterfactual artifact with 24 cases.
         run_dir = out_dir / "runFull"

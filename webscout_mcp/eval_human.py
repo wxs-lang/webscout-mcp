@@ -127,9 +127,17 @@ def import_human_labels(run_id: str, path: str | Path) -> int:
 
     Reads the JSONL produced (and then labeled) by a human reviewer. Rows with
     an empty ``expected_label`` are skipped. Every imported case preserves the
-    original ``run_id`` / ``trace_id`` / ``question`` so the offline join on
-    ``(run_id, trace_id[, question])`` can correlate it with the Jev shadow
-    record. Returns the number of imported cases.
+    original ``run_id`` / ``trace_id`` / ``question`` so the offline join on the
+    resolved correlation key can correlate it with the Jev shadow record.
+
+    Integrity guards (Phase 2.1.1):
+      * A row carrying a non-empty ``run_id`` that DIFFERS from the requested
+        ``run_id`` is skipped — never import run-B labels into run-A's DB.
+      * For ``result_relevant`` rows, ``context.position`` MUST be an integer
+        > 0; rows missing/invalid position are skipped as invalid.
+        ``result_usable`` rows do not require a position.
+
+    Returns the number of imported cases.
     """
     from . import decision_store
     from .decision_event import LabelSource
@@ -137,6 +145,8 @@ def import_human_labels(run_id: str, path: str | Path) -> int:
 
     src = Path(path)
     imported = 0
+    skipped_wrong_run = 0
+    skipped_bad_position = 0
     with src.open("r", encoding="utf-8") as fh:
         for line in fh:
             line = line.strip()
@@ -152,12 +162,34 @@ def import_human_labels(run_id: str, path: str | Path) -> int:
                 continue
             question = str(row.get("question") or "")
             trace_id = str(row.get("trace_id") or "")
+
+            row_run = str(row.get("run_id") or "").strip()
+            if row_run and row_run != run_id:
+                skipped_wrong_run += 1
+                log.warning(
+                    "eval: skipping human-label row for run_id=%s into requested run_id=%s",
+                    row_run,
+                    run_id,
+                )
+                continue
+
+            context = row.get("context") or {}
+            if question == "result_relevant":
+                position = context.get("position")
+                if isinstance(position, bool) or not isinstance(position, int) or position <= 0:
+                    skipped_bad_position += 1
+                    log.warning(
+                        "eval: skipping result_relevant row with invalid/missing position=%r",
+                        position,
+                    )
+                    continue
+
             case = ReplayCase(
                 case_id=str(row.get("case_id") or ""),
-                run_id=str(row.get("run_id") or run_id),
+                run_id=row_run or run_id,
                 trace_id=trace_id,
                 domain=str(row.get("domain") or "fetch"),
-                input_features={"question": question, "context": row.get("context") or {}},
+                input_features={"question": question, "context": context},
                 observed_outcome={},
                 production_decision={},
                 expected_label=expected,
@@ -168,5 +200,11 @@ def import_human_labels(run_id: str, path: str | Path) -> int:
             )
             if decision_store.record_replay_case(case):
                 imported += 1
-    log.info("eval: imported %d human labels from %s", imported, src)
+    log.info(
+        "eval: imported %d human labels from %s (skipped wrong_run=%d bad_position=%d)",
+        imported,
+        src,
+        skipped_wrong_run,
+        skipped_bad_position,
+    )
     return imported

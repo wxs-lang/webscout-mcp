@@ -46,7 +46,7 @@ def test_jev_blocked_when_credential_missing_only(monkeypatch):
     assert any("credential" in r.lower() for r in v["reasons"])
 
 
-def test_jev_ready_with_sdk_and_credential(monkeypatch):
+def test_jev_blocked_when_disabled(monkeypatch):
     _base_patches(monkeypatch)
     monkeypatch.setattr(eval_preflight, "_typesafe_sdk_importable", lambda: True)
     monkeypatch.setattr(eval_preflight, "_credential_present", lambda cfg: True)
@@ -54,9 +54,20 @@ def test_jev_ready_with_sdk_and_credential(monkeypatch):
 
     report = eval_preflight.run_preflight()
     v = report["capabilities"]["jev_shadow"]
+    assert v["status"] == "BLOCKED"
+    assert any("JEV_ENABLED=false" in r for r in v["reasons"])
+
+
+def test_jev_ready_with_sdk_credential_and_enabled(monkeypatch):
+    _base_patches(monkeypatch)
+    monkeypatch.setattr(eval_preflight, "_typesafe_sdk_importable", lambda: True)
+    monkeypatch.setattr(eval_preflight, "_credential_present", lambda cfg: True)
+    monkeypatch.setenv("JEV_ENABLED", "true")
+    monkeypatch.setenv("JEV_PROVIDER", "fake")  # non-noop, no network
+
+    report = eval_preflight.run_preflight()
+    v = report["capabilities"]["jev_shadow"]
     assert v["status"] == "READY"
-    # Note about runtime-disabled even when ready.
-    assert any("JEV_ENABLED" in r for r in v["reasons"])
 
 
 def test_search_blocked_when_no_providers(monkeypatch):
