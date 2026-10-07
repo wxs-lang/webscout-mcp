@@ -71,4 +71,5 @@ webscout_mcp/_version.py
 
 # Phase 2 objective eval local artifacts (never commit raw run data)
 .webscout-eval/
+_workspace/
 

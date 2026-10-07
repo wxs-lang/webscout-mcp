@@ -24,7 +24,7 @@ This document provides transparency about the stability and integration status o
 | `content_quality` | Content Analysis | 🧪 Experimental | Analyze content quality of a web page. |
 | `metadata_extract` | Content Analysis | 🔶 Beta | Extract metadata from a web page. |
 | `rss_parse` | Content Analysis | 🔶 Beta | Parse an RSS or Atom feed and return its entries. |
-| `web_crawl` | Crawl & Extract | 🔶 Beta | Crawl a website starting from a seed URL, respecting depth and page limits. |
+| `web_crawl` | Crawl & Extract | ✅ Stable | Crawl a website starting from a seed URL, respecting depth and page limits. |
 | `web_extract` | Crawl & Extract | ✅ Stable | Extract structured data from a web page using CSS selectors. |
 | `web_fetch` | Fetch | ✅ Stable | Fetch a URL and return one window of its extracted main content. |
 | `search_health` | Health | 🔶 Beta | Get health report for all search backends. |
@@ -63,8 +63,8 @@ This document provides transparency about the stability and integration status o
 
 | Level | Count | Tools |
 |-------|-------|-------|
-| ✅ Stable | 5 | `web_search`, `web_fetch`, `web_extract`, `cache_stats`, `cache_clear` |
-| 🔶 Beta | 4 | `web_crawl`, `search_health`, `metadata_extract`, `rss_parse` |
+| ✅ Stable | 6 | `web_search`, `web_fetch`, `web_extract`, `web_crawl`, `cache_stats`, `cache_clear` |
+| 🔶 Beta | 3 | `search_health`, `metadata_extract`, `rss_parse` |
 | 🧪 Experimental | 2 | `content_quality`, `broken_links` |
 
 ---

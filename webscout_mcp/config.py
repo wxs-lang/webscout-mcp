@@ -110,6 +110,10 @@ class Config:
     crawler_delay: float = 0.0  # Base delay between requests in seconds
     crawler_max_retries: int = 2  # Maximum retries per page
     respect_robots: bool = True
+    # Stable-hardening caps.
+    crawler_total_timeout: float = 60.0  # hard wall-clock per crawl, seconds
+    crawler_max_queue_size: int = 1000  # cap on discovered-but-unfetched URLs
+    crawler_allow_private: bool = False  # opt-out SSRF guard; local/test only
 
     # --- Extraction ---
     extract_output_format: str = "markdown"  # markdown | text | html
