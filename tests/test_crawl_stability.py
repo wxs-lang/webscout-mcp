@@ -16,8 +16,8 @@ from urllib.parse import urlparse
 
 import pytest
 
-from webscout_mcp.config import Config
 from webscout_mcp.crawler import Crawler
+from webscout_mcp.config import Config
 from webscout_mcp.fetcher import FetchResult
 from webscout_mcp.robots import RobotsChecker
 
