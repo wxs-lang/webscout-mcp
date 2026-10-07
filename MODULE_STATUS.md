@@ -63,7 +63,7 @@ This document provides transparency about the stability and integration status o
 
 | Level | Count | Tools |
 |-------|-------|-------|
-| ✅ Stable | 6 | `web_search`, `web_fetch`, `web_extract`, `web_crawl`, `cache_stats`, `cache_clear` |
+| ✅ Stable | 6 | `web_search`, `web_fetch`, `web_crawl`, `web_extract`, `cache_stats`, `cache_clear` |
 | 🔶 Beta | 3 | `search_health`, `metadata_extract`, `rss_parse` |
 | 🧪 Experimental | 2 | `content_quality`, `broken_links` |
 
