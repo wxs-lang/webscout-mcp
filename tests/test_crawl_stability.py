@@ -248,11 +248,16 @@ def test_canonical_dedup():
 
         async def seed_handler(url: str) -> FetchResult:
             if url == "http://example.test/":
-                return _ok(url, _html([
-                    "http://example.test/page?utm_source=x",
-                    "http://example.test/page",
-                    "http://example.test/page#frag",
-                ]))
+                return _ok(
+                    url,
+                    _html(
+                        [
+                            "http://example.test/page?utm_source=x",
+                            "http://example.test/page",
+                            "http://example.test/page#frag",
+                        ]
+                    ),
+                )
             return await tracking(url)
 
         fetcher.handler = seed_handler
@@ -319,9 +324,7 @@ def test_cancellation_returns_partial():
             return _ok(url, _html([]))
 
         cr = make_crawler(FakeFetcher(slow))
-        task = asyncio.create_task(
-            cr.crawl("http://example.test/", max_depth=0, max_pages=1, max_retries=0)
-        )
+        task = asyncio.create_task(cr.crawl("http://example.test/", max_depth=0, max_pages=1, max_retries=0))
         await asyncio.sleep(0.2)
         task.cancel()
         try:
@@ -362,9 +365,7 @@ def test_ssrf_blocked_metadata_endpoint():
         cfg = Config()
         cfg.respect_robots = False
         cr = Crawler(cfg, FakeFetcher(handler), allow_private=False)
-        return await cr.crawl(
-            "http://169.254.169.254/latest/meta-data/", max_depth=0, max_pages=1, max_retries=0
-        )
+        return await cr.crawl("http://169.254.169.254/latest/meta-data/", max_depth=0, max_pages=1, max_retries=0)
 
     res = asyncio.run(_run())
     assert res.pages_blocked_ssrf >= 1
@@ -384,10 +385,15 @@ def test_robots_disallow_blocks_path(monkeypatch):
 
         async def handler(url: str) -> FetchResult:
             fetched.append(url)
-            return _ok(url, _html([
-                "http://example.test/private/secret",
-                "http://example.test/public",
-            ]))
+            return _ok(
+                url,
+                _html(
+                    [
+                        "http://example.test/private/secret",
+                        "http://example.test/public",
+                    ]
+                ),
+            )
 
         cfg = Config()
         cfg.respect_robots = True
@@ -508,19 +514,27 @@ class RedirectFetcher:
         route = self.routes.get(url)
         if route is None:
             return FetchResult(
-                url=url, final_url=url, status_code=404,
-                error="Not found", content_type="text/html",
+                url=url,
+                final_url=url,
+                status_code=404,
+                error="Not found",
+                content_type="text/html",
             )
         status = route.get("status", 200)
         if status in (301, 302, 303, 307, 308):
             return FetchResult(
-                url=url, final_url=url, status_code=status,
+                url=url,
+                final_url=url,
+                status_code=status,
                 metadata={"headers": {"location": route["location"]}},
             )
         self.body_calls.append(url)
         return FetchResult(
-            url=url, final_url=url, status_code=200,
-            content="ok", raw_html=route.get("html", ""),
+            url=url,
+            final_url=url,
+            status_code=200,
+            content="ok",
+            raw_html=route.get("html", ""),
             content_type="text/html",
         )
 
@@ -550,11 +564,14 @@ def _tracking_robots(monkeypatch, decisions: dict | None = None, slow_host: str 
 
 def test_redirect_a_to_b_allowed(monkeypatch):
     """Scenario 1: A→301→B, robots allows B => B body fetched, page crawled."""
+
     async def _run():
-        fetcher = RedirectFetcher({
-            "http://a.test/": {"status": 301, "location": "http://b.test/landing"},
-            "http://b.test/landing": {"status": 200, "html": _html([])},
-        })
+        fetcher = RedirectFetcher(
+            {
+                "http://a.test/": {"status": 301, "location": "http://b.test/landing"},
+                "http://b.test/landing": {"status": 200, "html": _html([])},
+            }
+        )
         robots, checked = _tracking_robots(monkeypatch, decisions={"a.test": True, "b.test": True})
         cr = Crawler(Config(), fetcher, robots_checker=robots, allow_private=True)
         res = await cr.crawl("http://a.test/", max_depth=0, max_pages=1, max_retries=0)
@@ -572,11 +589,14 @@ def test_redirect_a_to_b_disallowed_body_count_zero(monkeypatch):
     B robots is consulted, but B body fetch call count MUST be zero —
     the pre-fetch robots gate returns BEFORE requesting B's body.
     """
+
     async def _run():
-        fetcher = RedirectFetcher({
-            "http://a.test/": {"status": 301, "location": "http://b.test/secret"},
-            "http://b.test/secret": {"status": 200, "html": _html([])},
-        })
+        fetcher = RedirectFetcher(
+            {
+                "http://a.test/": {"status": 301, "location": "http://b.test/secret"},
+                "http://b.test/secret": {"status": 200, "html": _html([])},
+            }
+        )
         robots, checked = _tracking_robots(monkeypatch, decisions={"a.test": True, "b.test": False})
         cr = Crawler(Config(), fetcher, robots_checker=robots, allow_private=True)
         res = await cr.crawl("http://a.test/", max_depth=0, max_pages=1, max_retries=0)
@@ -596,12 +616,15 @@ def test_redirect_a_to_b_disallowed_body_count_zero(monkeypatch):
 
 def test_redirect_a_to_b_to_c(monkeypatch):
     """Scenario 3: A→301→B→301→C. Robots consulted for A, B, C. C body fetched."""
+
     async def _run():
-        fetcher = RedirectFetcher({
-            "http://a.test/": {"status": 301, "location": "http://b.test/"},
-            "http://b.test/": {"status": 301, "location": "http://c.test/final"},
-            "http://c.test/final": {"status": 200, "html": _html([])},
-        })
+        fetcher = RedirectFetcher(
+            {
+                "http://a.test/": {"status": 301, "location": "http://b.test/"},
+                "http://b.test/": {"status": 301, "location": "http://c.test/final"},
+                "http://c.test/final": {"status": 200, "html": _html([])},
+            }
+        )
         robots, checked = _tracking_robots(
             monkeypatch,
             decisions={"a.test": True, "b.test": True, "c.test": True},
@@ -623,11 +646,14 @@ def test_redirect_a_to_b_to_c(monkeypatch):
 
 def test_same_host_redirect_no_extra_robots(monkeypatch):
     """Scenario 4: A→301→A/other (same host). Robots consulted ONCE (initial A)."""
+
     async def _run():
-        fetcher = RedirectFetcher({
-            "http://a.test/": {"status": 301, "location": "http://a.test/other"},
-            "http://a.test/other": {"status": 200, "html": _html([])},
-        })
+        fetcher = RedirectFetcher(
+            {
+                "http://a.test/": {"status": 301, "location": "http://a.test/other"},
+                "http://a.test/other": {"status": 200, "html": _html([])},
+            }
+        )
         robots, checked = _tracking_robots(monkeypatch)
         cr = Crawler(Config(), fetcher, robots_checker=robots, allow_private=True)
         res = await cr.crawl("http://a.test/", max_depth=0, max_pages=1, max_retries=0)
@@ -647,10 +673,12 @@ def test_redirect_target_robots_timeout(monkeypatch):
     monkeypatch.setattr("webscout_mcp.crawler._ROBOTS_TIMEOUT", 0.1)
 
     async def _run():
-        fetcher = RedirectFetcher({
-            "http://a.test/": {"status": 301, "location": "http://b.test/landing"},
-            "http://b.test/landing": {"status": 200, "html": _html([])},
-        })
+        fetcher = RedirectFetcher(
+            {
+                "http://a.test/": {"status": 301, "location": "http://b.test/landing"},
+                "http://b.test/landing": {"status": 200, "html": _html([])},
+            }
+        )
         robots, checked = _tracking_robots(
             monkeypatch,
             decisions={"a.test": True, "b.test": True},
@@ -674,11 +702,14 @@ def test_redirect_to_private_ip_ssrf_before_robots(monkeypatch):
     allow_private=False; the redirect target is a private IP.
     Robots.is_allowed must NOT be called for the private target.
     """
+
     async def _run():
-        fetcher = RedirectFetcher({
-            "http://8.8.8.8/": {"status": 301, "location": "http://192.168.1.1/"},
-            "http://192.168.1.1/": {"status": 200, "html": _html([])},
-        })
+        fetcher = RedirectFetcher(
+            {
+                "http://8.8.8.8/": {"status": 301, "location": "http://192.168.1.1/"},
+                "http://192.168.1.1/": {"status": 200, "html": _html([])},
+            }
+        )
         robots, checked = _tracking_robots(monkeypatch)
         cfg = Config()
         cfg.respect_robots = True
@@ -699,11 +730,14 @@ def test_redirect_to_private_ip_ssrf_before_robots(monkeypatch):
 
 def test_redirect_loop_terminates(monkeypatch):
     """Scenario 7: A→301→B→301→A. Loop detected, terminates, no infinite hang."""
+
     async def _run():
-        fetcher = RedirectFetcher({
-            "http://a.test/": {"status": 301, "location": "http://b.test/"},
-            "http://b.test/": {"status": 301, "location": "http://a.test/"},
-        })
+        fetcher = RedirectFetcher(
+            {
+                "http://a.test/": {"status": 301, "location": "http://b.test/"},
+                "http://b.test/": {"status": 301, "location": "http://a.test/"},
+            }
+        )
         cfg = Config()
         cfg.respect_robots = False
         cr = Crawler(cfg, fetcher, allow_private=True)
