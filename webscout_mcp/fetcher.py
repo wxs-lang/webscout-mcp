@@ -126,9 +126,7 @@ class Fetcher:
 
                 async def _ssrf_hook(request: httpx.Request) -> None:
                     # Runs on EVERY request, including each redirect hop.
-                    result = await asyncio.to_thread(
-                        check_url_safe, str(request.url), allow_private=allow_private
-                    )
+                    result = await asyncio.to_thread(check_url_safe, str(request.url), allow_private=allow_private)
                     if not result.safe:
                         # ValueError is caught by _fetch_with_retry's generic
                         # handler and surfaced as a permanent FetchResult error

@@ -137,9 +137,7 @@ class Crawler:
         # Opt-out for local/mock testing only. Production default stays False,
         # meaning loopback/private/metadata targets are blocked.
         self._allow_private = (
-            allow_private
-            if allow_private is not None
-            else bool(getattr(config, "crawler_allow_private", False))
+            allow_private if allow_private is not None else bool(getattr(config, "crawler_allow_private", False))
         )
         # Arm the per-request SSRF hook on the fetcher so every redirect hop
         # is re-validated. Best-effort: the fetcher may be a mock in tests.
@@ -215,9 +213,7 @@ class Crawler:
                 pass
 
         result.duration_ms = (time.monotonic() - started) * 1000.0
-        result.avg_response_time = (
-            self._total_response_time / self._response_count if self._response_count > 0 else 0.0
-        )
+        result.avg_response_time = self._total_response_time / self._response_count if self._response_count > 0 else 0.0
 
         # Three-state status.
         if result.pages_crawled == 0 and result.errors:
@@ -289,10 +285,7 @@ class Crawler:
 
             active = len(batch)
             result.peak_active_workers = max(result.peak_active_workers, active)
-            tasks = [
-                self._crawl_page(url, dep, extract, semaphore, result, base_delay, retries)
-                for url, dep in batch
-            ]
+            tasks = [self._crawl_page(url, dep, extract, semaphore, result, base_delay, retries) for url, dep in batch]
             page_results = await asyncio.gather(*tasks, return_exceptions=True)
             for (url, dep), pr in zip(batch, page_results):
                 if isinstance(pr, Exception):
