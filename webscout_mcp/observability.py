@@ -53,6 +53,9 @@ _RECOVERY_ACTIONS: dict[str, int] = defaultdict(int)
 _RECOVERY_EXECUTION: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
 # progressive content delivery counters (Phase 2.7C)
 _CONTINUATION: dict[str, int] = defaultdict(int)
+# Crawl lifecycle counters (Stable hardening Phase 1). Scalars only.
+_CRAWL: dict[str, int] = defaultdict(int)
+_CRAWL_BLOCKED: dict[str, int] = defaultdict(int)  # robots | ssrf
 
 _MAX_LATENCIES = 500  # ring buffer per backend
 
@@ -152,6 +155,36 @@ def record_continuation(kind: str, chars: int = 0) -> None:
             _CONTINUATION["chars_served"] += int(chars)
 
 
+def record_crawl_lifecycle(
+    status: str,
+    *,
+    seed: str = "",
+    pages: int = 0,
+    duration_ms: float = 0.0,
+) -> None:
+    """Count a crawl lifecycle event.
+
+    status is one of: started, success, partial, failure. Only the seed
+    HOST (scheme://host, no path/query) is logged — never credentials.
+    """
+    with _LOCK:
+        key = f"crawl_{status}"
+        _CRAWL[key] += 1
+        if pages:
+            _CRAWL["crawl_pages_total"] += int(pages)
+    log.info(
+        "crawl_lifecycle",
+        extra={"status": status, "seed": seed, "pages": pages, "duration_ms": round(duration_ms, 2)},
+    )
+
+
+def record_crawl_blocked(kind: str) -> None:
+    """Count a per-page block. kind is 'robots' or 'ssrf'."""
+    with _LOCK:
+        _CRAWL_BLOCKED[kind] += 1
+    log.info("crawl_blocked", extra={"kind": kind})
+
+
 def _pct(values: list[float], p: float) -> float:
     if not values:
         return 0.0
@@ -185,6 +218,8 @@ def get_observability_summary() -> dict[str, Any]:
             "recovery_actions": dict(_RECOVERY_ACTIONS),
             "recovery_execution": {a: dict(o) for a, o in _RECOVERY_EXECUTION.items()},
             "continuation": dict(_CONTINUATION),
+            "crawl": dict(_CRAWL),
+            "crawl_blocked": dict(_CRAWL_BLOCKED),
         }
 
 
@@ -199,4 +234,6 @@ def reset_for_tests() -> None:
         _RECOVERY_ACTIONS.clear()
         _RECOVERY_EXECUTION.clear()
         _CONTINUATION.clear()
+        _CRAWL.clear()
+        _CRAWL_BLOCKED.clear()
         _STARTED_AT = datetime.now(timezone.utc).isoformat()

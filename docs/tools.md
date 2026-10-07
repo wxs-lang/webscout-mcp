@@ -107,7 +107,7 @@ Fetch a URL and return one window of its extracted main content.
 
 ### `web_crawl`
 
-**Stability**: 🔶 Beta  
+**Stability**: ✅ Stable  
 **Async**: Yes  
 
 Crawl a website starting from a seed URL, respecting depth and page limits.

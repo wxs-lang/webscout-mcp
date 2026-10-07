@@ -156,12 +156,12 @@ def _get_tool_stability(name: str) -> str:
     stable_tools = {
         "web_search",
         "web_fetch",
+        "web_crawl",
         "web_extract",
         "cache_stats",
         "cache_clear",
     }
     beta_tools = {
-        "web_crawl",
         "search_health",
         "metadata_extract",
         "rss_parse",

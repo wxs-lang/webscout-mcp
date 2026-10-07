@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v1.6.0 (2026-10-07)
+
+### web_crawl: Beta → Stable
+- Fixed cross-host redirect robots compliance: robots.txt is now checked
+  BEFORE requesting the target host's body, not after. Redirect hops are
+  handled manually in the crawler with per-hop SSRF + robots validation.
+- Added manual redirect handling in crawler (follow_redirects=False on
+  crawl path; general web_fetch behavior unchanged).
+- MCP schema unchanged.
+
 ## [Unreleased]
 
 ### Added
@@ -15,6 +25,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Fetch + Search adapters**: `record_fetch_decision()` / `record_search_decision()` hook into production paths; 0 routing changes.
 - **Privacy**: URLs stored as scheme + host + canonical hash only; search queries stored as hash + length; `_scrub_dict` removes Authorization / Cookie / token / api_key / password / credential at store layer.
 - **Telemetry toggle**: `WEBSCOUT_DECISION_TELEMETRY=0` disables recording; `WEBSCOUT_DECISION_DB` overrides store path.
+- **Objective Decision Evaluation** (v1.5.0 Phase 2): `objective_labeler.py` + `advisor_evaluator.py` for offline Jev-vs-deterministic comparison; `run_objective_evaluation.py` CLI harness with preflight/live/report-only modes; Browser counterfactual runner for needs_escalation ground truth; run_id-scoped `join_report()`; ReplayCase gains `run_id`/`trace_id`/`position`; `jev_eligible` vs `jev_enabled` semantics; Search result_relevant position-level join.
+
+### Evaluation Results (Phase 2 Final Closure)
+- **needs_escalation**: NO AUTHORITY. Jev FPR=95.7% (22/23 false positives on NO cases); 4 YES cases found in 165 Browser CF evaluations (insufficient for recall estimation).
+- **result_usable**: HOLD / NO PROVEN VALUE. Accuracy 56.8% vs majority baseline 52.3% (+4.5pp) on n=44, but recall=9.5%.
+- **result_relevant**: RESEARCH VALUE ONLY. Accuracy 26% on 100 all-positive sample (worse than majority baseline 100%); negative ground truth never completed.
+- **Correlation health**: 100% join coverage, 598 valid Jev predictions, 0 errors, TypeSafe real provider.
+- **Decision**: Jev does NOT enter production routing. Phase 3 paused. Infrastructure preserved but frozen. See `docs/PHASE2_CLOSURE.md`.
 
 ### Changed
 - No production routing changes. Fetch (v1.3.0) and Search (v1.4.0) recovery behavior unchanged.

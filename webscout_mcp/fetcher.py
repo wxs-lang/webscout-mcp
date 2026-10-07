@@ -15,6 +15,7 @@ import httpx
 
 from .cache import Cache
 from .config import Config
+from .url_safety import check_url_safe
 from .user_agent import UserAgentRotator
 from .utils import TokenBucket, normalize_url
 
@@ -76,6 +77,10 @@ class Fetcher:
         self._client: httpx.AsyncClient | None = None
         self._cookies: httpx.Cookies = httpx.Cookies()
         self._ua_rotator = UserAgentRotator(persistent=True)
+        # Per-request SSRF gate. Off by default (web_fetch plain-HTTP path is
+        # unchanged). The Crawler arms it so every redirect hop is re-checked.
+        self.safety_check_enabled: bool = False
+        self.safety_allow_private: bool = False
         # Request statistics
         self._stats = {
             "total_requests": 0,
@@ -115,6 +120,21 @@ class Fetcher:
                 proxies["https://"] = self.config.proxy_https
             if proxies:
                 client_kwargs["proxies"] = proxies
+
+            if self.safety_check_enabled:
+                allow_private = self.safety_allow_private
+
+                async def _ssrf_hook(request: httpx.Request) -> None:
+                    # Runs on EVERY request, including each redirect hop.
+                    result = await asyncio.to_thread(check_url_safe, str(request.url), allow_private=allow_private)
+                    if not result.safe:
+                        # ValueError is caught by _fetch_with_retry's generic
+                        # handler and surfaced as a permanent FetchResult error
+                        # immediately (no pointless retries on a blocked target).
+                        raise ValueError(f"SSRF blocked: {result.reason}")
+
+                client_kwargs["event_hooks"] = {"request": [_ssrf_hook]}
+
             self._client = httpx.AsyncClient(**client_kwargs)
         return self._client
 
@@ -159,6 +179,7 @@ class Fetcher:
         max_chars: int | None = None,
         bypass_cache: bool = False,
         start_char: int = 0,
+        follow_redirects: bool = True,
     ) -> FetchResult:
         url = normalize_url(url)
         fmt = output_format or self.config.extract_output_format
@@ -204,7 +225,7 @@ class Fetcher:
         import time
 
         start_time = time.monotonic()
-        result = await self._fetch_with_retry(url)
+        result = await self._fetch_with_retry(url, follow_redirects=follow_redirects)
         result.response_time = time.monotonic() - start_time
 
         # Update statistics
@@ -350,17 +371,22 @@ class Fetcher:
         self._stats["cache_hits"] += 1
         return result
 
-    async def _fetch_with_retry(self, url: str) -> FetchResult:
+    async def _fetch_with_retry(self, url: str, follow_redirects: bool = True) -> FetchResult:
         """Fetch with exponential backoff retry.
 
         Retries on all httpx errors (Timeout, ConnectError, PoolTimeout, etc.),
         asyncio.TimeoutError, and HTTP 5xx status codes. Does not retry on 4xx.
+
+        When ``follow_redirects=False``, 3xx responses are returned directly
+        (with the ``Location`` header in ``metadata["headers"]``) so the caller
+        can handle redirects manually — used by the crawler to validate each
+        redirect target's SSRF/robots policy before requesting its body.
         """
         last_error: Exception | None = None
         for attempt in range(self.config.max_retries):
             try:
                 client = await self._get_client()
-                response = await client.get(url)
+                response = await client.get(url, follow_redirects=follow_redirects)
 
                 if response.status_code >= 500 and attempt < self.config.max_retries - 1:
                     last_error = Exception(f"HTTP {response.status_code}")

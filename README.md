@@ -27,7 +27,7 @@ The MCP server currently exposes these **11 tools**:
 |------|-------------|-----------|
 | `web_search` | Self-healing multi-provider search with deterministic recovery and automatic fallback | ✅ Stable |
 | `web_fetch` | Fetch a URL and return one window of extracted main content, with progressive continuation (`start_char`) | ✅ Stable |
-| `web_crawl` | Concurrent website crawling with depth limits | 🔶 Beta |
+| `web_crawl` | Concurrent website crawling with depth limits | ✅ Stable |
 | `web_extract` | Structured content extraction with CSS selectors | ✅ Stable |
 | `metadata_extract` | Extract metadata (JSON-LD, OpenGraph, Twitter cards) from a page | 🔶 Beta |
 | `rss_parse` | Parse an RSS or Atom feed and return its entries | 🔶 Beta |

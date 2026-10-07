@@ -115,7 +115,13 @@ def test_allow_private_skips_checks():
 
 
 def test_real_public_domain_passes():
-    r = check_url_safe("https://example.com/")
+    # Sandbox/CI DNS may hijack example.com into a reserved range
+    # (observed: 198.18.0.79, which is RFC 2544 benchmarking space and is
+    # correctly treated as non-public by the guard). Pin the resolver to
+    # example.com's real public IP so this test is deterministic and does
+    # not depend on ambient DNS.
+    with patch("webscout_mcp.url_safety._resolve_host", return_value=["93.184.216.34"]):
+        r = check_url_safe("https://example.com/")
     assert r.safe, r.reason
     assert r.resolved_ips
 
