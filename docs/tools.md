@@ -226,7 +226,7 @@ Get health report for all search backends.
 
 ### `metadata_extract`
 
-**Stability**: 🔶 Beta  
+**Stability**: ✅ Stable  
 **Async**: Yes  
 
 Extract metadata from a web page.

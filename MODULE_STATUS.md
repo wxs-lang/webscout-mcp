@@ -22,7 +22,7 @@ This document provides transparency about the stability and integration status o
 | `cache_stats` | Cache | ✅ Stable | Return cache statistics: entry count, total size, TTL, and limits. |
 | `broken_links` | Content Analysis | 🧪 Experimental | Check for broken links on a web page. |
 | `content_quality` | Content Analysis | 🧪 Experimental | Analyze content quality of a web page. |
-| `metadata_extract` | Content Analysis | 🔶 Beta | Extract metadata from a web page. |
+| `metadata_extract` | Content Analysis | ✅ Stable | Extract metadata from a web page. |
 | `rss_parse` | Content Analysis | ✅ Stable | Parse an RSS or Atom feed and return its entries. |
 | `web_crawl` | Crawl & Extract | ✅ Stable | Crawl a website starting from a seed URL, respecting depth and page limits. |
 | `web_extract` | Crawl & Extract | ✅ Stable | Extract structured data from a web page using CSS selectors. |
@@ -63,8 +63,8 @@ This document provides transparency about the stability and integration status o
 
 | Level | Count | Tools |
 |-------|-------|-------|
-| ✅ Stable | 7 | `web_search`, `web_fetch`, `web_crawl`, `web_extract`, `cache_stats`, `cache_clear`, `rss_parse` |
-| 🔶 Beta | 2 | `search_health`, `metadata_extract` |
+| ✅ Stable | 8 | `web_search`, `web_fetch`, `web_crawl`, `web_extract`, `cache_stats`, `cache_clear`, `metadata_extract`, `rss_parse` |
+| 🔶 Beta | 1 | `search_health` |
 | 🧪 Experimental | 2 | `content_quality`, `broken_links` |
 
 ---

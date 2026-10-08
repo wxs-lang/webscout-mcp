@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v1.8.0 (2026-10-08)
+
+### metadata_extract: Beta → Stable
+- **Fixed P0 interface mismatch**: `MetadataExtractor.extract()` now accepts optional `base_url` keyword argument, resolving `TypeError` when called from MCP `metadata_extract` tool as `extract(html, base_url=url)`. When provided, overrides constructor base_url.
+- **SSRF safety on metadata path**: Dedicated `metadata_fetcher` instance with `safety_check_enabled=True` enforces SSRF checks on the initial URL and every redirect hop via httpx `event_hooks` request hook. Shared `fetcher` keeps default (safety off) so `web_fetch` behavior is unchanged. Private IPs, localhost, metadata endpoints blocked.
+- **Final URL base resolution**: Relative URLs (og:image, favicon, canonical, twitter:image, images, links) now resolved against `result.final_url` (post-redirect) instead of original request URL.
+- **article:* dual-attribute support**: `article:author`, `article:published_time`, `article:modified_time`, `article:section`, `article:tag` now extracted from both `name` AND `property` attributes (previously only `name`).
+- **JSON-LD @graph expansion**: Schema.org `@graph` arrays are now recursively flattened into individual nodes via `_flatten_json_ld()`, bounded by `MAX_JSON_LD_DEPTH=3`. Outer graph dict preserved.
+- **Hard output limits**: `MAX_RAW_META_TAGS=200`, `MAX_JSON_LD_ENTRIES=50`, `MAX_IMAGES=100`, `MAX_LINKS=200` prevent memory exhaustion on large pages.
+- **Malformed JSON-LD handling**: Invalid JSON-LD scripts are skipped with debug logging (no crash, no silent empty success).
+- **MCP schema unchanged**: `metadata_extract(url)` signature preserved. **11 MCP tools total**.
+
 ## v1.7.0 (2026-10-08)
 
 ### rss_parse: Beta → Stable

@@ -89,6 +89,11 @@ def create_server(config: Config | None = None) -> MCPServer:
         max_size_mb=cfg.cache_max_size_mb,
     )
     fetcher = Fetcher(cfg, cache)
+    # Dedicated fetcher for metadata_extract with SSRF safety enabled on
+    # every request (including redirect hops). The shared `fetcher` keeps
+    # its default (safety off) so web_fetch behavior is unchanged.
+    metadata_fetcher = Fetcher(cfg, cache)
+    metadata_fetcher.safety_check_enabled = True
     search_engine = SearchEngine(cfg, cache)
 
     # Provider registry: single source of truth for provider state.
@@ -403,13 +408,18 @@ def create_server(config: Config | None = None) -> MCPServer:
 
         Extracts JSON-LD, OpenGraph, Twitter Cards, article metadata,
         images, links, and other structured metadata from the page.
+        Relative URLs are resolved against the final (post-redirect) URL.
+        SSRF safety is enforced on the initial URL and every redirect hop.
         """
         try:
-            result = await fetcher.fetch(url=url, extract=False, output_format="html", max_chars=200000)
+            result = await metadata_fetcher.fetch(url=url, extract=False, output_format="html", max_chars=200000)
             html = result.content if hasattr(result, "content") else result.raw_html
             if not html:
                 return json.dumps({"error": "Failed to fetch page content", "url": url}, ensure_ascii=False)
-            metadata = metadata_extractor.extract(html, base_url=url)
+            # Use final_url (post-redirect) as base for resolving relative URLs;
+            # fall back to original url if final_url is unavailable.
+            base_url = getattr(result, "final_url", None) or url
+            metadata = metadata_extractor.extract(html, base_url=base_url)
             return json.dumps(metadata.to_dict(), ensure_ascii=False, indent=2, default=str)
         except Exception as exc:
             log.error("metadata_extract failed", extra={"url": url, "error": str(exc)})
