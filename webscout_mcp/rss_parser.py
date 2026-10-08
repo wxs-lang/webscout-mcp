@@ -444,11 +444,15 @@ async def _fetch_with_size_limit(
 
         raw = b"".join(chunks)
 
-        # Detect encoding: HTTP Content-Type charset takes priority,
-        # then XML declaration encoding, then default UTF-8.
+        # Encoding priority: BOM > HTTP Content-Type charset > XML declaration > UTF-8
         encoding = None
-        if "charset=" in content_type:
+        # 1. Check for UTF-8 BOM
+        if raw.startswith(b"\xef\xbb\xbf"):
+            encoding = "utf-8-sig"  # utf-8-sig strips the BOM on decode
+        # 2. HTTP Content-Type charset
+        elif "charset=" in content_type:
             encoding = content_type.split("charset=")[-1].split(";")[0].strip()
+        # 3. XML declaration encoding
         if not encoding:
             encoding = _detect_xml_encoding(raw)
 
@@ -498,23 +502,30 @@ def _discover_feed_urls(html: str, base_url: str) -> list[str]:
 
 async def fetch_and_parse_feed(
     url: str,
-    max_entries: int = 20,
-    *,
     timeout: float = DEFAULT_TIMEOUT,
     user_agent: str = DEFAULT_USER_AGENT,
+    *,
+    max_entries: int = 20,
     max_redirects: int = DEFAULT_MAX_REDIRECTS,
     max_body_bytes: int = DEFAULT_MAX_BODY_BYTES,
+    total_timeout: float = 60.0,
     allow_private: bool = False,
 ) -> Feed:
     """Fetch and parse an RSS/Atom/RDF feed with SSRF safety.
 
+    Backward-compatible signature: original positional args were
+    (url, timeout, user_agent). max_entries is keyword-only to avoid
+    breaking existing callers that pass timeout positionally.
+
     Args:
         url: Feed URL or HTML page URL (auto-discovery will be attempted).
-        max_entries: Maximum number of entries to return (1-100).
-        timeout: Request timeout in seconds.
+        timeout: Per-request timeout in seconds.
         user_agent: User-Agent string.
+        max_entries: Maximum number of entries to return (1-100). Keyword-only.
         max_redirects: Maximum redirect hops.
         max_body_bytes: Maximum response body size in bytes.
+        total_timeout: Overall operation timeout in seconds (covers initial
+            fetch + redirects + HTML auto-discovery + up to 5 candidate fetches).
         allow_private: If True, skip SSRF checks (opt-in only).
 
     Returns:
@@ -524,59 +535,64 @@ async def fetch_and_parse_feed(
         ValueError: If URL is unsafe or response too large.
         RSSParseError: If content is not a recognizable feed.
         httpx.HTTPError: On HTTP errors.
+        asyncio.TimeoutError: If total operation exceeds total_timeout.
     """
     # Clamp max_entries
     max_entries = max(1, min(max_entries, DEFAULT_MAX_ENTRIES))
 
-    # Initial URL safety check (before any network request)
-    safety = check_url_safe(url, allow_private=allow_private)
-    if not safety.safe:
-        raise ValueError(f"SSRF blocked (initial URL): {safety.reason}")
+    async def _do_fetch_and_parse() -> Feed:
+        # Initial URL safety check (before any network request)
+        safety = check_url_safe(url, allow_private=allow_private)
+        if not safety.safe:
+            raise ValueError(f"SSRF blocked (initial URL): {safety.reason}")
 
-    async with _create_safe_client(
-        timeout=timeout,
-        max_redirects=max_redirects,
-        user_agent=user_agent,
-        allow_private=allow_private,
-    ) as client:
-        # First attempt: fetch the URL directly
-        text, final_url, status_code, content_type = await _fetch_with_size_limit(client, url, max_body_bytes)
+        async with _create_safe_client(
+            timeout=timeout,
+            max_redirects=max_redirects,
+            user_agent=user_agent,
+            allow_private=allow_private,
+        ) as client:
+            # First attempt: fetch the URL directly
+            text, final_url, status_code, content_type = await _fetch_with_size_limit(client, url, max_body_bytes)
 
-        # If it looks like a feed, parse it
-        if _looks_like_feed(text, content_type):
-            parser = RSSParser(base_url=final_url)
-            feed = parser.parse(text)
-            feed.entries = feed.entries[:max_entries]
-            return feed
+            # If it looks like a feed, parse it
+            if _looks_like_feed(text, content_type):
+                parser = RSSParser(base_url=final_url)
+                feed = parser.parse(text)
+                feed.entries = feed.entries[:max_entries]
+                return feed
 
-        # Otherwise, try HTML feed auto-discovery
-        feed_candidates = _discover_feed_urls(text, final_url)
-        last_error: Exception | None = None
+            # Otherwise, try HTML feed auto-discovery
+            feed_candidates = _discover_feed_urls(text, final_url)
+            last_error: Exception | None = None
 
-        for feed_url in feed_candidates:
-            # Safety check each discovered URL
-            feed_safety = check_url_safe(feed_url, allow_private=allow_private)
-            if not feed_safety.safe:
-                log.warning("Discovered feed URL blocked by SSRF: %s", feed_safety.reason)
-                continue
+            for feed_url in feed_candidates:
+                # Safety check each discovered URL
+                feed_safety = check_url_safe(feed_url, allow_private=allow_private)
+                if not feed_safety.safe:
+                    log.warning("Discovered feed URL blocked by SSRF: %s", feed_safety.reason)
+                    continue
 
-            try:
-                feed_text, feed_final_url, _, feed_content_type = await _fetch_with_size_limit(
-                    client, feed_url, max_body_bytes
-                )
-                if _looks_like_feed(feed_text, feed_content_type):
-                    parser = RSSParser(base_url=feed_final_url)
-                    feed = parser.parse(feed_text)
-                    feed.entries = feed.entries[:max_entries]
-                    return feed
-            except (RSSParseError, ValueError, httpx.HTTPError) as exc:
-                last_error = exc
-                continue
+                try:
+                    feed_text, feed_final_url, _, feed_content_type = await _fetch_with_size_limit(
+                        client, feed_url, max_body_bytes
+                    )
+                    if _looks_like_feed(feed_text, feed_content_type):
+                        parser = RSSParser(base_url=feed_final_url)
+                        feed = parser.parse(feed_text)
+                        feed.entries = feed.entries[:max_entries]
+                        return feed
+                except (RSSParseError, ValueError, httpx.HTTPError) as exc:
+                    last_error = exc
+                    continue
 
-        # No feed found — raise with clear error
-        if last_error:
-            raise RSSParseError(f"URL is not a feed and feed auto-discovery failed: {last_error}")
-        raise RSSParseError("URL is not a recognizable feed and no RSS/Atom link was found in HTML")
+            # No feed found — raise with clear error
+            if last_error:
+                raise RSSParseError(f"URL is not a feed and feed auto-discovery failed: {last_error}")
+            raise RSSParseError("URL is not a recognizable feed and no RSS/Atom link was found in HTML")
+
+    # Enforce total operation timeout (Python 3.10 compatible via asyncio.wait_for)
+    return await asyncio.wait_for(_do_fetch_and_parse(), timeout=total_timeout)
 
 
 def parse_feed(xml_content: str, base_url: str = "") -> Feed:

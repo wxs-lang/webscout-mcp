@@ -8,6 +8,8 @@ encoding, malformed XML, HTTP errors, size limits, and MCP integration.
 
 from __future__ import annotations
 
+import asyncio
+import inspect
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -692,3 +694,284 @@ def _async_bytes_iter(data: bytes, chunk_size: int = 8192):
             yield data[i : i + chunk_size]
 
     return _gen()
+
+
+# ---------------------------------------------------------------------------
+# Test: Backward compatibility (original positional arg signature)
+# ---------------------------------------------------------------------------
+
+
+class TestBackwardCompatibility:
+    """Original API was fetch_and_parse_feed(url, timeout, user_agent)."""
+
+    @pytest.mark.asyncio
+    async def test_positional_timeout_and_user_agent(self):
+        """Calling with (url, timeout, user_agent) positionally must work."""
+        mock_response = AsyncMock()
+        mock_response.status_code = 200
+        mock_response.url = httpx.URL("https://example.com/feed.xml")
+        mock_response.headers = {"content-type": "application/rss+xml"}
+        mock_response.raise_for_status = MagicMock()
+        mock_response.aiter_bytes = MagicMock(return_value=_async_bytes_iter(RSS_20_SAMPLE.encode("utf-8")))
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=False)
+
+        mock_client = AsyncMock()
+        mock_client.stream = MagicMock(return_value=mock_response)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("webscout_mcp.rss_parser._create_safe_client", return_value=mock_client) as mock_create:
+            # Original positional signature: (url, timeout, user_agent)
+            feed = await fetch_and_parse_feed("https://example.com/feed.xml", 10.0, "test-agent/1.0")
+
+        assert feed.feed_type == "rss"
+        assert feed.title == "Sample RSS Feed"
+        # Verify the client was created with our positional args
+        _, kwargs = mock_create.call_args
+        assert kwargs["timeout"] == 10.0
+        assert kwargs["user_agent"] == "test-agent/1.0"
+
+    @pytest.mark.asyncio
+    async def test_max_entries_keyword_only(self):
+        """max_entries must be passable as keyword-only without breaking."""
+        mock_response = AsyncMock()
+        mock_response.status_code = 200
+        mock_response.url = httpx.URL("https://example.com/feed.xml")
+        mock_response.headers = {"content-type": "application/rss+xml"}
+        mock_response.raise_for_status = MagicMock()
+        mock_response.aiter_bytes = MagicMock(return_value=_async_bytes_iter(RSS_20_SAMPLE.encode("utf-8")))
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=False)
+
+        mock_client = AsyncMock()
+        mock_client.stream = MagicMock(return_value=mock_response)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("webscout_mcp.rss_parser._create_safe_client", return_value=mock_client):
+            feed = await fetch_and_parse_feed("https://example.com/feed.xml", max_entries=1)
+
+        assert len(feed.entries) == 1
+
+    def test_signature_timeout_second_positional(self):
+        """Second positional parameter must be 'timeout', not 'max_entries'."""
+        sig = inspect.signature(fetch_and_parse_feed)
+        params = list(sig.parameters.values())
+        # url is first, timeout is second (positional)
+        assert params[0].name == "url"
+        assert params[1].name == "timeout"
+        assert params[2].name == "user_agent"
+        # max_entries must be keyword-only (after *)
+        assert "max_entries" in sig.parameters
+        assert sig.parameters["max_entries"].kind == inspect.Parameter.KEYWORD_ONLY
+
+
+# ---------------------------------------------------------------------------
+# Test: Total operation timeout
+# ---------------------------------------------------------------------------
+
+
+class TestTotalTimeout:
+    """Total operation timeout must cover fetch + redirects + auto-discovery."""
+
+    @pytest.mark.asyncio
+    async def test_total_timeout_raises(self):
+        """A slow stream that exceeds total_timeout must raise asyncio.TimeoutError."""
+
+        async def _slow_gen():
+            await asyncio.sleep(0.5)
+            yield b"<rss"
+
+        mock_response = AsyncMock()
+        mock_response.status_code = 200
+        mock_response.url = httpx.URL("https://example.com/slow.xml")
+        mock_response.headers = {"content-type": "application/rss+xml"}
+        mock_response.raise_for_status = MagicMock()
+        mock_response.aiter_bytes = MagicMock(return_value=_slow_gen())
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=False)
+
+        mock_client = AsyncMock()
+        mock_client.stream = MagicMock(return_value=mock_response)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("webscout_mcp.rss_parser._create_safe_client", return_value=mock_client):
+            with pytest.raises(asyncio.TimeoutError):
+                await fetch_and_parse_feed(
+                    "https://example.com/slow.xml",
+                    total_timeout=0.1,
+                )
+
+    @pytest.mark.asyncio
+    async def test_total_timeout_multi_candidate(self):
+        """Total timeout must also cover HTML auto-discovery + multiple candidates."""
+        # First response: HTML page (triggers discovery)
+        html_resp = AsyncMock()
+        html_resp.status_code = 200
+        html_resp.url = httpx.URL("https://example.com/blog/")
+        html_resp.headers = {"content-type": "text/html"}
+        html_resp.raise_for_status = MagicMock()
+        html_resp.aiter_bytes = MagicMock(return_value=_async_bytes_iter(HTML_WITH_FEED_DISCOVERY.encode("utf-8")))
+        html_resp.__aenter__ = AsyncMock(return_value=html_resp)
+        html_resp.__aexit__ = AsyncMock(return_value=False)
+
+        # Slow candidate response
+        async def _slow_candidate():
+            await asyncio.sleep(0.5)
+            yield b"<rss"
+
+        slow_resp = AsyncMock()
+        slow_resp.status_code = 200
+        slow_resp.url = httpx.URL("https://example.com/feed.xml")
+        slow_resp.headers = {"content-type": "application/rss+xml"}
+        slow_resp.raise_for_status = MagicMock()
+        slow_resp.aiter_bytes = MagicMock(return_value=_slow_candidate())
+        slow_resp.__aenter__ = AsyncMock(return_value=slow_resp)
+        slow_resp.__aexit__ = AsyncMock(return_value=False)
+
+        mock_client = AsyncMock()
+        mock_client.stream = MagicMock(side_effect=[html_resp, slow_resp])
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("webscout_mcp.rss_parser._create_safe_client", return_value=mock_client):
+            with pytest.raises(asyncio.TimeoutError):
+                await fetch_and_parse_feed(
+                    "https://example.com/blog/",
+                    total_timeout=0.2,
+                )
+
+
+# ---------------------------------------------------------------------------
+# Test: Precise ISO-8859-1 encoding (raw bytes, no corruption)
+# ---------------------------------------------------------------------------
+
+
+class TestEncodingPrecise:
+    """ISO-8859-1 raw bytes must decode without corrupting non-ASCII chars."""
+
+    def test_iso8859_1_cafe_not_corrupted(self):
+        """Café in ISO-8859-1 must remain Café, not CafÃ©."""
+        # Build raw bytes: XML declaration says ISO-8859-1, title contains Café
+        # In ISO-8859-1, é = 0xE9
+        xml_bytes = (
+            b'<?xml version="1.0" encoding="ISO-8859-1"?>'
+            b"<rss version='2.0'><channel>"
+            b"<title>Caf\xe9</title>"
+            b"<link>https://example.com</link>"
+            b"<description>test</description>"
+            b"</channel></rss>"
+        )
+        # Simulate what _fetch_with_size_limit does: detect encoding from XML decl
+        encoding = _detect_xml_encoding(xml_bytes)
+        assert encoding == "ISO-8859-1"
+        text = xml_bytes.decode(encoding, errors="replace")
+        feed = parse_feed(text)
+        assert feed.title == "Café", f"Expected 'Café', got {feed.title!r} (corrupted?)"
+
+    def test_iso8859_1_umlaut_not_corrupted(self):
+        """German umlauts in ISO-8859-1 must decode correctly."""
+        # ä = 0xE4, ö = 0xF6, ü = 0xFC, ß = 0xDF
+        xml_bytes = (
+            b'<?xml version="1.0" encoding="ISO-8859-1"?>'
+            b"<rss version='2.0'><channel>"
+            b"<title>Gr\xfc\xdfe</title>"
+            b"<link>https://example.com</link>"
+            b"<description>test</description>"
+            b"</channel></rss>"
+        )
+        encoding = _detect_xml_encoding(xml_bytes)
+        assert encoding == "ISO-8859-1"
+        text = xml_bytes.decode(encoding, errors="replace")
+        feed = parse_feed(text)
+        assert feed.title == "Grüße", f"Expected 'Grüße', got {feed.title!r}"
+
+    def test_utf8_bom_stripped(self):
+        """UTF-8 BOM must be stripped, not appear in content."""
+        bom = b"\xef\xbb\xbf"
+        xml = bom + RSS_20_SAMPLE.encode("utf-8")
+        # Simulate encoding detection: BOM takes priority
+        assert xml.startswith(b"\xef\xbb\xbf")
+        text = xml.decode("utf-8-sig", errors="replace")
+        assert not text.startswith("\ufeff"), "BOM was not stripped"
+        feed = parse_feed(text)
+        assert feed.title == "Sample RSS Feed"
+
+
+# ---------------------------------------------------------------------------
+# Test: Actual MCP rss_parse tool call (not just registration)
+# ---------------------------------------------------------------------------
+
+
+class TestMCPToolActualCall:
+    """Actually invoke the rss_parse MCP tool through the server, not just check registration."""
+
+    @pytest.mark.asyncio
+    async def test_rss_parse_tool_actual_invocation(self):
+        """Actually invoke the rss_parse MCP tool through server.call_tool."""
+        pytest.importorskip("mcp")
+        import tempfile
+        from pathlib import Path
+
+        from webscout_mcp.config import Config
+        from webscout_mcp.server import create_server
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cfg = Config(cache_dir=Path(tmpdir))
+            server = create_server(cfg)
+
+            # Verify rss_parse is registered
+            tool_names = []
+            if hasattr(server, "list_tools"):
+                tools_result = await server.list_tools()
+                # MCP 2.x may return list directly; 1.x returns object with .tools
+                if isinstance(tools_result, list):
+                    tool_names = [t.name for t in tools_result]
+                elif hasattr(tools_result, "tools"):
+                    tool_names = [t.name for t in tools_result.tools]
+            elif hasattr(server, "tool_manager"):
+                tm = server.tool_manager
+                if hasattr(tm, "tools"):
+                    tools = tm.tools
+                    if isinstance(tools, dict):
+                        tool_names = list(tools.keys())
+                    elif hasattr(tools, "__iter__"):
+                        tool_names = [getattr(t, "name", str(t)) for t in tools]
+
+            assert "rss_parse" in tool_names, f"rss_parse not in registered tools: {tool_names}"
+
+            # Mock the fetch inside the tool call
+            mock_response = AsyncMock()
+            mock_response.status_code = 200
+            mock_response.url = httpx.URL("https://example.com/feed.xml")
+            mock_response.headers = {"content-type": "application/rss+xml"}
+            mock_response.raise_for_status = MagicMock()
+            mock_response.aiter_bytes = MagicMock(return_value=_async_bytes_iter(RSS_20_SAMPLE.encode("utf-8")))
+            mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+            mock_response.__aexit__ = AsyncMock(return_value=False)
+
+            mock_client = AsyncMock()
+            mock_client.stream = MagicMock(return_value=mock_response)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+
+            with patch("webscout_mcp.rss_parser._create_safe_client", return_value=mock_client):
+                # Actually call the MCP tool
+                call_result = await server.call_tool(
+                    "rss_parse",
+                    {"url": "https://example.com/feed.xml", "max_entries": 2},
+                )
+
+            # MCP call_tool may return tuple (content, ...) or CallToolResult
+            if isinstance(call_result, tuple):
+                content_blocks = call_result[0]
+            elif hasattr(call_result, "content"):
+                content_blocks = call_result.content
+            else:
+                content_blocks = []
+
+            result_text = "".join(getattr(block, "text", "") for block in content_blocks if hasattr(block, "text"))
+            assert "Sample RSS Feed" in result_text, f"Tool result missing feed title: {result_text[:300]}"
+            assert "rss" in result_text.lower()
