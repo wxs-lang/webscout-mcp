@@ -206,7 +206,7 @@ Clear all cached entries. Returns the number of entries deleted.
 
 ### `search_health`
 
-**Stability**: 🔶 Beta  
+**Stability**: ✅ Stable  
 **Async**: No  
 
 Get health report for all search backends.

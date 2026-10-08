@@ -27,7 +27,7 @@ This document provides transparency about the stability and integration status o
 | `web_crawl` | Crawl & Extract | ✅ Stable | Crawl a website starting from a seed URL, respecting depth and page limits. |
 | `web_extract` | Crawl & Extract | ✅ Stable | Extract structured data from a web page using CSS selectors. |
 | `web_fetch` | Fetch | ✅ Stable | Fetch a URL and return one window of its extracted main content. |
-| `search_health` | Health | 🔶 Beta | Get health report for all search backends. |
+| `search_health` | Health | ✅ Stable | Get health report for all search backends. |
 | `web_search` | Search | ✅ Stable | Search the web and return structured results. |
 
 ---
@@ -63,8 +63,8 @@ This document provides transparency about the stability and integration status o
 
 | Level | Count | Tools |
 |-------|-------|-------|
-| ✅ Stable | 8 | `web_search`, `web_fetch`, `web_crawl`, `web_extract`, `cache_stats`, `cache_clear`, `metadata_extract`, `rss_parse` |
-| 🔶 Beta | 1 | `search_health` |
+| ✅ Stable | 9 | `web_search`, `web_fetch`, `web_crawl`, `web_extract`, `cache_stats`, `cache_clear`, `search_health`, `metadata_extract`, `rss_parse` |
+| 🔶 Beta | 0 |  |
 | 🧪 Experimental | 2 | `content_quality`, `broken_links` |
 
 ---

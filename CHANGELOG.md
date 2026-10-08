@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v1.9.0 (2026-10-08)
+
+### search_health: Beta → Stable
+- **Fixed P0: unobserved no longer defaults to healthy**: `BackendHealth.get_health_score()` now returns `None` when `total_requests == 0`, instead of `1.0`. `get_status()` returns `"unobserved"` for backends with no request history. `SearchHealthManager.get_health_report()` reports `unobserved_backends` count and `overall_health_score=None` when nothing has been observed. Unknown must not be reported as healthy.
+- **Explicit circuit breaker state machine**: `circuit_state` field with values `closed` → `open` → `half-open` → `closed`. Backward-compatible `circuit_open` property returns True for both open and half-open states.
+- **Strict half-open probe concurrency**: `half_open_max_requests` is now actually enforced via `acquire_half_open_slot()` / `release_half_open_slot()`. `can_use()` returns False when half-open slots are exhausted. `half_open_success_threshold` controls how many successful probes close the circuit.
+- **Monotonic clock for interval calculations**: Internal circuit recovery timing uses `time.monotonic()` via `circuit_open_monotonic`, immune to system clock changes. Wall-clock `circuit_open_time` retained for external reporting.
+- **Result classification**: Added `record_timeout()`, `record_invalid_query()`, `record_circuit_skipped()`, `record_unavailable()`. Invalid queries do NOT pollute provider health (no request count, no failure count, no circuit impact). Circuit skips and unavailable states are counted but do not mutate health.
+- **Observability**: Added `recent_failures` deque (max 10), `circuit_open_count`, `circuit_recovery_count`, `last_recovery_time`, per-category counters (`total_empty`, `total_timeouts`, `total_invalid_queries`, `total_circuit_skips`, `total_unavailable`).
+- **Health query has no side effects**: `get_health_report()` and `to_dict()` do not mutate backend state.
+- **JSON backward compatibility**: All original v1.8.0 fields preserved (`name`, `enabled`, `status`, `health_score`, `total_requests`, `total_successes`, `total_failures`, `consecutive_failures`, `consecutive_successes`, `circuit_open`, `last_failure_reason`, `last_failure_time`, `last_success_time`, `failure_threshold`, `recovery_time`). New fields added additively.
+- **MCP schema unchanged**: `search_health()` signature preserved. **11 MCP tools total**.
+
 ## v1.8.0 (2026-10-08)
 
 ### metadata_extract: Beta → Stable
