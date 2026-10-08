@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from dataclasses import dataclass, field
 from urllib.parse import urljoin
 
@@ -396,15 +397,31 @@ def _create_safe_client(
     )
 
 
+def _detect_xml_encoding(raw: bytes) -> str | None:
+    """Extract encoding from XML declaration, e.g. <?xml version="1.0" encoding="ISO-8859-1"?>.
+
+    Scans only the first 200 bytes to avoid scanning large bodies.
+    Returns None if no encoding declaration is found.
+    """
+    head = raw[:200]
+    match = re.search(rb'encoding\s*=\s*["\']([^"\']+)["\']', head, re.IGNORECASE)
+    if match:
+        try:
+            return match.group(1).decode("ascii", errors="replace").strip()
+        except Exception:
+            return None
+    return None
+
+
 async def _fetch_with_size_limit(
     client: httpx.AsyncClient,
     url: str,
     max_body_bytes: int,
-) -> tuple[str, str, int]:
+) -> tuple[str, str, int, str]:
     """Fetch URL with streaming size limit.
 
     Returns:
-        Tuple of (text_content, final_url, status_code).
+        Tuple of (text_content, final_url, status_code, content_type).
 
     Raises:
         ValueError: If response body exceeds max_body_bytes.
@@ -414,6 +431,7 @@ async def _fetch_with_size_limit(
         resp.raise_for_status()
         final_url = str(resp.url)
         status_code = resp.status_code
+        content_type = resp.headers.get("content-type", "")
 
         # Read with size limit
         chunks: list[bytes] = []
@@ -426,18 +444,20 @@ async def _fetch_with_size_limit(
 
         raw = b"".join(chunks)
 
-        # Detect encoding from Content-Type or XML declaration
-        content_type = resp.headers.get("content-type", "")
+        # Detect encoding: HTTP Content-Type charset takes priority,
+        # then XML declaration encoding, then default UTF-8.
         encoding = None
         if "charset=" in content_type:
             encoding = content_type.split("charset=")[-1].split(";")[0].strip()
+        if not encoding:
+            encoding = _detect_xml_encoding(raw)
 
         try:
             text = raw.decode(encoding or "utf-8", errors="replace")
         except (LookupError, UnicodeDecodeError):
             text = raw.decode("utf-8", errors="replace")
 
-        return text, final_url, status_code
+        return text, final_url, status_code, content_type
 
 
 def _looks_like_feed(text: str, content_type: str = "") -> bool:
@@ -520,10 +540,9 @@ async def fetch_and_parse_feed(
         allow_private=allow_private,
     ) as client:
         # First attempt: fetch the URL directly
-        text, final_url, status_code = await _fetch_with_size_limit(client, url, max_body_bytes)
+        text, final_url, status_code, content_type = await _fetch_with_size_limit(client, url, max_body_bytes)
 
         # If it looks like a feed, parse it
-        content_type = ""
         if _looks_like_feed(text, content_type):
             parser = RSSParser(base_url=final_url)
             feed = parser.parse(text)
@@ -542,8 +561,10 @@ async def fetch_and_parse_feed(
                 continue
 
             try:
-                feed_text, feed_final_url, _ = await _fetch_with_size_limit(client, feed_url, max_body_bytes)
-                if _looks_like_feed(feed_text):
+                feed_text, feed_final_url, _, feed_content_type = await _fetch_with_size_limit(
+                    client, feed_url, max_body_bytes
+                )
+                if _looks_like_feed(feed_text, feed_content_type):
                     parser = RSSParser(base_url=feed_final_url)
                     feed = parser.parse(feed_text)
                     feed.entries = feed.entries[:max_entries]

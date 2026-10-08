@@ -19,6 +19,7 @@ from webscout_mcp.rss_parser import (
     FeedEntry,
     RSSParseError,
     RSSParser,
+    _detect_xml_encoding,
     _discover_feed_urls,
     _looks_like_feed,
     fetch_and_parse_feed,
@@ -569,6 +570,42 @@ class TestEncoding:
         xml = '<?xml version="1.0" encoding="ISO-8859-1"?><rss version="2.0"><channel><title>Café</title><link>https://example.com</link><description>test</description></channel></rss>'
         feed = parse_feed(xml)
         assert "Caf" in feed.title or feed.title != ""
+
+    def test_detect_xml_encoding_utf8(self):
+        """_detect_xml_encoding should extract UTF-8 from XML declaration."""
+        raw = b'<?xml version="1.0" encoding="UTF-8"?><rss/>'
+        assert _detect_xml_encoding(raw) == "UTF-8"
+
+    def test_detect_xml_encoding_iso8859(self):
+        """_detect_xml_encoding should extract ISO-8859-1 from XML declaration."""
+        raw = b'<?xml version="1.0" encoding="ISO-8859-1"?><rss/>'
+        assert _detect_xml_encoding(raw) == "ISO-8859-1"
+
+    def test_detect_xml_encoding_none(self):
+        """_detect_xml_encoding should return None when no encoding declaration."""
+        raw = b'<?xml version="1.0"?><rss/>'
+        assert _detect_xml_encoding(raw) is None
+
+    def test_detect_xml_encoding_single_quotes(self):
+        """_detect_xml_encoding should handle single-quoted encoding attribute."""
+        raw = b"<?xml version='1.0' encoding='windows-1252'?><rss/>"
+        assert _detect_xml_encoding(raw) == "windows-1252"
+
+    def test_looks_like_feed_bom_with_content_type(self):
+        """Feed starting with UTF-8 BOM should be recognized via Content-Type header."""
+        bom_text = "\ufeff<?xml version='1.0'?><rss version='2.0'><channel><title>x</title></channel></rss>"
+        # Without content-type, BOM prefix means it doesn't start with <?xml
+        assert _looks_like_feed(bom_text, "") is False
+        # With authoritative content-type, it is recognized
+        assert _looks_like_feed(bom_text, "application/rss+xml") is True
+
+    def test_looks_like_feed_xml_comment_with_content_type(self):
+        """Feed starting with XML comment should be recognized via Content-Type."""
+        comment_text = (
+            "<!-- this is a feed --><?xml version='1.0'?><rss version='2.0'><channel><title>x</title></channel></rss>"
+        )
+        assert _looks_like_feed(comment_text, "") is False
+        assert _looks_like_feed(comment_text, "application/atom+xml") is True
 
 
 # ---------------------------------------------------------------------------
