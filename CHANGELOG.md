@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v1.7.0 (2026-10-08)
+
+### rss_parse: Beta → Stable
+- **Fixed P0 interface mismatch**: `fetch_and_parse_feed()` now accepts `max_entries` parameter (was causing `TypeError` when called from MCP `rss_parse` tool). `max_entries` is clamped to [1, 100] and slicing is enforced.
+- **SSRF safety on RSS path**: Initial URL and every redirect hop are validated via `check_url_safe()`. Private IPs, localhost, metadata endpoints, and non-http(s) schemes are blocked. Uses httpx `event_hooks` request hook pattern (same as fetcher/crawler).
+- **Hard resource limits**: `max_redirects=5`, `max_body_bytes=5MB`, per-request timeout. Streaming download with size enforcement prevents memory exhaustion.
+- **XML external entity (XXE) protection**: Uses `lxml-xml` parser which disables external entity resolution by default. XXE payloads cannot leak file contents.
+- **Feed auto-discovery**: When URL returns HTML, `link rel="alternate"` tags with `application/rss+xml` / `application/atom+xml` types are discovered. Up to 5 candidates, each SSRF-validated. No infinite recursion.
+- **Parsing reliability**: Added RSS 1.0 (RDF) support; `content:encoded` works with or without namespace declaration; relative URLs resolved against final URL; UTF-8 BOM and ISO-8859-1 encoding handled; empty/malformed/non-feed content raises `RSSParseError` (fail-closed, not silent empty).
+- **MCP schema unchanged**: `rss_parse(url, max_entries=20)` signature preserved. 11 MCP tools total.
+
 ## v1.6.0 (2026-10-07)
 
 ### web_crawl: Beta → Stable

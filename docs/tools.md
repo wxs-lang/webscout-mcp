@@ -252,7 +252,7 @@ Extract metadata from a web page.
 
 ### `rss_parse`
 
-**Stability**: 🔶 Beta  
+**Stability**: ✅ Stable  
 **Async**: Yes  
 
 Parse an RSS or Atom feed and return its entries.

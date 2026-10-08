@@ -160,11 +160,11 @@ def _get_tool_stability(name: str) -> str:
         "web_extract",
         "cache_stats",
         "cache_clear",
+        "rss_parse",
     }
     beta_tools = {
         "search_health",
         "metadata_extract",
-        "rss_parse",
     }
     if name in stable_tools:
         return "✅ Stable"
