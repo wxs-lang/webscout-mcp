@@ -35,11 +35,7 @@ _HTML_UA_SOFT_BLOCK_BODY = (
     + "</div></body></html>"
 )
 # A 403 error page with a body above the _MIN_403_HTML_BYTES threshold.
-_HTML_403_BODY = (
-    "<html><body><h1>403 Forbidden</h1><p>blocked by access policy</p>"
-    + "x" * 300
-    + "</body></html>"
-)
+_HTML_403_BODY = "<html><body><h1>403 Forbidden</h1><p>blocked by access policy</p>" + "x" * 300 + "</body></html>"
 _LOGIN_WALL_BODY = "<html><body><h1>403</h1><p>Please log in to view this page</p></body></html>"
 
 
