@@ -360,11 +360,14 @@ async def test_fallback_unavailable_keeps_primary():
 async def test_browser_unavailable_keeps_primary():
     html = "<html><body>Please enable JavaScript to continue.<noscript></noscript></body></html>"
     http = _Fake("http", {ProviderCapability.FETCH}, _resp(content="Please enable JavaScript.", raw_html=html))
-    svc, _, _ = _service([http])  # no BROWSER provider
+    svc, _, _ = _service([http])  # no BROWSER provider, no alternate FETCH provider
     route = await svc.fetch(FetchRequest(url="https://example.com"))
     assert route.browser_attempted is False
-    assert route.recovery_outcome == "browser_unavailable"
+    # Browser backend missing -> one bounded alternate-FETCH attempt, which
+    # finds no second FETCH provider -> terminal "browser_unavailable".
+    assert route.recovery_outcome == "browser_unavailable:fallback_unavailable"
     assert route.final_response.provider == "http"
+    assert not route.fallback_used
     assert route.escalation_decision is not None  # derived from recovery
 
 
