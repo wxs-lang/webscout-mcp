@@ -476,16 +476,21 @@ def create_server(config: Config | None = None) -> MCPServer:
         try:
             from .broken_link_checker import BrokenLinkChecker
 
-            # Fetch page HTML
-            result = await fetcher.fetch(url=url, extract=False, output_format="html", max_chars=200000)
-            html = result.content if hasattr(result, "content") else result.raw_html
+            checker = BrokenLinkChecker(timeout=timeout)
 
+            # Fetch the starting page with the same SSRF guard and pinned-IP transport
+            # used for link checks. This closes the validation-to-connect DNS rebinding gap.
+            html, final_url, fetch_error = await checker.fetch_page_html(url, max_chars=200000)
+            if fetch_error:
+                return json.dumps(
+                    {"error": "Failed to fetch page content", "reason": fetch_error, "url": url},
+                    ensure_ascii=False,
+                )
             if not html:
                 return json.dumps({"error": "Failed to fetch page content", "url": url}, ensure_ascii=False)
 
-            # Check broken links
-            checker = BrokenLinkChecker(timeout=timeout)
-            report = checker.check_page(html, base_url=url)
+            # Resolve relative links against the final URL after any safe redirects.
+            report = checker.check_page(html, base_url=final_url or url)
             return json.dumps(report.to_dict(), ensure_ascii=False, indent=2, default=str)
         except Exception as exc:
             log.error("broken_links failed", extra={"url": url, "error": str(exc)})
