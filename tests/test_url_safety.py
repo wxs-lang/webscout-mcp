@@ -44,6 +44,8 @@ def test_public_ipv6_allowed():
         "192.168.255.255",
         "169.254.169.254",  # cloud metadata
         "169.254.169.253",
+        "100.64.0.1",       # RFC 6598 carrier-grade NAT shared address space
+        "100.127.255.254",  # End of the RFC 6598 shared address range
         "::1",
         "0.0.0.0",
         "224.0.0.1",
@@ -95,6 +97,14 @@ def test_dns_resolution_to_public_allowed():
     with patch("webscout_mcp.url_safety._resolve_host", return_value=["93.184.216.34"]):
         r = check_url_safe("http://example.com/")
     assert r.safe
+
+
+def test_dns_resolution_with_cgnat_address_is_blocked():
+    """A hostname returning any non-global address must be rejected as a whole."""
+    with patch("webscout_mcp.url_safety._resolve_host", return_value=["93.184.216.34", "100.64.0.1"]):
+        r = check_url_safe("http://mixed-addresses.example/")
+    assert not r.safe
+    assert "100.64.0.1" in (r.resolved_ips or [])
 
 
 def test_dns_failure_blocks():
