@@ -237,9 +237,7 @@ class BrokenLinkChecker:
             return "data"
         return "unknown"
 
-    async def fetch_page_html(
-        self, url: str, max_chars: int = 200000
-    ) -> tuple[str | None, str, str | None]:
+    async def fetch_page_html(self, url: str, max_chars: int = 200000) -> tuple[str | None, str, str | None]:
         """Fetch the starting page with SSRF validation and DNS-pinned connections.
 
         Redirects are followed manually, validating and pinning each destination
