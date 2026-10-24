@@ -44,7 +44,7 @@ def test_public_ipv6_allowed():
         "192.168.255.255",
         "169.254.169.254",  # cloud metadata
         "169.254.169.253",
-        "100.64.0.1",       # RFC 6598 carrier-grade NAT shared address space
+        "100.64.0.1",  # RFC 6598 carrier-grade NAT shared address space
         "100.127.255.254",  # End of the RFC 6598 shared address range
         "::1",
         "0.0.0.0",
