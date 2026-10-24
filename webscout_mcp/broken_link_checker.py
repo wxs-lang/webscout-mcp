@@ -263,9 +263,7 @@ class BrokenLinkChecker:
                 headers={"User-Agent": self.user_agent},
             ) as client:
                 for hop in range(self.max_redirects + 1):
-                    request, request_error = _prepare_pinned_request(
-                        client, current_url, safety, self.user_agent
-                    )
+                    request, request_error = _prepare_pinned_request(client, current_url, safety, self.user_agent)
                     if request is None:
                         return None, current_url, request_error
 
