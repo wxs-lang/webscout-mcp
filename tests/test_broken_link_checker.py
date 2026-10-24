@@ -271,6 +271,41 @@ class TestBrokenLinkChecker:
         assert request.extensions["sni_hostname"] == "public.example"
         http_client.send.assert_called_once_with(request, follow_redirects=False)
 
+    def test_max_redirects_allows_request_to_final_destination(self):
+        checker = BrokenLinkChecker(max_redirects=1)
+        initial_url = "https://public.example/start"
+        final_url = "https://public.example/final"
+
+        redirect_response = MagicMock()
+        redirect_response.status_code = 302
+        redirect_response.headers = {"Location": final_url}
+        final_response = MagicMock()
+        final_response.status_code = 200
+
+        http_client = MagicMock()
+        http_client.build_request.side_effect = lambda method, url, headers: __import__("httpx").Request(
+            method, url, headers=headers
+        )
+        http_client.send.side_effect = [redirect_response, final_response]
+        client_factory = MagicMock()
+        client_factory.return_value.__enter__.return_value = http_client
+
+        with (
+            patch("webscout_mcp.broken_link_checker.check_url_safe") as safety_check,
+            patch("httpx.Client", client_factory),
+        ):
+            safety_check.side_effect = [
+                SimpleNamespace(safe=True, reason="ok", resolved_ips=["93.184.216.34"]),
+                SimpleNamespace(safe=True, reason="ok", resolved_ips=["93.184.216.34"]),
+            ]
+            result = checker.check_link(initial_url)
+
+        assert result.status == "redirect"
+        assert result.final_url == final_url
+        assert result.redirect_count == 1
+        assert result.redirect_chain == [initial_url, final_url]
+        assert http_client.send.call_count == 2
+
     def test_private_network_url_is_blocked_before_request(self):
         checker = BrokenLinkChecker()
 
