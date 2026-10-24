@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from urllib.parse import urljoin, urlparse
 
 from .logging_config import get_logger
-from .url_safety import check_url_safe
+from .url_safety import UrlSafetyResult, check_url_safe
 
 log = get_logger(__name__)
 
@@ -244,7 +244,11 @@ class BrokenLinkChecker:
             current_url = url
             redirect_chain = [url]
 
-            def _prepare_pinned_request(client, target_url: str, safety):
+            def _prepare_pinned_request(
+                client: httpx.Client,
+                target_url: str,
+                safety: UrlSafetyResult,
+            ) -> tuple[httpx.Request | None, str]:
                 """Pin HTTP routing to the exact public IPs returned by the safety check.
 
                 The URL used for the TCP connection contains a literal verified IP,
