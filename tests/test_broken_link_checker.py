@@ -1,7 +1,8 @@
 """Tests for broken link checker module."""
 
+import asyncio
 from types import SimpleNamespace
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from webscout_mcp.broken_link_checker import (
     BrokenLinkChecker,
@@ -148,6 +149,98 @@ class TestBrokenLinkChecker:
         # Different domain should be external
         result = checker.check_link("https://other.com/page", base_url="https://example.com")
         assert result.link_type == "external"
+
+    def test_fetch_page_html_blocks_private_target_before_client_creation(self):
+        checker = BrokenLinkChecker()
+        with patch("httpx.AsyncClient") as client_factory:
+            html, final_url, error = asyncio.run(checker.fetch_page_html("http://127.0.0.1/admin"))
+
+        assert html is None
+        assert final_url == "http://127.0.0.1/admin"
+        assert "SSRF blocked" in error
+        client_factory.assert_not_called()
+
+    def test_fetch_page_html_pins_start_url_and_preserves_host_and_sni(self):
+        checker = BrokenLinkChecker()
+        page_url = "https://public.example/start?q=1"
+        response = MagicMock()
+        response.status_code = 200
+        response.headers = {}
+        response.encoding = "utf-8"
+        response.aclose = AsyncMock()
+
+        async def aiter_bytes():
+            yield b"<html><body>start page</body></html>"
+
+        response.aiter_bytes = aiter_bytes
+        client = MagicMock()
+        client.build_request.side_effect = lambda method, url, headers: __import__("httpx").Request(
+            method, url, headers=headers
+        )
+        client.send = AsyncMock(return_value=response)
+        client.__aenter__ = AsyncMock(return_value=client)
+        client.__aexit__ = AsyncMock(return_value=False)
+        client_factory = MagicMock(return_value=client)
+
+        with (
+            patch("webscout_mcp.broken_link_checker.check_url_safe") as safety_check,
+            patch("httpx.AsyncClient", client_factory),
+        ):
+            safety_check.return_value = SimpleNamespace(safe=True, reason="ok", resolved_ips=["93.184.216.34"])
+            html, final_url, error = asyncio.run(checker.fetch_page_html(page_url))
+
+        assert error is None
+        assert final_url == page_url
+        assert "start page" in html
+        request = client.send.call_args.args[0]
+        assert str(request.url) == "https://93.184.216.34/start?q=1"
+        assert request.headers["host"] == "public.example"
+        assert request.extensions["sni_hostname"] == "public.example"
+        client.send.assert_awaited_once_with(request, follow_redirects=False, stream=True)
+        assert safety_check.call_args_list == [call(page_url)]
+
+    def test_fetch_page_html_blocks_redirect_to_private_before_second_request(self):
+        checker = BrokenLinkChecker()
+        page_url = "https://public.example/redirect"
+        private_url = "http://127.0.0.1/admin"
+        response = MagicMock()
+        response.status_code = 302
+        response.headers = {"Location": private_url}
+        response.encoding = "utf-8"
+        response.aclose = AsyncMock()
+
+        async def aiter_bytes():
+            yield b""
+
+        response.aiter_bytes = aiter_bytes
+        client = MagicMock()
+        client.build_request.side_effect = lambda method, url, headers: __import__("httpx").Request(
+            method, url, headers=headers
+        )
+        client.send = AsyncMock(return_value=response)
+        client.__aenter__ = AsyncMock(return_value=client)
+        client.__aexit__ = AsyncMock(return_value=False)
+        client_factory = MagicMock(return_value=client)
+
+        with (
+            patch("webscout_mcp.broken_link_checker.check_url_safe") as safety_check,
+            patch("httpx.AsyncClient", client_factory),
+        ):
+            safety_check.side_effect = [
+                SimpleNamespace(safe=True, reason="ok", resolved_ips=["93.184.216.34"]),
+                SimpleNamespace(safe=False, reason="private address", resolved_ips=None),
+            ]
+            html, final_url, error = asyncio.run(checker.fetch_page_html(page_url))
+
+        assert html is None
+        assert final_url == private_url
+        assert "private address" in error
+        client.send.assert_awaited_once()
+        request = client.send.call_args.args[0]
+        assert str(request.url) == "https://93.184.216.34/redirect"
+        assert request.headers["host"] == "public.example"
+        assert request.extensions["sni_hostname"] == "public.example"
+        assert safety_check.call_args_list == [call(page_url), call(private_url)]
 
     def test_request_uses_resolved_public_ip_and_preserves_host_and_sni(self):
         checker = BrokenLinkChecker()

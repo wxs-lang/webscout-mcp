@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 - Harden `broken_links` against server-side request forgery: validate each link destination with the existing URL safety guard before requesting it, including every manually followed redirect target.
-- Use the SSRF-enabled fetcher for the page being audited and bypass shared-cache reads so an old cached response cannot skip the safety check; return blocked targets explicitly in the report.
+- Fetch the starting page and each extracted link through a pinned-IP HTTP transport, validating every redirect hop before following it to close DNS-rebinding gaps.
+- Report blocked targets explicitly instead of misreporting them as ordinary broken links.
 - Add deterministic regression coverage for direct loopback targets and redirects to private addresses.
 
 ## v1.9.1 (2026-10-24)

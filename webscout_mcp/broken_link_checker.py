@@ -20,10 +20,52 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from urllib.parse import urljoin, urlparse
 
+import httpx
+
 from .logging_config import get_logger
 from .url_safety import UrlSafetyResult, check_url_safe
 
 log = get_logger(__name__)
+
+
+def _prepare_pinned_request(
+    client: httpx.Client | httpx.AsyncClient,
+    target_url: str,
+    safety: UrlSafetyResult,
+    user_agent: str,
+) -> tuple[httpx.Request | None, str]:
+    """Build a request pinned to the exact public IPs returned by the safety check.
+
+    The TCP connection targets a literal verified IP, preventing a second DNS
+    lookup from rebinding the destination. Host and TLS SNI preserve origin
+    routing and certificate verification for HTTPS URLs.
+    """
+    target = httpx.URL(target_url)
+    if target.userinfo:
+        return None, "URLs containing embedded credentials are not allowed"
+
+    if not safety.safe:
+        return None, f"SSRF blocked: {safety.reason}"
+
+    resolved_ips = safety.resolved_ips or []
+    if not resolved_ips:
+        return None, "SSRF blocked: safety check did not provide a resolved IP"
+
+    # Prefer IPv4 when available because many hosts do not have working IPv6 egress.
+    pinned_ip = next((ip for ip in resolved_ips if ":" not in ip), resolved_ips[0])
+    pinned_url = target.copy_with(host=pinned_ip)
+    original_authority = target.netloc.decode("ascii")
+    headers = {"User-Agent": user_agent, "Host": original_authority}
+    request = client.build_request("GET", pinned_url, headers=headers)
+
+    if target.scheme == "https":
+        try:
+            original_host = target.host.encode("idna").decode("ascii")
+        except UnicodeError:
+            return None, "SSRF blocked: invalid internationalized hostname"
+        request.extensions["sni_hostname"] = original_host
+
+    return request, ""
 
 
 @dataclass
@@ -195,6 +237,101 @@ class BrokenLinkChecker:
             return "data"
         return "unknown"
 
+    async def fetch_page_html(
+        self, url: str, max_chars: int = 200000
+    ) -> tuple[str | None, str, str | None]:
+        """Fetch the starting page with SSRF validation and DNS-pinned connections.
+
+        Redirects are followed manually, validating and pinning each destination
+        before a subsequent request is sent. The response body is byte-limited
+        before decoding, then truncated to max_chars.
+        """
+        current_url = url
+        try:
+            target = httpx.URL(current_url)
+            if target.userinfo:
+                return None, current_url, "URLs containing embedded credentials are not allowed"
+
+            safety = check_url_safe(current_url)
+            if not safety.safe:
+                return None, current_url, f"SSRF blocked: {safety.reason}"
+            if not safety.resolved_ips:
+                return None, current_url, "SSRF blocked: safety check did not provide a resolved IP"
+
+            async with httpx.AsyncClient(
+                timeout=self.timeout,
+                follow_redirects=False,
+                verify=self.verify_ssl,
+                headers={"User-Agent": self.user_agent},
+            ) as client:
+                for hop in range(self.max_redirects + 1):
+                    request, request_error = _prepare_pinned_request(
+                        client, current_url, safety, self.user_agent
+                    )
+                    if request is None:
+                        return None, current_url, request_error
+
+                    response = await client.send(request, follow_redirects=False, stream=True)
+                    try:
+                        status_code = response.status_code
+                        if 300 <= status_code < 400:
+                            location = response.headers.get("Location", "")
+                            if not location:
+                                return None, current_url, "Redirect with no Location header"
+                            if hop >= self.max_redirects:
+                                return None, current_url, f"Maximum redirects ({self.max_redirects}) exceeded"
+
+                            redirect_url = urljoin(current_url, location)
+                            redirect_target = httpx.URL(redirect_url)
+                            if redirect_target.userinfo:
+                                return None, redirect_url, "URLs containing embedded credentials are not allowed"
+
+                            safety = check_url_safe(redirect_url)
+                            if not safety.safe:
+                                return None, redirect_url, f"SSRF blocked: {safety.reason}"
+                            if not safety.resolved_ips:
+                                return (
+                                    None,
+                                    redirect_url,
+                                    "SSRF blocked: safety check did not provide a resolved IP",
+                                )
+
+                            current_url = redirect_url
+                            continue
+
+                        if not 200 <= status_code < 300:
+                            return None, current_url, f"HTTP {status_code}"
+
+                        max_bytes = max(1, max_chars * 4)
+                        chunks: list[bytes] = []
+                        total_bytes = 0
+                        async for chunk in response.aiter_bytes():
+                            remaining = max_bytes - total_bytes
+                            if remaining <= 0:
+                                break
+                            part = chunk[:remaining]
+                            chunks.append(part)
+                            total_bytes += len(part)
+                            if total_bytes >= max_bytes:
+                                break
+
+                        payload = b"".join(chunks)
+                        encoding = response.encoding or "utf-8"
+                        try:
+                            html = payload.decode(encoding, errors="replace")
+                        except LookupError:
+                            html = payload.decode("utf-8", errors="replace")
+                        return html[:max_chars], current_url, None
+                    finally:
+                        await response.aclose()
+
+            return None, current_url, f"Maximum redirects ({self.max_redirects}) exceeded"
+
+        except httpx.TimeoutException:
+            return None, current_url, f"Request timed out after {self.timeout}s"
+        except Exception as exc:
+            return None, current_url, f"Safe page fetch failed: {type(exc).__name__}: {exc}"
+
     def check_link(self, url: str, base_url: str = "", anchor_text: str = "") -> LinkCheckResult:
         """Check a single link.
 
@@ -238,53 +375,10 @@ class BrokenLinkChecker:
         # Perform HTTP request
         start_time = time.time()
         try:
-            import httpx
-
             redirect_count = 0
             current_url = url
             redirect_chain = [url]
 
-            def _prepare_pinned_request(
-                client: httpx.Client,
-                target_url: str,
-                safety: UrlSafetyResult,
-            ) -> tuple[httpx.Request | None, str]:
-                """Pin HTTP routing to the exact public IPs returned by the safety check.
-
-                The URL used for the TCP connection contains a literal verified IP,
-                preventing a second DNS lookup from rebinding the destination.
-                The original Host header and TLS SNI preserve virtual-host routing
-                and certificate verification for HTTPS origins.
-                """
-                target = httpx.URL(target_url)
-                if target.userinfo:
-                    return None, "URLs containing embedded credentials are not allowed"
-
-                if not safety.safe:
-                    return None, f"SSRF blocked: {safety.reason}"
-
-                resolved_ips = safety.resolved_ips or []
-                # Fail closed if the guard did not provide a verifiable destination.
-                if not resolved_ips:
-                    return None, "SSRF blocked: safety check did not provide a resolved IP"
-
-                # Prefer IPv4 when available because many hosts do not have working IPv6 egress.
-                pinned_ip = next((ip for ip in resolved_ips if ":" not in ip), resolved_ips[0])
-                pinned_url = target.copy_with(host=pinned_ip)
-                original_authority = target.netloc.decode("ascii")
-                headers = {"User-Agent": self.user_agent, "Host": original_authority}
-                request = client.build_request("GET", pinned_url, headers=headers)
-
-                if target.scheme == "https":
-                    try:
-                        # httpx.URL normalizes unicode hostnames as IDNA in netloc;
-                        # use that ASCII hostname for TLS SNI and certificate checks.
-                        original_host = target.host.encode("idna").decode("ascii")
-                    except UnicodeError:
-                        return None, "SSRF blocked: invalid internationalized hostname"
-                    request.extensions["sni_hostname"] = original_host
-
-                return request, ""
 
             # Validate the initial destination and pin the actual connection before
             # creating/sending any request to it.
@@ -312,7 +406,7 @@ class BrokenLinkChecker:
                 ) as client:
                     safety = initial_safety
                     while redirect_count < self.max_redirects:
-                        request, request_error = _prepare_pinned_request(client, current_url, safety)
+                        request, request_error = _prepare_pinned_request(client, current_url, safety, self.user_agent)
                         if request is None:
                             result.status = "blocked"
                             result.final_url = current_url
