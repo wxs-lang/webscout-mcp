@@ -256,7 +256,6 @@ class BrokenLinkChecker:
                 if target.userinfo:
                     return None, "URLs containing embedded credentials are not allowed"
 
-                safety = check_url_safe(target_url)
                 if not safety.safe:
                     return None, f"SSRF blocked: {safety.reason}"
 
@@ -307,8 +306,9 @@ class BrokenLinkChecker:
                     verify=self.verify_ssl,
                     headers=headers,
                 ) as client:
+                    safety = initial_safety
                     while redirect_count < self.max_redirects:
-                        request, request_error = _prepare_pinned_request(client, current_url)
+                        request, request_error = _prepare_pinned_request(client, current_url, safety)
                         if request is None:
                             result.status = "blocked"
                             result.final_url = current_url
@@ -324,8 +324,25 @@ class BrokenLinkChecker:
                                 current_url = urljoin(current_url, location)
                                 redirect_chain.append(current_url)
                                 redirect_count += 1
-                                # The next loop validates the destination and pins its IP
-                                # before another request can be made.
+                                # Validate the redirect exactly once and carry the resolved
+                                # IP into the pinned request on the next loop iteration.
+                                safety = check_url_safe(current_url)
+                                redirect_target = httpx.URL(current_url)
+                                if redirect_target.userinfo:
+                                    result.status = "blocked"
+                                    result.final_url = current_url
+                                    result.error_message = "URLs containing embedded credentials are not allowed"
+                                    break
+                                if not safety.safe:
+                                    result.status = "blocked"
+                                    result.final_url = current_url
+                                    result.error_message = f"SSRF blocked: {safety.reason}"
+                                    break
+                                if not safety.resolved_ips:
+                                    result.status = "blocked"
+                                    result.final_url = current_url
+                                    result.error_message = "SSRF blocked: safety check did not provide a resolved IP"
+                                    break
                                 continue
                             else:
                                 result.status = "error"
