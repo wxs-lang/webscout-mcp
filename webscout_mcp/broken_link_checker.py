@@ -244,7 +244,7 @@ class BrokenLinkChecker:
             current_url = url
             redirect_chain = [url]
 
-            def _prepare_pinned_request(client, target_url: str):
+            def _prepare_pinned_request(client, target_url: str, safety):
                 """Pin HTTP routing to the exact public IPs returned by the safety check.
 
                 The URL used for the TCP connection contains a literal verified IP,
