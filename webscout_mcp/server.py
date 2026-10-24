@@ -477,7 +477,18 @@ def create_server(config: Config | None = None) -> MCPServer:
             from .broken_link_checker import BrokenLinkChecker
 
             # Fetch page HTML
-            result = await fetcher.fetch(url=url, extract=False, output_format="html", max_chars=200000)
+            result = await metadata_fetcher.fetch(
+                url=url,
+                extract=False,
+                output_format="html",
+                max_chars=200000,
+                bypass_cache=True,
+            )
+            if getattr(result, "error", None):
+                return json.dumps(
+                    {"error": "Failed to fetch page content", "reason": result.error, "url": url},
+                    ensure_ascii=False,
+                )
             html = result.content if hasattr(result, "content") else result.raw_html
 
             if not html:

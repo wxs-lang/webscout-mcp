@@ -1,5 +1,8 @@
 """Tests for broken link checker module."""
 
+from types import SimpleNamespace
+from unittest.mock import MagicMock, call, patch
+
 from webscout_mcp.broken_link_checker import (
     BrokenLinkChecker,
     BrokenLinkReport,
@@ -145,6 +148,58 @@ class TestBrokenLinkChecker:
         # Different domain should be external
         result = checker.check_link("https://other.com/page", base_url="https://example.com")
         assert result.link_type == "external"
+
+    def test_private_network_url_is_blocked_before_request(self):
+        checker = BrokenLinkChecker()
+
+        with patch("httpx.Client") as client_factory:
+            result = checker.check_link("http://127.0.0.1/admin")
+
+        assert result.status == "blocked"
+        assert "SSRF blocked" in result.error_message
+        assert result.final_url == "http://127.0.0.1/admin"
+        client_factory.assert_not_called()
+
+    def test_redirect_to_private_network_is_blocked_before_following(self):
+        checker = BrokenLinkChecker()
+        initial_url = "https://public.example/redirect"
+        private_url = "http://127.0.0.1/admin"
+
+        response = MagicMock()
+        response.status_code = 302
+        response.headers = {"Location": private_url}
+        http_client = MagicMock()
+        http_client.get.return_value = response
+        client_factory = MagicMock()
+        client_factory.return_value.__enter__.return_value = http_client
+
+        with (
+            patch("webscout_mcp.broken_link_checker.check_url_safe") as safety_check,
+            patch("httpx.Client", client_factory),
+        ):
+            safety_check.side_effect = [
+                SimpleNamespace(safe=True, reason="ok"),
+                SimpleNamespace(safe=False, reason="private address"),
+            ]
+            result = checker.check_link(initial_url)
+
+        assert result.status == "blocked"
+        assert result.final_url == private_url
+        assert result.redirect_chain == [initial_url, private_url]
+        assert "private address" in result.error_message
+        http_client.get.assert_called_once_with(initial_url)
+        assert safety_check.call_args_list == [call(initial_url), call(private_url)]
+
+    def test_check_page_counts_ssrf_blocked_links(self):
+        checker = BrokenLinkChecker()
+        html = '<html><body><a href="http://127.0.0.1/admin">Local admin</a></body></html>'
+
+        report = checker.check_page(html, base_url="https://public.example/")
+
+        assert report.total_links == 1
+        assert report.blocked_links == 1
+        assert report.results[0].status == "blocked"
+        assert "Blocked (SSRF safety): 1" in checker.generate_summary(report)
 
     def test_check_page(self):
         checker = BrokenLinkChecker()

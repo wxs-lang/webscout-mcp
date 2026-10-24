@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from urllib.parse import urljoin, urlparse
 
 from .logging_config import get_logger
+from .url_safety import check_url_safe
 
 log = get_logger(__name__)
 
@@ -31,7 +32,7 @@ class LinkCheckResult:
 
     url: str
     status_code: int = 0
-    status: str = "unknown"  # ok, broken, redirect, timeout, error, invalid
+    status: str = "unknown"  # ok, broken, redirect, timeout, error, invalid, blocked
     final_url: str = ""
     redirect_count: int = 0
     redirect_chain: list[str] = field(default_factory=list)
@@ -71,6 +72,7 @@ class BrokenLinkReport:
     timeout_links: int = 0
     error_links: int = 0
     invalid_links: int = 0
+    blocked_links: int = 0
     internal_links: int = 0
     external_links: int = 0
     mixed_content_links: int = 0
@@ -93,6 +95,7 @@ class BrokenLinkReport:
             "timeout_links": self.timeout_links,
             "error_links": self.error_links,
             "invalid_links": self.invalid_links,
+            "blocked_links": self.blocked_links,
             "internal_links": self.internal_links,
             "external_links": self.external_links,
             "mixed_content_links": self.mixed_content_links,
@@ -237,61 +240,74 @@ class BrokenLinkChecker:
         try:
             import httpx
 
-            headers = {"User-Agent": self.user_agent}
+            redirect_count = 0
+            current_url = url
+            redirect_chain = [url]
 
-            with httpx.Client(
-                timeout=self.timeout,
-                follow_redirects=False,
-                verify=self.verify_ssl,
-                headers=headers,
-            ) as client:
-                redirect_count = 0
-                current_url = url
-                redirect_chain = [url]
+            # Reject an unsafe initial destination before creating an HTTP client.
+            safety = check_url_safe(current_url)
+            if not safety.safe:
+                result.status = "blocked"
+                result.final_url = current_url
+                result.error_message = f"SSRF blocked: {safety.reason}"
+            else:
+                headers = {"User-Agent": self.user_agent}
 
-                while redirect_count < self.max_redirects:
-                    response = client.get(current_url)
-                    result.status_code = response.status_code
+                with httpx.Client(
+                    timeout=self.timeout,
+                    follow_redirects=False,
+                    verify=self.verify_ssl,
+                    headers=headers,
+                ) as client:
+                    while redirect_count < self.max_redirects:
+                        response = client.get(current_url)
+                        result.status_code = response.status_code
 
-                    if 300 <= response.status_code < 400:
-                        # Redirect
-                        location = response.headers.get("Location", "")
-                        if location:
-                            current_url = urljoin(current_url, location)
-                            redirect_chain.append(current_url)
-                            redirect_count += 1
-                            continue
-                        else:
-                            result.status = "error"
-                            result.error_message = "Redirect with no Location header"
+                        if 300 <= response.status_code < 400:
+                            # Validate each redirect target before the next request.
+                            location = response.headers.get("Location", "")
+                            if location:
+                                current_url = urljoin(current_url, location)
+                                redirect_chain.append(current_url)
+                                redirect_count += 1
+                                safety = check_url_safe(current_url)
+                                if not safety.safe:
+                                    result.status = "blocked"
+                                    result.final_url = current_url
+                                    result.error_message = f"SSRF blocked: {safety.reason}"
+                                    break
+                                continue
+                            else:
+                                result.status = "error"
+                                result.error_message = "Redirect with no Location header"
+                                break
+
+                        elif response.status_code == 200:
+                            result.status = "ok"
+                            result.final_url = current_url
                             break
 
-                    elif response.status_code == 200:
-                        result.status = "ok"
-                        result.final_url = current_url
-                        break
+                        elif 400 <= response.status_code < 500:
+                            result.status = "broken"
+                            result.final_url = current_url
+                            result.error_message = f"Client error: {response.status_code}"
+                            break
 
-                    elif 400 <= response.status_code < 500:
-                        result.status = "broken"
-                        result.final_url = current_url
-                        result.error_message = f"Client error: {response.status_code}"
-                        break
+                        elif response.status_code >= 500:
+                            result.status = "broken"
+                            result.final_url = current_url
+                            result.error_message = f"Server error: {response.status_code}"
+                            break
 
-                    elif response.status_code >= 500:
-                        result.status = "broken"
-                        result.final_url = current_url
-                        result.error_message = f"Server error: {response.status_code}"
-                        break
+                        else:
+                            result.status = "unknown"
+                            result.final_url = current_url
+                            break
 
-                    else:
-                        result.status = "unknown"
-                        result.final_url = current_url
-                        break
-
-                result.redirect_count = redirect_count
-                result.redirect_chain = redirect_chain
-                if redirect_count > 0:
-                    result.status = "redirect"
+            result.redirect_count = redirect_count
+            result.redirect_chain = redirect_chain
+            if redirect_count > 0 and result.status != "blocked":
+                result.status = "redirect"
 
         except httpx.TimeoutException:
             result.status = "timeout"
@@ -366,6 +382,8 @@ class BrokenLinkChecker:
                 report.error_links += 1
             elif result.status == "invalid":
                 report.invalid_links += 1
+            elif result.status == "blocked":
+                report.blocked_links += 1
 
             if result.link_type == "internal":
                 report.internal_links += 1
@@ -408,6 +426,7 @@ class BrokenLinkChecker:
             f"Timeouts: {report.timeout_links}",
             f"Errors: {report.error_links}",
             f"Invalid: {report.invalid_links}",
+            f"Blocked (SSRF safety): {report.blocked_links}",
             "",
             f"Internal links: {report.internal_links}",
             f"External links: {report.external_links}",
@@ -426,6 +445,18 @@ class BrokenLinkChecker:
                 lines.append(f"  [{link.status.upper()}] {link.url}")
                 if link.error_message:
                     lines.append(f"    Error: {link.error_message}")
+                if link.anchor_text:
+                    lines.append(f"    Anchor: {link.anchor_text}")
+
+        blocked = [r for r in report.results if r.status == "blocked"]
+        if blocked:
+            lines.append("")
+            lines.append("Blocked Links (not requested for safety):")
+            lines.append("-" * 60)
+            for link in blocked:
+                lines.append(f"  [BLOCKED] {link.url}")
+                if link.error_message:
+                    lines.append(f"    Reason: {link.error_message}")
                 if link.anchor_text:
                     lines.append(f"    Anchor: {link.anchor_text}")
 

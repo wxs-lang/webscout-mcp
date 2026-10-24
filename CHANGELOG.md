@@ -5,7 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## v1.9.1 (Unreleased)
+## v1.9.2 (Unreleased)
+
+### Security
+- Harden `broken_links` against server-side request forgery: validate each link destination with the existing URL safety guard before requesting it, including every manually followed redirect target.
+- Use the SSRF-enabled fetcher for the page being audited and bypass shared-cache reads so an old cached response cannot skip the safety check; return blocked targets explicitly in the report.
+- Add deterministic regression coverage for direct loopback targets and redirects to private addresses.
+
+## v1.9.1 (2026-10-24)
 
 ### HTTP 403 recovery fix
 - **403 responses now classified into recoverable vs terminal**: a 403 with an HTML body ≥256 bytes (UA-level soft block) escalates to BROWSER. Previously every non-challenge 403 was `ACCESS_DENIED`/STOP, so 403 soft blocks on baike.baidu.com and dictionary.cambridge.org never reached the browser escalation path (observed in the v1.9.0 A/B evaluation: Arm A body availability 7.3pp below the direct baseline).
