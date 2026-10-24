@@ -62,6 +62,31 @@ _THIN_SHELL_TEXT_CHARS = 1500
 _LARGE_HTML_CHARS = 20_000
 _HIGH_SCRIPT_RATIO = 0.15
 
+# A 403 that returned at least this many bytes of HTML body is treated as a
+# UA-level soft block (the server rejected our client fingerprint but serves
+# real markup to a real browser). Below this, there is no evidence a browser
+# would help, so we stay conservative.
+_MIN_403_HTML_BYTES = 256
+
+# Strong login-wall markers. A 403 page that explicitly demands
+# authentication is NOT a browser-recoverable soft block: a browser cannot
+# bypass a real login requirement, so we must not escalate into it.
+_LOGIN_WALL_MARKERS = (
+    "please log in",
+    "please sign in",
+    "log in to view",
+    "sign in to view",
+    "login required",
+    "sign in required",
+    "must be logged in",
+    "please login",
+    "需要登录",
+    "请登录",
+    "登录后查看",
+    "登录后才能",
+    "请先登录",
+)
+
 
 class RecoveryReason(str, Enum):
     """Why the current result is (or is not) sufficient."""
@@ -150,6 +175,18 @@ def _is_non_html(content_type: str) -> bool:
     return any(ctype.startswith(p) for p in _NON_HTML_PREFIXES)
 
 
+def _looks_like_login_wall(html: str) -> bool:
+    """Detect an explicit authentication wall in a 403 body.
+
+    A page that explicitly demands login is not browser-recoverable (a real
+    browser cannot bypass credentials), so escalation must be suppressed.
+    Only strong phrases are matched to avoid false positives on pages that
+    merely link to a login page in their navigation.
+    """
+    head = (html or "")[:8192].lower()
+    return any(m in head for m in _LOGIN_WALL_MARKERS)
+
+
 def classify_recovery(response: FetchResponse) -> RecoveryDecision:
     """Classify a fast-fetch response and recommend (not execute) an action.
 
@@ -191,13 +228,28 @@ def classify_recovery(response: FetchResponse) -> RecoveryDecision:
         return _d(RecoveryReason.SERVER_ERROR, RecoveryAction.RETRY, 0.8, **details)
 
     # ---- 3. access denial -------------------------------------------------
-    # 403: only a visible challenge/captcha is a browser candidate. A plain
-    # 403 is an access denial — we must not assume a browser fixes every 403.
+    # 403 has three distinct classes:
+    #   (a) a visible challenge/captcha -> strong browser candidate;
+    #   (b) a non-empty HTML body that is NOT a challenge and NOT a login
+    #       wall -> UA-level soft block: the server rejected our client
+    #       fingerprint but serves real markup to a real browser, so a
+    #       single bounded browser escalation is appropriate;
+    #   (c) empty/tiny body, login wall, or non-HTML payload -> genuine
+    #       access denial, a browser will not help, do not escalate.
     if status == 403 or error_code == StandardErrorCode.FETCH_FORBIDDEN:
         raw_html = getattr(response, "raw_html", "") or response.content or ""
         if _looks_like_challenge(raw_html):
             details.update(escalation=EscalationReason.SOFT_BLOCK.value)
             return _d(RecoveryReason.SOFT_BLOCK, RecoveryAction.BROWSER, 0.9, **details)
+        if _is_non_html(response.content_type):
+            details["content_type"] = response.content_type
+            return _d(RecoveryReason.ACCESS_DENIED, RecoveryAction.STOP, 0.8, **details)
+        if _looks_like_login_wall(raw_html):
+            details.update(escalation="LOGIN_WALL")
+            return _d(RecoveryReason.ACCESS_DENIED, RecoveryAction.STOP, 0.85, **details)
+        if len(raw_html.strip()) >= _MIN_403_HTML_BYTES:
+            details.update(escalation=EscalationReason.SOFT_BLOCK.value, body_chars=len(raw_html))
+            return _d(RecoveryReason.SOFT_BLOCK, RecoveryAction.BROWSER, 0.7, **details)
         return _d(RecoveryReason.ACCESS_DENIED, RecoveryAction.STOP, 0.8, **details)
     if status == 404 or error_code == StandardErrorCode.FETCH_NOT_FOUND:
         return _d(RecoveryReason.ACCESS_DENIED, RecoveryAction.STOP, 0.85, **details)

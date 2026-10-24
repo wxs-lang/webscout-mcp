@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v1.9.1 (Unreleased)
+
+### HTTP 403 recovery fix
+- **403 responses now classified into recoverable vs terminal**: a 403 with an HTML body ≥256 bytes (UA-level soft block) escalates to BROWSER. Previously every non-challenge 403 was `ACCESS_DENIED`/STOP, so 403 soft blocks on baike.baidu.com and dictionary.cambridge.org never reached the browser escalation path (observed in the v1.9.0 A/B evaluation: Arm A body availability 7.3pp below the direct baseline).
+- **Bounded alternate-FETCH fallback**: when a browser-recoverable soft block has no browser backend wired in, exactly ONE alternate FETCH provider is attempted (never recursive, never re-classified). Recovered content is surfaced through the legacy output path with `fallback_used` / `fallback_provider` markers.
+- **Login-wall guard**: explicit authentication demands (EN/ZH) keep a 403 terminal — a browser cannot bypass credentials, so escalation is suppressed.
+- **Non-HTML 403 stays terminal**: JSON/API risk-control bodies (e.g. zhihu's `40362` endpoint) are not misclassified as browser-recoverable.
+- **Tests**: 19 new deterministic offline regression tests (classification, bounded escalation, browser-failure preserves structured 403, alternate-provider fallback, no loop, 200 fast path untouched). Also fixes the A/B evaluation scaffold `truncated_html` NameError (scaffold-only, not a production defect).
+- **MCP schema unchanged**: **11 MCP tools total**.
+
 ## v1.9.0 (2026-10-08)
 
 ### search_health: Beta → Stable

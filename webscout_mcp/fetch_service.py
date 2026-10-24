@@ -128,6 +128,15 @@ class FetchRouteResult:
             else:
                 out["browser_success"] = False
                 out["browser_error"] = self.final_response.error
+        elif self.fallback_used and self.fallback_provider:
+            # An alternate FETCH provider recovered the content; surface it
+            # (matches the browser path: the recovered body becomes content).
+            out["content"] = self.final_response.content[:max_chars]
+            if self.final_response.title:
+                out["title"] = self.final_response.title
+            out["extracted"] = True
+            out["fallback_used"] = True
+            out["fallback_provider"] = self.fallback_provider
         return out
 
 
@@ -365,6 +374,19 @@ class FetchService:
                 browser_success,
                 recovery_outcome,
             ) = await self._execute_browser_recovery(request, primary, recovery, legacy_escalation, route_trace)
+            # A browser-recoverable soft block (e.g. a 403 with an HTML body)
+            # with no browser backend wired in (Crawl4AI sidecar not
+            # configured) falls back to ONE alternate FETCH provider.
+            # Bounded: exactly one fallback attempt, never re-classified,
+            # never recursive.
+            if recovery_outcome == "browser_unavailable":
+                (
+                    final,
+                    fallback_provider_name,
+                    fallback_used,
+                    fallback_outcome,
+                ) = await self._execute_provider_fallback(request, primary, primary_name, route_trace)
+                recovery_outcome = f"browser_unavailable:{fallback_outcome}"
         elif action is RecoveryAction.PROVIDER_FALLBACK:
             (
                 final,
