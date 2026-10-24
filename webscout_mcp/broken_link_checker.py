@@ -400,7 +400,7 @@ class BrokenLinkChecker:
                     headers=headers,
                 ) as client:
                     safety = initial_safety
-                    while redirect_count < self.max_redirects:
+                    while True:
                         request, request_error = _prepare_pinned_request(client, current_url, safety, self.user_agent)
                         if request is None:
                             result.status = "blocked"
@@ -414,6 +414,12 @@ class BrokenLinkChecker:
                         if 300 <= response.status_code < 400:
                             location = response.headers.get("Location", "")
                             if location:
+                                if redirect_count >= self.max_redirects:
+                                    result.status = "error"
+                                    result.final_url = current_url
+                                    result.error_message = f"Maximum redirects ({self.max_redirects}) exceeded"
+                                    break
+
                                 current_url = urljoin(current_url, location)
                                 redirect_chain.append(current_url)
                                 redirect_count += 1
@@ -466,7 +472,7 @@ class BrokenLinkChecker:
 
             result.redirect_count = redirect_count
             result.redirect_chain = redirect_chain
-            if redirect_count > 0 and result.status != "blocked":
+            if redirect_count > 0 and result.status not in {"blocked", "error", "timeout"}:
                 result.status = "redirect"
 
         except httpx.TimeoutException:
