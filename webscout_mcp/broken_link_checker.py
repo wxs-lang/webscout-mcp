@@ -244,12 +244,60 @@ class BrokenLinkChecker:
             current_url = url
             redirect_chain = [url]
 
-            # Reject an unsafe initial destination before creating an HTTP client.
-            safety = check_url_safe(current_url)
-            if not safety.safe:
+            def _prepare_pinned_request(client, target_url: str):
+                """Pin HTTP routing to the exact public IPs returned by the safety check.
+
+                The URL used for the TCP connection contains a literal verified IP,
+                preventing a second DNS lookup from rebinding the destination.
+                The original Host header and TLS SNI preserve virtual-host routing
+                and certificate verification for HTTPS origins.
+                """
+                target = httpx.URL(target_url)
+                if target.userinfo:
+                    return None, "URLs containing embedded credentials are not allowed"
+
+                safety = check_url_safe(target_url)
+                if not safety.safe:
+                    return None, f"SSRF blocked: {safety.reason}"
+
+                resolved_ips = safety.resolved_ips or []
+                # Fail closed if the guard did not provide a verifiable destination.
+                if not resolved_ips:
+                    return None, "SSRF blocked: safety check did not provide a resolved IP"
+
+                # Prefer IPv4 when available because many hosts do not have working IPv6 egress.
+                pinned_ip = next((ip for ip in resolved_ips if ":" not in ip), resolved_ips[0])
+                pinned_url = target.copy_with(host=pinned_ip)
+                original_authority = target.netloc.decode("ascii")
+                headers = {"User-Agent": self.user_agent, "Host": original_authority}
+                request = client.build_request("GET", pinned_url, headers=headers)
+
+                if target.scheme == "https":
+                    try:
+                        # httpx.URL normalizes unicode hostnames as IDNA in netloc;
+                        # use that ASCII hostname for TLS SNI and certificate checks.
+                        original_host = target.host.encode("idna").decode("ascii")
+                    except UnicodeError:
+                        return None, "SSRF blocked: invalid internationalized hostname"
+                    request.extensions["sni_hostname"] = original_host
+
+                return request, ""
+
+            # Validate the initial destination and pin the actual connection before
+            # creating/sending any request to it.
+            initial_safety = check_url_safe(current_url)
+            if not initial_safety.safe:
                 result.status = "blocked"
                 result.final_url = current_url
-                result.error_message = f"SSRF blocked: {safety.reason}"
+                result.error_message = f"SSRF blocked: {initial_safety.reason}"
+            elif not initial_safety.resolved_ips:
+                result.status = "blocked"
+                result.final_url = current_url
+                result.error_message = "SSRF blocked: safety check did not provide a resolved IP"
+            elif httpx.URL(current_url).userinfo:
+                result.status = "blocked"
+                result.final_url = current_url
+                result.error_message = "URLs containing embedded credentials are not allowed"
             else:
                 headers = {"User-Agent": self.user_agent}
 
@@ -260,22 +308,24 @@ class BrokenLinkChecker:
                     headers=headers,
                 ) as client:
                     while redirect_count < self.max_redirects:
-                        response = client.get(current_url)
+                        request, request_error = _prepare_pinned_request(client, current_url)
+                        if request is None:
+                            result.status = "blocked"
+                            result.final_url = current_url
+                            result.error_message = request_error
+                            break
+
+                        response = client.send(request, follow_redirects=False)
                         result.status_code = response.status_code
 
                         if 300 <= response.status_code < 400:
-                            # Validate each redirect target before the next request.
                             location = response.headers.get("Location", "")
                             if location:
                                 current_url = urljoin(current_url, location)
                                 redirect_chain.append(current_url)
                                 redirect_count += 1
-                                safety = check_url_safe(current_url)
-                                if not safety.safe:
-                                    result.status = "blocked"
-                                    result.final_url = current_url
-                                    result.error_message = f"SSRF blocked: {safety.reason}"
-                                    break
+                                # The next loop validates the destination and pins its IP
+                                # before another request can be made.
                                 continue
                             else:
                                 result.status = "error"

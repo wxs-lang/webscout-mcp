@@ -149,6 +149,35 @@ class TestBrokenLinkChecker:
         result = checker.check_link("https://other.com/page", base_url="https://example.com")
         assert result.link_type == "external"
 
+    def test_request_uses_resolved_public_ip_and_preserves_host_and_sni(self):
+        checker = BrokenLinkChecker()
+        origin_url = "https://public.example/path?q=1"
+        response = MagicMock()
+        response.status_code = 200
+        http_client = MagicMock()
+        http_client.build_request.side_effect = lambda method, url, headers: __import__("httpx").Request(
+            method, url, headers=headers
+        )
+        http_client.send.return_value = response
+        client_factory = MagicMock()
+        client_factory.return_value.__enter__.return_value = http_client
+
+        with (
+            patch("webscout_mcp.broken_link_checker.check_url_safe") as safety_check,
+            patch("httpx.Client", client_factory),
+        ):
+            safety_check.return_value = SimpleNamespace(
+                safe=True, reason="ok", resolved_ips=["93.184.216.34", "2606:2800:220:1:248:1893:25c8:1946"]
+            )
+            result = checker.check_link(origin_url)
+
+        assert result.status == "ok"
+        request = http_client.send.call_args.args[0]
+        assert str(request.url) == "https://93.184.216.34/path?q=1"
+        assert request.headers["host"] == "public.example"
+        assert request.extensions["sni_hostname"] == "public.example"
+        http_client.send.assert_called_once_with(request, follow_redirects=False)
+
     def test_private_network_url_is_blocked_before_request(self):
         checker = BrokenLinkChecker()
 
@@ -169,7 +198,10 @@ class TestBrokenLinkChecker:
         response.status_code = 302
         response.headers = {"Location": private_url}
         http_client = MagicMock()
-        http_client.get.return_value = response
+        http_client.build_request.side_effect = lambda method, url, headers: __import__("httpx").Request(
+            method, url, headers=headers
+        )
+        http_client.send.return_value = response
         client_factory = MagicMock()
         client_factory.return_value.__enter__.return_value = http_client
 
@@ -178,8 +210,8 @@ class TestBrokenLinkChecker:
             patch("httpx.Client", client_factory),
         ):
             safety_check.side_effect = [
-                SimpleNamespace(safe=True, reason="ok"),
-                SimpleNamespace(safe=False, reason="private address"),
+                SimpleNamespace(safe=True, reason="ok", resolved_ips=["93.184.216.34"]),
+                SimpleNamespace(safe=False, reason="private address", resolved_ips=None),
             ]
             result = checker.check_link(initial_url)
 
@@ -187,7 +219,13 @@ class TestBrokenLinkChecker:
         assert result.final_url == private_url
         assert result.redirect_chain == [initial_url, private_url]
         assert "private address" in result.error_message
-        http_client.get.assert_called_once_with(initial_url)
+        http_client.get.assert_not_called()
+        http_client.send.assert_called_once()
+        request = http_client.send.call_args.args[0]
+        assert str(request.url) == "https://93.184.216.34/redirect"
+        assert request.headers["host"] == "public.example"
+        assert request.extensions["sni_hostname"] == "public.example"
+        assert http_client.send.call_args.kwargs["follow_redirects"] is False
         assert safety_check.call_args_list == [call(initial_url), call(private_url)]
 
     def test_check_page_counts_ssrf_blocked_links(self):
