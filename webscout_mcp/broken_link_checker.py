@@ -375,7 +375,6 @@ class BrokenLinkChecker:
             current_url = url
             redirect_chain = [url]
 
-
             # Validate the initial destination and pin the actual connection before
             # creating/sending any request to it.
             initial_safety = check_url_safe(current_url)
