@@ -183,7 +183,7 @@ class TestBrokenLinkChecker:
         client_factory = MagicMock(return_value=client)
 
         with (
-            patch("webscout_mcp.broken_link_checker.check_url_safe") as safety_check,
+            patch("webscout_mcp.extras.broken_link_checker.check_url_safe") as safety_check,
             patch("httpx.AsyncClient", client_factory),
         ):
             safety_check.return_value = SimpleNamespace(safe=True, reason="ok", resolved_ips=["93.184.216.34"])
@@ -223,7 +223,7 @@ class TestBrokenLinkChecker:
         client_factory = MagicMock(return_value=client)
 
         with (
-            patch("webscout_mcp.broken_link_checker.check_url_safe") as safety_check,
+            patch("webscout_mcp.extras.broken_link_checker.check_url_safe") as safety_check,
             patch("httpx.AsyncClient", client_factory),
         ):
             safety_check.side_effect = [
@@ -256,7 +256,7 @@ class TestBrokenLinkChecker:
         client_factory.return_value.__enter__.return_value = http_client
 
         with (
-            patch("webscout_mcp.broken_link_checker.check_url_safe") as safety_check,
+            patch("webscout_mcp.extras.broken_link_checker.check_url_safe") as safety_check,
             patch("httpx.Client", client_factory),
         ):
             safety_check.return_value = SimpleNamespace(
@@ -291,7 +291,7 @@ class TestBrokenLinkChecker:
         client_factory.return_value.__enter__.return_value = http_client
 
         with (
-            patch("webscout_mcp.broken_link_checker.check_url_safe") as safety_check,
+            patch("webscout_mcp.extras.broken_link_checker.check_url_safe") as safety_check,
             patch("httpx.Client", client_factory),
         ):
             safety_check.side_effect = [
@@ -334,7 +334,7 @@ class TestBrokenLinkChecker:
         client_factory.return_value.__enter__.return_value = http_client
 
         with (
-            patch("webscout_mcp.broken_link_checker.check_url_safe") as safety_check,
+            patch("webscout_mcp.extras.broken_link_checker.check_url_safe") as safety_check,
             patch("httpx.Client", client_factory),
         ):
             safety_check.side_effect = [

@@ -328,6 +328,17 @@ L2 语义自愈（SEMANTIC SELF-HEALING）      ← 未达成，只作研究方�
 
 约束：**顶层模块数不再增加**；新能力一律进现有工具的参数或 extras。
 
+**已执行（2026-10-25）**：实现迁到 `webscout_mcp.extras`，原路径保留 shim 并发出弃用警告。
+
+有一个约束先决条件必须先说清，否则"移出 Core"会被误做成破坏性变更：
+`COMPATIBILITY.md` 把这 11 个工具**冻结到 v2.0.0**，`content_quality` 与 `broken_links` 都在其中。
+所以本次只迁移**实现位置**，不删除工具、不改 schema、不改返回结构 —— MCP 工具面仍是 11 个，
+已有 import 路径仍可用。真正的"瘦身"要等 v2.0.0 才允许动。
+
+同时修掉了 `MODULE_STATUS.md` 的自相矛盾：同一份文档里工具表说这两个是 Experimental，
+模块分类表又说它们是 Beta Enhancement。现在统一为 extras，并注明工具仍可调用。
+
+
 ### 5.4 阶段记账规则（补缺陷 4）
 
 ```

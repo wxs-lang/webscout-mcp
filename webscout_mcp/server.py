@@ -37,9 +37,9 @@ except ImportError:
 
 from .cache import Cache
 from .config import Config
-from .content_quality import ContentQualityAnalyzer
 from .crawler import Crawler
 from .extractor import DataExtractor, ExtractionRule
+from .extras.content_quality import ContentQualityAnalyzer
 from .fetcher import Fetcher
 from .logging_config import get_logger, setup_logging
 from .metadata_extractor import MetadataExtractor
@@ -474,7 +474,7 @@ def create_server(config: Config | None = None) -> MCPServer:
         and returns a report with broken links, redirects, and link statistics.
         """
         try:
-            from .broken_link_checker import BrokenLinkChecker
+            from .extras.broken_link_checker import BrokenLinkChecker
 
             checker = BrokenLinkChecker(timeout=timeout)
 
