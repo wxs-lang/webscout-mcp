@@ -144,6 +144,28 @@ accepted by the recorder, so they cannot leak through this path.
 | 🔴 **VIOLATING** | One or more SLO targets not met | Immediate investigation and remediation |
 | ⚪ **NO_DATA** | Insufficient data to calculate SLO | Run live tests to populate metrics |
 
+### NO_DATA is not the same as VIOLATING
+
+Three states are distinguished, and the third used to be reported as the fourth:
+
+| Observations in the window | Rate reported | Status |
+|---|---|---|
+| none (no reports) | — | `no_data` |
+| none (reports present, every counter zero) | `null` | `no_data` |
+| some, all failed | `0.0%` | `violating` |
+| some, meeting targets | e.g. `100.0%` | `healthy` |
+
+The middle row was the bug. A window full of reports that recorded nothing was
+counted as `healthy`, so a pipeline that never actually ran anything presented a
+green SLO. Worse, when it was counted at all it produced a success rate of
+`0.0%`, which read as a total outage and triggered violations for observations
+that did not exist.
+
+Rates are now `null` rather than `0.0` when there are no observations, and a
+window with reports but no observations is `no_data` with an explicit note. The
+CLI prints `N/A (no data)` and exits 0 for that case: missing data is a gap in
+measurement, not a service failure.
+
 ## SLO Dashboard
 
 The SLO dashboard is generated automatically after every Live Network Test run:

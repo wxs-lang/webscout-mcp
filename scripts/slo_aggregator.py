@@ -80,7 +80,7 @@ def load_live_reports(results_dir: Path) -> list[dict[str, Any]]:
 
     for report_file in sorted(results_dir.glob("**/live_report.json")):
         try:
-            with open(report_file) as f:
+            with open(report_file, encoding="utf-8") as f:
                 report = json.load(f)
                 report["_source_file"] = str(report_file)
                 reports.append(report)
@@ -276,9 +276,15 @@ def aggregate_slo_metrics(reports: list[dict[str, Any]], days: int) -> dict[str,
         for provider, count in report.get("provider_distribution", {}).items():
             provider_counts[provider] = provider_counts.get(provider, 0) + count
 
-    # Calculate rates
-    search_success_rate = (successful_searches / total_searches * 100) if total_searches > 0 else 0.0
-    fetch_success_rate = (successful_fetches / total_fetches * 100) if total_fetches > 0 else 0.0
+    # Calculate rates.
+    #
+    # None means "no observations", which is a different finding from 0.0%,
+    # which means "every observation failed". Collapsing the two made a run
+    # with no data report a violation: total=0 produced rate 0.0 and the gate
+    # read it as a total outage. That inverts the meaning of the metric and
+    # trains people to ignore real violations.
+    search_success_rate = (successful_searches / total_searches * 100) if total_searches > 0 else None
+    fetch_success_rate = (successful_fetches / total_fetches * 100) if total_fetches > 0 else None
     fallback_rate = (fallback_count / total_searches * 100) if total_searches > 0 else 0.0
 
     # Calculate percentiles
@@ -302,28 +308,28 @@ def aggregate_slo_metrics(reports: list[dict[str, Any]], days: int) -> dict[str,
     violations = []
 
     if days == 7:
-        if search_success_rate < SLO_TARGETS["search_success_rate_7d"]:
+        if search_success_rate is not None and search_success_rate < SLO_TARGETS["search_success_rate_7d"]:
             status = "violating"
             violations.append(
                 f"Search success rate {search_success_rate:.1f}% < target {SLO_TARGETS['search_success_rate_7d']}%"
             )
-        if fetch_success_rate < SLO_TARGETS["fetch_success_rate_7d"]:
+        if fetch_success_rate is not None and fetch_success_rate < SLO_TARGETS["fetch_success_rate_7d"]:
             status = "violating"
             violations.append(
                 f"Fetch success rate {fetch_success_rate:.1f}% < target {SLO_TARGETS['fetch_success_rate_7d']}%"
             )
-        if search_p95 > SLO_TARGETS["search_p95_latency_ms"]:
+        if total_searches > 0 and search_p95 > SLO_TARGETS["search_p95_latency_ms"]:
             status = "warning"
             violations.append(
                 f"Search P95 latency {search_p95:.0f}ms > target {SLO_TARGETS['search_p95_latency_ms']}ms"
             )
     elif days == 30:
-        if search_success_rate < SLO_TARGETS["search_success_rate_30d"]:
+        if search_success_rate is not None and search_success_rate < SLO_TARGETS["search_success_rate_30d"]:
             status = "violating"
             violations.append(
                 f"Search success rate {search_success_rate:.1f}% < target {SLO_TARGETS['search_success_rate_30d']}%"
             )
-        if fetch_success_rate < SLO_TARGETS["fetch_success_rate_30d"]:
+        if fetch_success_rate is not None and fetch_success_rate < SLO_TARGETS["fetch_success_rate_30d"]:
             status = "violating"
             violations.append(
                 f"Fetch success rate {fetch_success_rate:.1f}% < target {SLO_TARGETS['fetch_success_rate_30d']}%"
@@ -350,6 +356,18 @@ def aggregate_slo_metrics(reports: list[dict[str, Any]], days: int) -> dict[str,
                 status = "warning"
             violations.append(f"Truncation rate {truncation_rate:.1f}% > target {SLO_TARGETS['truncation_rate_max']}%")
 
+    # A window full of reports that recorded nothing is not "healthy". Treat it
+    # as no_data so a pipeline that never actually ran anything cannot present a
+    # green SLO. This distinguishes three states that were previously smeared
+    # together: no reports, reports with no observations, and reports showing
+    # failures.
+    if total_searches == 0 and total_fetches == 0 and cq_fetches == 0 and status == "healthy":
+        status = "no_data"
+        violations.append(
+            "reports were present but contained no observations "
+            f"({len(recent_reports)} report(s) in the last {days} days)"
+        )
+
     return {
         "period_days": days,
         "data_points": len(recent_reports),
@@ -358,7 +376,7 @@ def aggregate_slo_metrics(reports: list[dict[str, Any]], days: int) -> dict[str,
         "search": {
             "total": total_searches,
             "successful": successful_searches,
-            "success_rate": round(search_success_rate, 2),
+            "success_rate": None if search_success_rate is None else round(search_success_rate, 2),
             "fallback_count": fallback_count,
             "fallback_rate": round(fallback_rate, 2),
             "latency_p50_ms": round(search_p50, 1),
@@ -367,7 +385,7 @@ def aggregate_slo_metrics(reports: list[dict[str, Any]], days: int) -> dict[str,
         "fetch": {
             "total": total_fetches,
             "successful": successful_fetches,
-            "success_rate": round(fetch_success_rate, 2),
+            "success_rate": None if fetch_success_rate is None else round(fetch_success_rate, 2),
             "latency_p50_ms": round(fetch_p50, 1),
             "latency_p95_ms": round(fetch_p95, 1),
         },
@@ -415,12 +433,15 @@ def generate_slo_report(reports: list[dict[str, Any]], output_dir: Path) -> dict
 
     # Write JSON report
     json_path = output_dir / "slo_report.json"
-    with open(json_path, "w") as f:
+    with open(json_path, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2, default=str)
 
     # Write Markdown report
     md_path = output_dir / "SLO_DASHBOARD.md"
-    with open(md_path, "w") as f:
+    # Encoding is explicit: the default is locale-dependent, and this file
+    # contains status glyphs (⚠️, ❌, 📊) that cp936 cannot encode. Without this,
+    # generating the dashboard crashes on Windows with UnicodeEncodeError.
+    with open(md_path, "w", encoding="utf-8") as f:
         f.write("# WebScout MCP - SLO Dashboard\n\n")
         f.write(f"**Generated:** {report['generated_at']}\n\n")
         f.write(f"**Overall Status:** `{report['overall_status'].upper()}`\n\n")
@@ -522,12 +543,18 @@ def main():
     print("=" * 60)
     print("SLO Summary")
     print("=" * 60)
+
+    def _fmt(pct: object) -> str:
+        # None means "no observations in this window", which must not print as
+        # "0.0%" - that reads as a total outage.
+        return "N/A (no data)" if pct is None else f"{pct}%"
+
     print(f"7-Day Status: {report['slo_7d']['status']}")
-    print(f"  Search Success: {report['slo_7d'].get('search', {}).get('success_rate', 'N/A')}%")
-    print(f"  Fetch Success: {report['slo_7d'].get('fetch', {}).get('success_rate', 'N/A')}%")
+    print(f"  Search Success: {_fmt(report['slo_7d'].get('search', {}).get('success_rate'))}")
+    print(f"  Fetch Success:  {_fmt(report['slo_7d'].get('fetch', {}).get('success_rate'))}")
     print(f"30-Day Status: {report['slo_30d']['status']}")
-    print(f"  Search Success: {report['slo_30d'].get('search', {}).get('success_rate', 'N/A')}%")
-    print(f"  Fetch Success: {report['slo_30d'].get('fetch', {}).get('success_rate', 'N/A')}%")
+    print(f"  Search Success: {_fmt(report['slo_30d'].get('search', {}).get('success_rate'))}")
+    print(f"  Fetch Success:  {_fmt(report['slo_30d'].get('fetch', {}).get('success_rate'))}")
     print(f"Overall: {report['overall_status']}")
 
     # Exit with error if SLO is violating (but not if no_data)
