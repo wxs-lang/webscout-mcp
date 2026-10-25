@@ -84,7 +84,11 @@ def run_preflight() -> dict[str, Any]:
     search_count = _search_provider_count(cfg)
 
     browser_backend = Crawl4AIBrowserBackend(cfg)
-    browser_configured = bool(browser_backend.is_available)
+    # Two distinct questions, and preflight is exactly where they must stay
+    # apart: "is a sidecar configured" versus "is it answering". Collapsing them
+    # would report a configured-but-down sidecar as merely unconfigured, hiding
+    # the real problem from whoever reads the report.
+    browser_configured = bool(browser_backend.is_configured)
     sidecar_reachable = False
     if browser_configured:
         sidecar_reachable = _crawl4ai_reachable(getattr(browser_backend, "base_url", ""))

@@ -20,6 +20,8 @@ Scope for v1.2.2 (locked):
 
 from __future__ import annotations
 
+import ipaddress
+import socket
 import time
 from typing import Any
 
@@ -40,6 +42,86 @@ log = get_logger(__name__)
 DEFAULT_TIMEOUT = 30.0
 MAX_RESPONSE_BYTES = 2_000_000  # 2 MB cap on returned content
 
+# Per-address budget for the reachability probe. Kept small: this runs at
+# registration, before any request is served, and a sidecar that is not up
+# should not delay startup.
+_PROBE_CONNECT_TIMEOUT = 0.5
+
+# Address ranges that never host a real sidecar but DO accept connections on
+# hosts running a proxy in TUN/fake-IP mode. FlClash/Clash resolve every name -
+# including reserved ones like *.invalid - into 198.18.0.0/15 and then accept the
+# connection themselves, which would make a naive probe report "reachable" for a
+# sidecar that does not exist.
+#
+# A sidecar is reached by an explicit configured base_url, so localhost and LAN
+# addresses remain valid targets; only the fake-IP ranges are rejected.
+_FAKE_IP_NETWORKS = (
+    ipaddress.ip_network("198.18.0.0/15"),  # RFC 2544 benchmarking, used by fake-IP DNS
+)
+
+
+def _is_fake_ip(addr: str) -> bool:
+    """True when ``addr`` falls in a range that only a proxy would answer on."""
+    try:
+        ip = ipaddress.ip_address(addr)
+    except ValueError:
+        return False
+    return any(ip in net for net in _FAKE_IP_NETWORKS)
+
+
+def _tcp_reachable(base_url: str, timeout: float = _PROBE_CONNECT_TIMEOUT) -> bool:
+    """True when a TCP connection to ``base_url``'s host:port succeeds.
+
+    Bounded by ``timeout`` in total, not per resolved address. ``httpx`` and
+    ``socket.create_connection`` both apply the timeout to each address in turn,
+    so a name resolving to ::1 and 127.0.0.1 can take twice the budget. Here the
+    addresses are walked explicitly with a deadline.
+
+    Addresses inside a fake-IP range are skipped rather than connected: on such a
+    host the proxy answers for any name, so connecting would prove only that the
+    proxy exists (see _FAKE_IP_NETWORKS).
+
+    Any connection that opens counts, whatever the server would answer: a 404 or
+    500 proves the sidecar is running, and this is a liveness check.
+
+    Isolated at module level so tests can monkeypatch it without a socket.
+    """
+    from urllib.parse import urlparse
+
+    parsed = urlparse(base_url)
+    host = parsed.hostname
+    if not host:
+        return False
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+
+    try:
+        infos = socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
+    except OSError:
+        return False
+
+    deadline = time.monotonic() + timeout
+    for family, socktype, proto, _canon, sockaddr in infos:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        if _is_fake_ip(str(sockaddr[0])):
+            continue
+        sock = None
+        try:
+            sock = socket.socket(family, socktype, proto)
+            sock.settimeout(remaining)
+            sock.connect(sockaddr)
+            return True
+        except OSError:
+            continue
+        finally:
+            if sock is not None:
+                try:
+                    sock.close()
+                except OSError:
+                    pass
+    return False
+
 
 class Crawl4AIBrowserBackend(BrowserFetchProvider):
     """Browser fetch backed by a remote Crawl4AI HTTP service."""
@@ -53,11 +135,63 @@ class Crawl4AIBrowserBackend(BrowserFetchProvider):
         self.timeout = float(getattr(config, "crawl4ai_timeout", DEFAULT_TIMEOUT))
         self.enabled = bool(getattr(config, "crawl4ai_enabled", False)) and bool(self.base_url)
         self._client: httpx.AsyncClient | None = None
+        # Cache for the reachability probe. None means "not probed yet".
+        self._reachable: bool | None = None
+
+    @property
+    def is_configured(self) -> bool:
+        """Whether a sidecar is configured. Says nothing about reachability."""
+        return self.enabled
+
+    def probe_reachable(self, timeout: float = 0.5) -> bool:
+        """Ask the sidecar whether it is actually there, once.
+
+        ``is_available`` used to return ``enabled`` while its docstring claimed
+        "configured and reachable". With ``crawl4ai_enabled=true`` and a
+        ``base_url`` pointing at a sidecar that was not running, the backend was
+        still registered and every SPA-shaped page paid a real round trip to a
+        service that did not exist - failing, falling back, and preserving the
+        content, so nothing looked broken while the latency was wasted each
+        time.
+
+        Implemented as a plain TCP connect rather than an HTTP GET, for a
+        measured reason: ``httpx.get(timeout=1.5)`` against an unreachable
+        localhost took 3509ms here, because the timeout applies per resolved
+        address (::1 then 127.0.0.1) and this host silently drops the SYN
+        instead of refusing it. A connect loop with a per-address timeout bounds
+        the whole probe to ``timeout`` regardless of how many addresses the name
+        resolves to.
+
+        Only the connection is checked. Any TCP accept counts as reachable: the
+        sidecar answering with 404 or 500 still proves it is running, and this
+        is a liveness check, not a health check.
+
+        The result is memoised, so at most one probe happens per process and a
+        failure is not retried on every request.
+        """
+        if self._reachable is not None:
+            return self._reachable
+        if not self.enabled:
+            self._reachable = False
+            return False
+
+        self._reachable = _tcp_reachable(self.base_url, timeout)
+        if not self._reachable:
+            log.warning(
+                "Crawl4AI sidecar configured at %s but not reachable; browser escalation disabled for this process",
+                self.base_url,
+            )
+        return self._reachable
 
     @property
     def is_available(self) -> bool:
-        """Whether the sidecar is configured and reachable."""
-        return self.enabled
+        """Whether the sidecar is configured AND actually answering.
+
+        Probes once and memoises. Callers use this to decide whether to register
+        the backend as a BROWSER provider, so returning ``enabled`` alone meant
+        registering a provider that could never succeed.
+        """
+        return self.probe_reachable()
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None:
