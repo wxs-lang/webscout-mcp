@@ -46,22 +46,31 @@ def test_table_threshold_matches_live_constant(table_name, module, attr):
     )
 
 
-def test_low_density_script_ratio_is_still_hardcoded():
-    """Documents a known divergence so it cannot disappear unnoticed.
-
-    fetch_escalation uses a literal ``sr > 0.2`` while recovery declares
-    HIGH_SCRIPT_RATIO = 0.15. Same signal, two bars. The table records 0.2 as
-    LOW_DENSITY_SCRIPT_RATIO; this test pins the literal so that whoever
-    unifies them has to update both places deliberately.
-    """
+def test_low_density_script_ratio_is_a_named_constant():
+    """The 0.2 that used to be a bare literal is now a named threshold."""
+    assert fetch_escalation._LOW_DENSITY_SCRIPT_RATIO == 0.2
     src = inspect.getsource(fetch_escalation.should_escalate_to_browser)
-    assert "sr > 0.2" in src, (
-        "the hardcoded script ratio changed; update LOW_DENSITY_SCRIPT_RATIO in "
-        "recovery_policy and the warning in build_policy_table()"
-    )
+    assert "sr > _LOW_DENSITY_SCRIPT_RATIO" in src
+    assert "sr > 0.2" not in src, "bare literal came back"
     table = _table_by_name()
     assert table["LOW_DENSITY_SCRIPT_RATIO"].value == 0.2
-    assert table["HIGH_SCRIPT_RATIO"].value == 0.15, "the two bars are expected to differ today"
+
+
+def test_the_two_script_ratio_gates_stay_distinct():
+    """Two same-named gates with different bars, guarding different decisions.
+
+    recovery thin_shell: html > 20000, text < 1500, ratio > 0.15 -> AMBIGUOUS,
+    no escalation. escalation low_density: html > 3000, text < 200, ratio > 0.20
+    -> browser escalation. The rules differ in every dimension, so making the
+    numbers equal would change behaviour. If someone does unify them, this test
+    forces it to be deliberate.
+    """
+    assert recovery._HIGH_SCRIPT_RATIO == 0.15
+    assert fetch_escalation._LOW_DENSITY_SCRIPT_RATIO == 0.2
+
+    # The surrounding gates differ too, which is why the ratios may differ.
+    assert recovery._LARGE_HTML_CHARS > fetch_escalation._MIN_HTML_BYTES_FOR_LOW_DENSITY
+    assert recovery._THIN_SHELL_TEXT_CHARS > fetch_escalation._MIN_TEXT_CHARS_FOR_REAL_PAGE
 
 
 # --- Marker sets must equal the live tuples ------------------------------
@@ -165,21 +174,23 @@ def test_every_stage_yields_a_known_reason():
 # --- The structural findings must keep being reported -------------------
 
 
-def test_build_reports_the_known_divergences():
+def test_build_reports_the_two_script_ratio_gates():
+    """Reported as context, so nobody unifies the numbers by accident."""
     table = recovery_policy.build_policy_table()
     joined = " ".join(table.warnings)
-    assert "script_ratio threshold differs" in joined
-    assert "NON_HTML_PREFIXES is defined twice" in joined
+    assert "two distinct script-ratio gates" in joined
+    assert "do not unify blindly" in joined
+
+
+def test_non_html_prefixes_duplication_is_gone():
+    """recovery must import the tuple, not keep a second copy."""
+    assert recovery._NON_HTML_PREFIXES is fetch_escalation._NON_HTML_PREFIXES
 
 
 def test_build_reports_no_unexpected_problems():
     """Only the two documented findings; anything else is a new bug."""
     table = recovery_policy.build_policy_table()
-    unexpected = [
-        w
-        for w in table.warnings
-        if "script_ratio threshold differs" not in w and "NON_HTML_PREFIXES is defined twice" not in w
-    ]
+    unexpected = [w for w in table.warnings if "two distinct script-ratio gates" not in w]
     assert unexpected == [], f"new structural findings: {unexpected}"
 
 
