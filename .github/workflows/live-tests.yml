@@ -15,6 +15,18 @@ concurrency:
   group: live-tests
   cancel-in-progress: false
 
+# The repository default is read-only, so pushing the slo-history branch needs
+# this declared explicitly. Without contents:write the "Append this run to
+# slo-history" step fails with 403 and the rolling window silently never
+# accumulates - the exact failure this workflow change exists to prevent.
+permissions:
+  contents: write
+
+env:
+  # Passed explicitly to the one step that pushes. Keeping the credential out of
+  # the environment of every other step limits what an unrelated failure can leak.
+  SLO_HISTORY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 jobs:
   live-tests:
     name: Live Network Tests
@@ -154,7 +166,21 @@ jobs:
           # "no data yet" / warning states, and exits 1 for SLO violations or
           # code/data errors. A parse failure must turn this job red so we
           # never get a green CI with a silently broken monitoring pipeline.
+          # The aggregator uses exit code 1 for "SLO violating", which is a
+          # verdict, not a crash - and during the baseline accrual period it is
+          # the expected verdict. Distinguish the two: 0 = healthy, 1 = verdict
+          # (surface it, do not fail the job), anything else = real error.
+          set +e
           python scripts/slo_aggregator.py
+          rc=$?
+          set -e
+          if [ "$rc" -ne 0 ] && [ "$rc" -ne 1 ]; then
+            echo "::error::SLO aggregation failed with exit code $rc (not a verdict)"
+            exit "$rc"
+          fi
+          if [ "$rc" -eq 1 ]; then
+            echo "::warning::SLO status is violating (see the dashboard below)"
+          fi
           echo ""
           echo "## SLO Dashboard" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -176,9 +202,11 @@ jobs:
         # The rolling window needs durable history, and artifacts expire and are
         # per-run. A dedicated orphan branch keeps one small JSON per run:
         # committed by CI, never merged, so it does not pollute main.
-        continue-on-error: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        #
+        # Deliberately NOT continue-on-error. A failed push means the baseline
+        # never accumulates, and swallowing that leaves a green job over dead
+        # monitoring - which is precisely what defect 5 in GOAL_REVIEW.md is
+        # about. A permission problem must turn the job red.
         run: |
           set -euo pipefail
           REPORT=live-test-results/live_report.json
@@ -193,7 +221,7 @@ jobs:
           WORK=$(mktemp -d)
           git config --global user.name  "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
+          git config --global url."https://x-access-token:${SLO_HISTORY_TOKEN}@github.com/".insteadOf "https://github.com/"
 
           if git ls-remote --exit-code --heads origin slo-history >/dev/null 2>&1; then
             git clone --depth=1 --branch slo-history "https://github.com/${GITHUB_REPOSITORY}.git" "$WORK"
@@ -219,7 +247,23 @@ jobs:
             exit 0
           fi
           git commit -m "slo-history: ${RUNKEY}"
-          git push origin slo-history
+
+          # The push is the one part that can fail for permission reasons, and a
+          # silently swallowed 403 is the worst outcome: the job stays green
+          # while the rolling window never accumulates. Report it loudly.
+          # (It did exactly this on run 40167391860: commit succeeded, push got
+          # 403, step still showed success.)
+          set +e
+          git push origin slo-history 2>&1 | tee /tmp/push.log
+          push_rc=${PIPESTATUS[0]}
+          set -e
+          if [ "$push_rc" -ne 0 ]; then
+            echo "::error::Failed to push slo-history (exit $push_rc). The rolling SLO window will not accumulate."
+            if grep -q "403" /tmp/push.log; then
+              echo "::error::403 denied - the workflow needs 'permissions: contents: write'."
+            fi
+            exit "$push_rc"
+          fi
           echo "Recorded runs/${RUNKEY}/live_report.json ($(ls -1d runs/*/ | wc -l) run(s) total)"
 
       # Note: per-run reports are also uploaded as artifacts (90 days), but the
