@@ -56,8 +56,18 @@ _CONTINUATION: dict[str, int] = defaultdict(int)
 # Crawl lifecycle counters (Stable hardening Phase 1). Scalars only.
 _CRAWL: dict[str, int] = defaultdict(int)
 _CRAWL_BLOCKED: dict[str, int] = defaultdict(int)  # robots | ssrf
+# Content-usability counters (GOAL G1/G4). Scalars only — never content.
+_CONTENT_QUALITY: dict[str, int] = defaultdict(int)
+_CONTENT_RETURNED_CHARS: list[int] = []
 
 _MAX_LATENCIES = 500  # ring buffer per backend
+_MAX_CONTENT_SAMPLES = 500  # ring buffer for returned-content sizes
+
+# A fetched page returning fewer than this many characters is not usable as
+# evidence for an agent. 200 is deliberately low: it counts navigation-only
+# or captcha-only bodies as thin, while keeping short legitimate snippets
+# (a one-line answer, a stock quote) out of the thin bucket.
+THIN_CONTENT_CHARS = 200
 
 
 def safe_host(url: str) -> str:
@@ -185,6 +195,74 @@ def record_crawl_blocked(kind: str) -> None:
     log.info("crawl_blocked", extra={"kind": kind})
 
 
+def record_content_quality(
+    *,
+    returned_chars: int,
+    pre_limit_chars: int | None = None,
+    truncated: bool = False,
+    omitted_chars: int = 0,
+    backend: str = "",
+    status: str = "",
+) -> None:
+    """Record the usability of one served fetch result (GOAL G1/G4).
+
+    This is the instrument that makes "did we actually get usable content?"
+    observable. Before it existed, the counters in this module could only say
+    "the request did not error" — a 200 response whose body was a captcha or a
+    navigation shell counted as a success. The v1.9.0 A/B run measured a
+    7.3pp content-usability gap against a bare baseline while every success
+    metric stayed green; this counter is what would have caught it.
+
+    Every argument is a scalar. Content, URLs, headers and credentials are
+    never accepted here, so they can never leak through this path.
+    """
+    chars = max(0, int(returned_chars or 0))
+    with _LOCK:
+        _CONTENT_QUALITY["fetches"] += 1
+        if status:
+            _CONTENT_QUALITY[f"status_{status}"] += 1
+        if backend:
+            _CONTENT_QUALITY[f"backend_{backend}"] += 1
+
+        if chars == 0:
+            _CONTENT_QUALITY["empty"] += 1
+        elif chars < THIN_CONTENT_CHARS:
+            _CONTENT_QUALITY["thin"] += 1
+        else:
+            _CONTENT_QUALITY["usable"] += 1
+
+        if truncated:
+            _CONTENT_QUALITY["truncated_by_output_limit"] += 1
+        _CONTENT_QUALITY["chars_returned_total"] += chars
+        if pre_limit_chars is not None:
+            _CONTENT_QUALITY["pre_limit_chars_total"] += max(0, int(pre_limit_chars))
+        if omitted_chars:
+            _CONTENT_QUALITY["chars_omitted_total"] += max(0, int(omitted_chars))
+
+        _CONTENT_RETURNED_CHARS.append(chars)
+        if len(_CONTENT_RETURNED_CHARS) > _MAX_CONTENT_SAMPLES:
+            del _CONTENT_RETURNED_CHARS[:-_MAX_CONTENT_SAMPLES]
+
+    log.info(
+        "content_quality",
+        extra={
+            "returned_chars": chars,
+            "pre_limit_chars": pre_limit_chars,
+            "truncated_by_output_limit": bool(truncated),
+            "omitted_chars": omitted_chars,
+            "backend": backend,
+            "status": status,
+        },
+    )
+
+
+def _rate(numerator: int, denominator: int) -> float:
+    """Ratio in [0,1]; 0.0 when there is nothing to divide by."""
+    if denominator <= 0:
+        return 0.0
+    return round(numerator / denominator, 4)
+
+
 def _pct(values: list[float], p: float) -> float:
     if not values:
         return 0.0
@@ -209,6 +287,28 @@ def get_observability_summary() -> dict[str, Any]:
                 "p95_ms": round(_pct(lat, 0.95), 2),
                 "samples": len(lat),
             }
+        cq = dict(_CONTENT_QUALITY)
+        fetches = cq.get("fetches", 0)
+        returned = list(_CONTENT_RETURNED_CHARS)
+        content_quality = {
+            "fetches": fetches,
+            "usable": cq.get("usable", 0),
+            "thin": cq.get("thin", 0),
+            "empty": cq.get("empty", 0),
+            "usable_rate": _rate(cq.get("usable", 0), fetches),
+            "thin_rate": _rate(cq.get("thin", 0), fetches),
+            "empty_rate": _rate(cq.get("empty", 0), fetches),
+            "truncated_by_output_limit": cq.get("truncated_by_output_limit", 0),
+            "truncation_rate": _rate(cq.get("truncated_by_output_limit", 0), fetches),
+            "thin_threshold_chars": THIN_CONTENT_CHARS,
+            "chars_returned_total": cq.get("chars_returned_total", 0),
+            "chars_omitted_total": cq.get("chars_omitted_total", 0),
+            "returned_p50": int(_pct([float(x) for x in returned], 0.50)),
+            "returned_p95": int(_pct([float(x) for x in returned], 0.95)),
+            "samples": len(returned),
+            "by_status": {k[len("status_") :]: v for k, v in cq.items() if k.startswith("status_")},
+            "by_backend": {k[len("backend_") :]: v for k, v in cq.items() if k.startswith("backend_")},
+        }
         return {
             "started_at": _STARTED_AT,
             "backends": backends,
@@ -220,6 +320,7 @@ def get_observability_summary() -> dict[str, Any]:
             "continuation": dict(_CONTINUATION),
             "crawl": dict(_CRAWL),
             "crawl_blocked": dict(_CRAWL_BLOCKED),
+            "content_quality": content_quality,
         }
 
 
@@ -236,4 +337,6 @@ def reset_for_tests() -> None:
         _CONTINUATION.clear()
         _CRAWL.clear()
         _CRAWL_BLOCKED.clear()
+        _CONTENT_QUALITY.clear()
+        _CONTENT_RETURNED_CHARS.clear()
         _STARTED_AT = datetime.now(timezone.utc).isoformat()
