@@ -95,17 +95,19 @@ These modules are the foundation of webscout-mcp. They are well-tested, used in 
 |--------|-------------|----------------|
 | `metadata_extractor.py` | Page metadata extraction | ✅ Yes |
 | `rss_parser.py` | RSS/Atom feed parsing | ✅ Yes |
-| `content_quality.py` | Content quality analysis | ✅ Yes |
-| `broken_link_checker.py` | Broken link checking | ✅ Yes |
 | `search_health.py` | Search health monitoring | ✅ Yes |
 | `serpapi_backend.py` | SerpAPI search backend | 📦 Library |
 
 ### 🧪 Experimental Modules (Extras)
 
-These modules are available in `webscout_mcp.extras` and are not part of the core MCP tools.
+These modules live in `webscout_mcp.extras` and are not part of the core web-research path.
+Note that `content_quality` and `broken_links` are still exposed as MCP tools - they are
+frozen in COMPATIBILITY.md and remain callable. Only their implementation moved out of Core.
 
 | Module | Description |
 |--------|-------------|
+| `extras/content_quality.py` | Content quality analysis (MCP tool `content_quality`) |
+| `extras/broken_link_checker.py` | Broken link checking (MCP tool `broken_links`) |
 | `extras/ai_optimizer.py` | AI-powered query optimization |
 | `extras/rag_optimizer.py` | RAG pipeline optimization |
 | `extras/knowledge_graph.py` | Knowledge graph construction |

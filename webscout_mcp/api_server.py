@@ -270,7 +270,7 @@ def create_app(
     async def broken_links(request: BrokenLinkRequest):
         """Check for broken links on a page."""
         try:
-            from .broken_link_checker import BrokenLinkChecker
+            from .extras.broken_link_checker import BrokenLinkChecker
 
             checker = BrokenLinkChecker()
             if request.html:

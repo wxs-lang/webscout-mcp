@@ -65,7 +65,9 @@ def extract_tools_from_server(server_path: Path) -> list[MCPTool]:
     This avoids importing the MCP server (which is slow due to mcp library
     import time ~14s) and instead parses the source code directly.
     """
-    with open(server_path, "r") as f:
+    # encoding is explicit: the default is locale-dependent (cp936 on Windows),
+    # which makes this script fail on a file it reads fine on Linux CI.
+    with open(server_path, "r", encoding="utf-8") as f:
         source = f.read()
 
     tree = ast.parse(source)
@@ -270,17 +272,19 @@ These modules are the foundation of webscout-mcp. They are well-tested, used in 
 |--------|-------------|----------------|
 | `metadata_extractor.py` | Page metadata extraction | ✅ Yes |
 | `rss_parser.py` | RSS/Atom feed parsing | ✅ Yes |
-| `content_quality.py` | Content quality analysis | ✅ Yes |
-| `broken_link_checker.py` | Broken link checking | ✅ Yes |
 | `search_health.py` | Search health monitoring | ✅ Yes |
 | `serpapi_backend.py` | SerpAPI search backend | 📦 Library |
 
 ### 🧪 Experimental Modules (Extras)
 
-These modules are available in `webscout_mcp.extras` and are not part of the core MCP tools.
+These modules live in `webscout_mcp.extras` and are not part of the core web-research path.
+Note that `content_quality` and `broken_links` are still exposed as MCP tools - they are
+frozen in COMPATIBILITY.md and remain callable. Only their implementation moved out of Core.
 
 | Module | Description |
 |--------|-------------|
+| `extras/content_quality.py` | Content quality analysis (MCP tool `content_quality`) |
+| `extras/broken_link_checker.py` | Broken link checking (MCP tool `broken_links`) |
 | `extras/ai_optimizer.py` | AI-powered query optimization |
 | `extras/rag_optimizer.py` | RAG pipeline optimization |
 | `extras/knowledge_graph.py` | Knowledge graph construction |
