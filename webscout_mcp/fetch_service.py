@@ -23,6 +23,7 @@ from .fetch_provider import FetchProvider, FetchRequest, FetchResponse
 from .logging_config import get_logger
 from .normalization import fetch_response_to_web_result
 from .observability import (
+    record_content_quality,
     record_continuation,
     record_escalation,
     record_fetch_attempt,
@@ -225,7 +226,21 @@ class FetchService:
             primary_name = "none"
             route_trace.append({"capability": "fetch", "provider": "none", "result": "failure"})
         else:
-            primary = await primary_provider.fetch(request)
+            try:
+                primary = await primary_provider.fetch(request)
+            except BaseException:
+                # A provider that raises must still produce a content-quality
+                # data point, otherwise failures silently leave the denominator
+                # and the usable-rate looks better than reality.
+                try:
+                    record_content_quality(
+                        returned_chars=0,
+                        backend=primary_name or "",
+                        status="failed",
+                    )
+                except Exception:  # pragma: no cover - telemetry is best-effort
+                    log.debug("content quality telemetry failed", exc_info=True)
+                raise
             route_trace.append(
                 {
                     "capability": "fetch",
@@ -472,6 +487,30 @@ class FetchService:
             )
         except Exception:  # pragma: no cover - telemetry must never break production
             log.debug("fetch decision telemetry failed", exc_info=True)
+
+        # 7) Content-usability telemetry (GOAL G1/G4, best-effort).
+        # Records what the caller will actually receive, not what the network
+        # returned: a browser-recovered or fallback-recovered body supersedes
+        # the primary response, so the served content length is taken from the
+        # same source that ``legacy_out`` uses when building the response.
+        try:
+            # Mirror legacy_out's precedence: a recovered body (browser or
+            # alternate FETCH provider) supersedes the fast-HTTP body.
+            _recovered = (browser_attempted and browser_success) or (fallback_used and bool(fallback_provider_name))
+            _served_content = (final.content if _recovered else primary.content) or ""
+            _served_meta = final.metadata or {}
+            _truncated = bool(_served_meta.get("truncated_by_output_limit", False))
+            _pre_limit = _served_meta.get("pre_limit_content_chars")
+            record_content_quality(
+                returned_chars=len(_served_content),
+                pre_limit_chars=int(_pre_limit) if _pre_limit is not None else None,
+                truncated=_truncated,
+                omitted_chars=int(_served_meta.get("omitted_chars") or 0),
+                backend=web_result.backend or primary_name or "",
+                status=web_result.status.value if web_result and web_result.status else "",
+            )
+        except Exception:  # pragma: no cover - telemetry must never break production
+            log.debug("content quality telemetry failed", exc_info=True)
 
         return FetchRouteResult(
             primary_response=primary,

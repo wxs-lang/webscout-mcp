@@ -15,6 +15,26 @@ SLOs are measured continuously via Live Network Tests and aggregated into
 | **MCP E2E Success Rate** | ≥ 99.5% | - | MCP protocol end-to-end test success rate |
 | **Search P95 Latency** | ≤ 5000ms | - | 95th percentile search response time |
 | **Fetch P95 Latency** | ≤ 10000ms | - | 95th percentile fetch response time |
+| **Usable Content Rate** | ≥ 85.0% | ≥ 85.0% | Percentage of successful fetches whose returned content is at least `THIN_CONTENT_CHARS` (200) characters |
+| **Thin Content Rate** | ≤ 10.0% | ≤ 12.0% | Percentage of fetches returning non-zero content below the thin threshold |
+| **Truncation Rate** | ≤ 25.0% | - | Percentage of fetches where WebScout's own output limit cut the content |
+
+### Why quality metrics exist
+
+Success-rate and latency targets answer "did the request finish", not "did we
+get anything worth reading". A 200 response whose body is a captcha, a login
+wall, or a JavaScript navigation shell counts as a success under the original
+targets, so a content regression is invisible to them.
+
+This is not hypothetical. The v1.9.0 A/B run (2026-10-23, 52 cases) measured a
+content-usability deficit of **7.3 percentage points** against a bare baseline
+while every success-rate metric stayed green. The three quality targets above
+were added so that class of regression shows up in the SLO report instead of
+requiring a hand-built A/B harness.
+
+`THIN_CONTENT_CHARS` is deliberately low (200). It counts captcha-only and
+navigation-only bodies as thin while leaving short legitimate answers out of
+the thin bucket.
 
 ## Metrics Collected
 
@@ -34,6 +54,30 @@ SLOs are measured continuously via Live Network Tests and aggregated into
 - Success rate (%)
 - Latency P50 (ms)
 - Latency P95 (ms)
+
+### Content Quality Metrics
+
+Emitted by `observability.record_content_quality()` and exposed under
+`get_observability_summary()["content_quality"]`:
+
+| Field | Meaning |
+|-------|---------|
+| `fetches` | Total served fetch results (the denominator) |
+| `usable` / `usable_rate` | Returned ≥ 200 chars |
+| `thin` / `thin_rate` | Returned 1–199 chars (captcha, nav shell, login wall) |
+| `empty` / `empty_rate` | Returned 0 chars |
+| `truncated_by_output_limit` / `truncation_rate` | WebScout's own `max_chars` cut a larger body |
+| `chars_returned_total` | Sum of returned characters |
+| `chars_omitted_total` | Sum of characters available but not served |
+| `returned_p50` / `returned_p95` | Percentiles of returned content length |
+| `by_backend` / `by_status` | Breakdown by provider and WebResult status |
+
+A provider that raises an exception is recorded as `status="failed"` with zero
+characters before the exception propagates, so failures stay in the denominator
+and cannot inflate the usable rate.
+
+All fields are scalars. Page content, URLs, headers and credentials are never
+accepted by the recorder, so they cannot leak through this path.
 
 ### Error Taxonomy
 - 403 Forbidden
