@@ -38,7 +38,38 @@ SLO_TARGETS = {
     "mcp_e2e_success_rate_7d": float(os.getenv("SLO_MCP_SUCCESS_7D", "99.5")),
     "search_p95_latency_ms": float(os.getenv("SLO_SEARCH_P95", "5000")),
     "fetch_p95_latency_ms": float(os.getenv("SLO_FETCH_P95", "10000")),
+    # Content-quality targets (GOAL G1/G5). Percentages, higher is better for
+    # usable content; lower is better for thin and truncation.
+    "usable_content_rate_min": float(os.getenv("SLO_USABLE_CONTENT_RATE", "85.0")),
+    "thin_content_rate_max": float(os.getenv("SLO_THIN_CONTENT_RATE", "10.0")),
+    "truncation_rate_max": float(os.getenv("SLO_TRUNCATION_RATE", "25.0")),
 }
+
+
+def _extract_content_quality(report: dict[str, Any]) -> dict[str, Any] | None:
+    """Pull the content-quality block out of a report, if the run recorded one.
+
+    Accepts both a snapshot written by ``observability.write_snapshot`` (nested
+    under ``content_quality``) and a flat layout. Returns None when the report
+    predates content-quality instrumentation, so old reports keep contributing
+    their success/latency numbers without being counted as zero-quality.
+    """
+    block = report.get("content_quality")
+    if not isinstance(block, dict) or not block:
+        return None
+    try:
+        fetches = int(block.get("fetches", 0) or 0)
+    except (TypeError, ValueError):
+        return None
+    if fetches <= 0:
+        return None
+    return {
+        "fetches": fetches,
+        "usable": int(block.get("usable", 0) or 0),
+        "thin": int(block.get("thin", 0) or 0),
+        "empty": int(block.get("empty", 0) or 0),
+        "truncated": int(block.get("truncated_by_output_limit", 0) or 0),
+    }
 
 
 def load_live_reports(results_dir: Path) -> list[dict[str, Any]]:
@@ -194,8 +225,25 @@ def aggregate_slo_metrics(reports: list[dict[str, Any]], days: int) -> dict[str,
     fallback_count = 0
     error_types: dict[str, int] = {}
     provider_counts: dict[str, int] = {}
+    cq_fetches = 0
+    cq_usable = 0
+    cq_thin = 0
+    cq_empty = 0
+    cq_truncated = 0
+    cq_reports = 0
 
     for report in recent_reports:
+        # Content quality (GOAL G1/G5). Absent on reports that predate the
+        # instrumentation; those are skipped rather than counted as zero.
+        cq = _extract_content_quality(report)
+        if cq is not None:
+            cq_reports += 1
+            cq_fetches += cq["fetches"]
+            cq_usable += cq["usable"]
+            cq_thin += cq["thin"]
+            cq_empty += cq["empty"]
+            cq_truncated += cq["truncated"]
+
         # Search metrics
         search_stats = _extract_stats(report.get("search_stats", report.get("search", {})))
         total_searches += search_stats["total"]
@@ -239,6 +287,16 @@ def aggregate_slo_metrics(reports: list[dict[str, Any]], days: int) -> dict[str,
     fetch_p50 = calculate_percentile(fetch_latencies, 50)
     fetch_p95 = calculate_percentile(fetch_latencies, 95)
 
+    # Content quality rates. None (not 0.0) when no report carried the block:
+    # "no data" and "zero usable content" are very different findings.
+    if cq_fetches > 0:
+        usable_content_rate = cq_usable / cq_fetches * 100
+        thin_content_rate = cq_thin / cq_fetches * 100
+        empty_content_rate = cq_empty / cq_fetches * 100
+        truncation_rate = cq_truncated / cq_fetches * 100
+    else:
+        usable_content_rate = thin_content_rate = empty_content_rate = truncation_rate = None
+
     # Determine SLO status
     status = "healthy"
     violations = []
@@ -271,6 +329,27 @@ def aggregate_slo_metrics(reports: list[dict[str, Any]], days: int) -> dict[str,
                 f"Fetch success rate {fetch_success_rate:.1f}% < target {SLO_TARGETS['fetch_success_rate_30d']}%"
             )
 
+    # Content-quality gates. Usable content is a hard violation: the whole
+    # point of the layer is returning content worth reading. Thin content and
+    # truncation are warnings — both can spike for reasons the layer controls
+    # only partially (a site adding a captcha, a legitimately huge page).
+    if usable_content_rate is not None:
+        if usable_content_rate < SLO_TARGETS["usable_content_rate_min"]:
+            status = "violating"
+            violations.append(
+                f"Usable content rate {usable_content_rate:.1f}% < target {SLO_TARGETS['usable_content_rate_min']}%"
+            )
+        if thin_content_rate > SLO_TARGETS["thin_content_rate_max"]:
+            if status == "healthy":
+                status = "warning"
+            violations.append(
+                f"Thin content rate {thin_content_rate:.1f}% > target {SLO_TARGETS['thin_content_rate_max']}%"
+            )
+        if truncation_rate > SLO_TARGETS["truncation_rate_max"]:
+            if status == "healthy":
+                status = "warning"
+            violations.append(f"Truncation rate {truncation_rate:.1f}% > target {SLO_TARGETS['truncation_rate_max']}%")
+
     return {
         "period_days": days,
         "data_points": len(recent_reports),
@@ -291,6 +370,19 @@ def aggregate_slo_metrics(reports: list[dict[str, Any]], days: int) -> dict[str,
             "success_rate": round(fetch_success_rate, 2),
             "latency_p50_ms": round(fetch_p50, 1),
             "latency_p95_ms": round(fetch_p95, 1),
+        },
+        "content_quality": {
+            "reports_with_data": cq_reports,
+            "fetches": cq_fetches,
+            "usable": cq_usable,
+            "thin": cq_thin,
+            "empty": cq_empty,
+            "truncated_by_output_limit": cq_truncated,
+            "usable_rate": None if usable_content_rate is None else round(usable_content_rate, 2),
+            "thin_rate": None if thin_content_rate is None else round(thin_content_rate, 2),
+            "empty_rate": None if empty_content_rate is None else round(empty_content_rate, 2),
+            "truncation_rate": None if truncation_rate is None else round(truncation_rate, 2),
+            "status": "no_data" if usable_content_rate is None else "measured",
         },
         "error_types": error_types,
         "provider_distribution": provider_counts,

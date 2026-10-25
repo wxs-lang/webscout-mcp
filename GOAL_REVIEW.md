@@ -254,9 +254,10 @@ Phase 4 已完成（PR #54，2026-09-20）
 
 若当初把脚手架入库，今天只需一条命令就能给出 G1 验收结论。正因如此，本次的修复方向不是"重建那份脚手架再复测"（重建出的口径与当初不可能一致，用它去验收一个已经过去的结果在逻辑上不成立），而是**把可测性直接做进产品**：
 
-- `observability.record_content_quality()` 让"内容可用率"成为**线上持续指标**
+- `observability.record_content_quality()` 让"内容可用率"成为**可度量指标**
+- `observability.write_snapshot()` 让它能落地成报告文件（此前计数器只活在进程内存里，进程退出即消失，**没有任何进程外读者**）
+- `scripts/slo_aggregator.py` 已读取该字段，纳入 7d/30d 的 SLO 判定，并区分 `violating` / `warning` / `no_data`
 - `docs/SLO.md` 新增 Usable Content Rate / Thin Content Rate / Truncation Rate 三条目标
-- 从此这类退化在 SLO 报告里可见，不再依赖任何一次性脚本
 
 **必须升级（新增硬约束）**：
 
@@ -288,13 +289,14 @@ Phase 4 已完成（PR #54，2026-09-20）
 | G2 | 内容充分性可判定 | `content_sufficiency` 字段存在且被 recovery 消费 | `test_content_sufficiency.py` |
 | G3 | 端到端 P95 不劣于基线 | ≤ 11625ms | A/B 评测（需自建可复现脚手架） |
 | G4 | 搜索延迟劣化受控 | ≤ 基线 +20% | A/B 评测（同上） |
-| G5 | 内容质量可观测 | 三个质量指标出现在 SLO 报告 | `docs/SLO.md` + `test_content_quality_metrics.py` |
+| G5 | 内容质量可观测 | 三个质量指标出现在 SLO 报告 | `docs/SLO.md` + `scripts/slo_aggregator.py` + 三个测试套件 |
 
 **G 组的现状（2026-10-25 更新）**：
 
-- **G5 已达成** —— `observability.record_content_quality()` 已上线，`docs/SLO.md` 已新增 Usable Content Rate / Thin Content Rate / Truncation Rate 三条目标
-- **G1 有了度量手段，但基线值仍不可复核** —— 原 A/B 脚手架从未入库（缺陷 5），−7.3pp 这个数字无法重跑验证。现在能做的是让新指标持续跑，用**未来 7 天的线上 `usable_rate`** 建立可信基线，而不是继续引用一个不可复现的历史数字
+- **G5 已达成（补完两处断链后）** —— 首版只做到"进程内可读"：`get_observability_summary()` 全仓库没有任何生产调用者，计数器随进程退出消失；`live_report.json` 只被聚合器读取、没有任何脚本生成。补上 `write_snapshot()` / `read_snapshot()` 并让 `slo_aggregator.py` 消费该字段之后，指标才真正走得到报告
+- **G1 有了度量手段，但基线值仍不可复核** —— 原 A/B 脚手架从未入库（缺陷 5），−7.3pp 这个数字无法重跑验证。现在能做的是让新指标在本仓库的 live/稳定性运行里持续累积，用**后续 7 天的 `usable_rate`** 建立可信基线，而不是继续引用一个不可复现的历史数字
 - **G3/G4 暂不可验收** —— 需要先自建一个**入库的**可复现 A/B 脚手架（缺陷 5 的硬约束）
+- **仍需人工接线** —— 目前没有任何脚本在运行结束时自动调用 `write_snapshot()`。要么在 CI 的 live 测试步骤里显式落盘，要么加进程退出钩子。这条不补，指标依然要靠人手动导出
 
 
 ### 5.2 "自愈"分层承诺（补缺陷 2）
