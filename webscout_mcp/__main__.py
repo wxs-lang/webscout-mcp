@@ -42,10 +42,15 @@ def _print_json(data: Any) -> None:
 
 
 async def _cmd_serve(args: argparse.Namespace) -> None:
+    from .observability import enable_snapshot_on_exit
     from .server import create_server
 
     config = _build_config(args)
     config.ensure_dirs()
+    # A long-lived server keeps its counters in memory, so the only chance to
+    # write them out is shutdown. Without this, a whole session's content
+    # quality numbers are lost and the SLO aggregator never sees them.
+    enable_snapshot_on_exit(config.cache_dir / "live_report.json")
     mcp = create_server(config)
     log = get_logger("cli")
     log.info(f"starting MCP server, transport={args.transport}")
@@ -228,6 +233,37 @@ async def _cmd_export(args: argparse.Namespace) -> None:
             await fetcher.close()
 
 
+async def _cmd_metrics(args: argparse.Namespace) -> None:
+    """Observability counter commands.
+
+    ``metrics snapshot`` exists so a CI step can persist counters at a known
+    point instead of hoping a process exits while a hook is still installed.
+    It always writes, even with no data, because an explicitly requested file
+    that silently fails to appear is harder to debug than a zeroed one.
+    """
+    from .observability import get_observability_summary, has_data, write_snapshot
+
+    command = getattr(args, "metrics_command", None)
+    if command == "snapshot":
+        out = args.out
+        snapshot = write_snapshot(out)
+        cq = snapshot.get("content_quality", {})
+        _print_json(
+            {
+                "written": out,
+                "has_data": has_data(),
+                "content_quality": {
+                    "fetches": cq.get("fetches", 0),
+                    "usable_rate": cq.get("usable_rate", 0.0),
+                    "thin_rate": cq.get("thin_rate", 0.0),
+                    "truncation_rate": cq.get("truncation_rate", 0.0),
+                },
+            }
+        )
+    else:
+        _print_json(get_observability_summary())
+
+
 async def _cmd_cache(args: argparse.Namespace) -> None:
     """Cache management commands."""
     from .cache import Cache
@@ -318,6 +354,20 @@ def build_parser() -> argparse.ArgumentParser:
     cache_stats_parser.set_defaults(func=_cmd_cache)
     cache_clear_parser = cache_subparsers.add_parser("clear", help="Clear the cache")
     cache_clear_parser.set_defaults(func=_cmd_cache)
+
+    metrics_parser = subparsers.add_parser("metrics", help="Inspect or persist in-process observability counters")
+    metrics_subparsers = metrics_parser.add_subparsers(dest="metrics_command", help="Metrics commands")
+    metrics_show_parser = metrics_subparsers.add_parser("show", help="Print the current counters as JSON")
+    metrics_show_parser.set_defaults(func=_cmd_metrics)
+    metrics_snapshot_parser = metrics_subparsers.add_parser(
+        "snapshot", help="Write the current counters to a live_report.json file"
+    )
+    metrics_snapshot_parser.add_argument(
+        "--out",
+        required=True,
+        help="Destination path, e.g. live-test-results/live_report.json",
+    )
+    metrics_snapshot_parser.set_defaults(func=_cmd_metrics)
 
     jev_parser = subparsers.add_parser("jev-report", help="Read-only report of Jev shadow decisions")
     jev_group = jev_parser.add_mutually_exclusive_group(required=False)

@@ -132,6 +132,27 @@ python scripts/slo_aggregator.py
 # - slo-reports/SLO_DASHBOARD.md (human-readable)
 ```
 
+### Where the aggregator gets its data
+
+The aggregator only reads `live_report.json` files from disk. The content-quality
+counters live in process memory, so a run has to write a snapshot or its numbers
+never reach a report. Two paths do that:
+
+```bash
+# 1. Explicit, deterministic — what the CI live job uses
+python -m webscout_mcp metrics snapshot --out live-test-results/live_report.json
+
+# 2. Automatic on shutdown — the MCP server arms this itself
+webscout-mcp serve   # writes <cache_dir>/live_report.json on exit
+
+# Inspect counters without writing anything
+python -m webscout_mcp metrics show
+```
+
+The exit hook is opt-in: library use and the test suite never write snapshots.
+A run that recorded nothing produces no file at all, rather than an all-zeroes
+snapshot that would be read as "measured, 0% usable".
+
 ### Aggregation Logic
 1. Load all `live_report.json` files from `live-test-results/`
 2. Filter by date (7-day and 30-day rolling windows)
