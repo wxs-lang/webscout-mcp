@@ -76,16 +76,39 @@ jobs:
             echo "No report generated (tests may have failed)" >> $GITHUB_STEP_SUMMARY
           fi
 
-      - name: Persist observability counters
+      - name: Check the live report carries quality data
         if: always()
         run: |
-          # The content-quality counters live in process memory, so a run has to
-          # leave a snapshot on disk or the SLO aggregator below sees no quality
-          # data at all. This step makes the write explicit and deterministic
-          # instead of relying on a process-exit hook firing in the pytest run.
+          # This used to run `metrics snapshot` here, which was wrong on two
+          # counts. The counters live in the pytest process's memory, so a fresh
+          # process always wrote zeros; and because this step ran after pytest,
+          # it OVERWROTE the report the tests had just written, which did have
+          # data. The result was a report with content_quality.fetches=0 and
+          # every other counter empty, while the aggregator downstream read it as
+          # a real measurement.
+          #
+          # pytest now writes the report itself (test_save_live_report), so this
+          # step only verifies that data actually arrived. Failing here is
+          # correct: an all-zeroes report that looks measured is worse than none.
           mkdir -p live-test-results
-          python -m webscout_mcp metrics snapshot \
-            --out live-test-results/live_report.json
+          REPORT=live-test-results/live_report.json
+          if [ ! -f "$REPORT" ]; then
+            echo "::error::live_report.json was not written by the test run"
+            exit 1
+          fi
+          python - <<'PY'
+          import json, os, sys
+          path = "live-test-results/live_report.json"
+          data = json.load(open(path, encoding="utf-8"))
+          cq = data.get("content_quality") or {}
+          fetches = int(cq.get("fetches") or 0)
+          usable = int(cq.get("usable") or 0)
+          by_backend = cq.get("by_backend") or {}
+          print(f"content_quality: fetches={fetches} usable={usable} by_backend={by_backend}")
+          if fetches == 0:
+              print("::error::live_report.json has fetches=0 - the counters were not recorded")
+              sys.exit(1)
+          PY
 
       - name: A/B evaluation (pipeline vs bare baseline)
         if: always()
