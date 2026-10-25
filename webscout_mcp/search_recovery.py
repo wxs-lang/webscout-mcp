@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-from .errors import StandardErrorCode
+from .core.errors import StandardErrorCode
 from .search_provider import SearchFailureKind, SearchResponse, SearchStatus
 
 

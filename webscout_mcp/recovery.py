@@ -34,7 +34,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
-from .errors import StandardErrorCode
+from .core.errors import StandardErrorCode
 from .fetch_escalation import (
     _NON_HTML_PREFIXES,
     EscalationReason,

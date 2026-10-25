@@ -27,7 +27,7 @@ from typing import Any
 
 import httpx
 
-from .errors import StandardErrorCode
+from .core.errors import StandardErrorCode
 from .fetch_provider import (
     BrowserFetchProvider,
     FetchRequest,

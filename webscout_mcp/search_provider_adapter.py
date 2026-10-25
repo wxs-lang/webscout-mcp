@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import time
 
-from .errors import StandardErrorCode
+from .core.errors import StandardErrorCode
 from .exceptions import SearchParseError
 from .search import SearchBackend
 from .search_provider import (
