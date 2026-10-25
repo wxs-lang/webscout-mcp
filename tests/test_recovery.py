@@ -238,16 +238,13 @@ def test_404_is_access_denied():
 
 
 def test_mcp_tool_count_unchanged():
-    server = Path(__file__).resolve().parents[1] / "webscout_mcp" / "server.py"
-    out = subprocess.run(
-        [sys.executable, "-c", f"print(open(r'{server}').read().count('@mcp.tool'))"],
-        capture_output=True,
-        text=True,
-    )
-    assert int(out.stdout.strip()) == 11
+    """Guard: the MCP tool surface must stay at 11.
 
+    Read with an explicit encoding. The previous version shelled out to a
+    subprocess with `open(r'{server}')`, which uses the locale default - cp936
+    on Windows - and could not decode the UTF-8 source there, so stdout came
+    back empty and the test failed on encoding rather than on tool count.
+    """
 
-if __name__ == "__main__":
-    import pytest
-
-    raise SystemExit(pytest.main([__file__, "-v"]))
+    server = (Path(__file__).resolve().parents[1] / "webscout_mcp" / "server.py").read_text(encoding="utf-8")
+    assert server.count("@mcp.tool()") == 11

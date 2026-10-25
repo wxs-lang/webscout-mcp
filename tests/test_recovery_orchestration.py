@@ -483,5 +483,7 @@ async def test_observability_continue_and_deferred():
 def test_mcp_tool_count_unchanged():
     from pathlib import Path
 
-    server = Path(fs_mod.__file__).with_name("server.py").read_text()
+    # Explicit encoding: read_text() defaults to the locale codec (cp936 on
+    # Windows) and cannot decode this UTF-8 source there.
+    server = Path(fs_mod.__file__).with_name("server.py").read_text(encoding="utf-8")
     assert server.count("@mcp.tool()") == 11
