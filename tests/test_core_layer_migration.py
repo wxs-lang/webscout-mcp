@@ -277,7 +277,16 @@ def test_cache_still_round_trips():
     cache = mod.Cache(db_path=tmp / "c.db", ttl=3600, max_size_mb=1)
     cache.set("k", "v")
     assert cache.get("k") is not None
-    assert cache.delete("k") is True or cache.get("k") is None
+
+    # Side effects outside the assert: an assert is stripped under -O, and both
+    # of these mutate. CodeQL's py/side-effect-in-assert caught the original.
+    #
+    # delete() returns None, not a bool - the previous version asserted
+    # `delete() is True or get() is None` and only passed via the right-hand
+    # short-circuit. Assert the observable outcome instead of a return value the
+    # API does not define.
+    cache.delete("k")
+    assert cache.get("k") is None
 
 
 def test_config_still_reads_the_environment():
