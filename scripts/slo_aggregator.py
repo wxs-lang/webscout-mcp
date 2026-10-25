@@ -38,10 +38,13 @@ SLO_TARGETS = {
     "mcp_e2e_success_rate_7d": float(os.getenv("SLO_MCP_SUCCESS_7D", "99.5")),
     "search_p95_latency_ms": float(os.getenv("SLO_SEARCH_P95", "5000")),
     "fetch_p95_latency_ms": float(os.getenv("SLO_FETCH_P95", "10000")),
-    # Content-quality targets (GOAL G1/G5). Percentages, higher is better for
-    # usable content; lower is better for thin and truncation.
+    # Content-quality targets (GOAL G1/G5). Higher is better for usable content;
+    # lower is better for thin content.
     "usable_content_rate_min": float(os.getenv("SLO_USABLE_CONTENT_RATE", "85.0")),
     "thin_content_rate_max": float(os.getenv("SLO_THIN_CONTENT_RATE", "10.0")),
+    # truncation_rate is NOT a target. It reports gated, not alerting - see the
+    # note where the content-quality block is assembled. Kept here only so an
+    # operator can surface it if their corpus is expected to be short pages.
     "truncation_rate_max": float(os.getenv("SLO_TRUNCATION_RATE", "25.0")),
 }
 
@@ -305,7 +308,9 @@ def aggregate_slo_metrics(reports: list[dict[str, Any]], days: int) -> dict[str,
 
     # Determine SLO status
     status = "healthy"
-    violations = []
+    violations: list[str] = []
+    # Observations that belong in the report but must never change the status.
+    notes: list[str] = []
 
     if days == 7:
         if search_success_rate is not None and search_success_rate < SLO_TARGETS["search_success_rate_7d"]:
@@ -336,9 +341,9 @@ def aggregate_slo_metrics(reports: list[dict[str, Any]], days: int) -> dict[str,
             )
 
     # Content-quality gates. Usable content is a hard violation: the whole
-    # point of the layer is returning content worth reading. Thin content and
-    # truncation are warnings — both can spike for reasons the layer controls
-    # only partially (a site adding a captcha, a legitimately huge page).
+    # point of the layer is returning content worth reading. Thin content is a
+    # warning, because a site adding a captcha can spike it and the layer only
+    # partly controls that. Truncation is not a gate at all - see below.
     if usable_content_rate is not None:
         if usable_content_rate < SLO_TARGETS["usable_content_rate_min"]:
             status = "violating"
@@ -351,10 +356,24 @@ def aggregate_slo_metrics(reports: list[dict[str, Any]], days: int) -> dict[str,
             violations.append(
                 f"Thin content rate {thin_content_rate:.1f}% > target {SLO_TARGETS['thin_content_rate_max']}%"
             )
+        # Truncation is reported, never gated.
+        #
+        # has_more=True means the full body was fetched and extracted and the
+        # caller is being served the first 8000-char window - by design, with
+        # start_char available to read on. So the rate measures how long the
+        # pages in the corpus are, not how good the service is. A documentation-
+        # heavy corpus produces a high rate and a perfect usable_rate at the same
+        # time; the first live baseline showed 70% truncation alongside 100%
+        # usable, which is the correct reading, not a defect.
+        #
+        # Gating on it would alert whenever the corpus contains long pages, which
+        # is to say always for a web-research tool. Reported in the payload
+        # instead, so the number stays visible without pretending to be a SLO.
         if truncation_rate > SLO_TARGETS["truncation_rate_max"]:
-            if status == "healthy":
-                status = "warning"
-            violations.append(f"Truncation rate {truncation_rate:.1f}% > target {SLO_TARGETS['truncation_rate_max']}%")
+            notes.append(
+                f"Truncation rate {truncation_rate:.1f}% (informational only: long pages are "
+                "served as progressive windows via start_char, not lost)"
+            )
 
     # A window full of reports that recorded nothing is not "healthy". Treat it
     # as no_data so a pipeline that never actually ran anything cannot present a
@@ -373,6 +392,7 @@ def aggregate_slo_metrics(reports: list[dict[str, Any]], days: int) -> dict[str,
         "data_points": len(recent_reports),
         "status": status,
         "violations": violations,
+        "notes": notes,
         "search": {
             "total": total_searches,
             "successful": successful_searches,
