@@ -83,11 +83,23 @@ def test_thin_content_excess_is_reported():
     assert any("Thin content rate" in v for v in result["violations"])
 
 
-def test_truncation_excess_is_only_a_warning():
-    """Truncation depends on page size, which the layer does not control."""
+def test_truncation_excess_is_not_a_gate_at_all():
+    """Truncation is information, not a warning.
+
+    This test previously asserted "warning", which encoded the belief that a
+    high truncation rate indicates a problem. It does not. has_more=True means
+    the body was fully fetched and extracted and the caller is receiving the
+    first window, with start_char available to continue - so the rate tracks
+    page length, not service quality.
+
+    The first real baseline made this concrete: 70% truncation alongside 100%
+    usable content scored "warning" for no reason. Any documentation-heavy
+    corpus would alert permanently. It is now reported under "notes".
+    """
     result = aggregate_slo_metrics([_report(_cq(usable=95, thin=2, empty=3, truncated=50))], 7)
-    assert result["status"] == "warning", result["violations"]
-    assert any("Truncation rate" in v for v in result["violations"])
+    assert result["status"] == "healthy", result["violations"]
+    assert not any("Truncation" in v for v in result["violations"])
+    assert any("Truncation" in n for n in result["notes"])
 
 
 def test_a_violation_is_not_downgraded_by_a_later_warning():

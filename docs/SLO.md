@@ -17,7 +17,7 @@ SLOs are measured continuously via Live Network Tests and aggregated into
 | **Fetch P95 Latency** | ≤ 10000ms | - | 95th percentile fetch response time |
 | **Usable Content Rate** | ≥ 85.0% | ≥ 85.0% | Percentage of successful fetches whose returned content is at least `THIN_CONTENT_CHARS` (200) characters |
 | **Thin Content Rate** | ≤ 10.0% | ≤ 12.0% | Percentage of fetches returning non-zero content below the thin threshold |
-| **Truncation Rate** | ≤ 25.0% | - | Percentage of fetches where WebScout's own output limit cut the content |
+| **Truncation Rate** | *reported, not gated* | - | Percentage of fetches serving a window of a longer page (see below) |
 
 ### Why quality metrics exist
 
@@ -35,6 +35,29 @@ requiring a hand-built A/B harness.
 `THIN_CONTENT_CHARS` is deliberately low (200). It counts captcha-only and
 navigation-only bodies as thin while leaving short legitimate answers out of
 the thin bucket.
+
+#### Truncation is reported, not gated
+
+A fetch is counted as truncated when `has_more=true`, which means the full body
+was fetched and extracted and the caller is being served the first window, with
+`start_char` available to read on. Nothing was lost.
+
+So `truncation_rate` tracks **how long the pages in the corpus are**, not how
+well the service performed. Measured directly: a 577-char page and a 711-char
+page never truncate, while a 34603-char page and a 25399-char page always do.
+
+The first real baseline showed the trap:
+
+| Metric | Value |
+|---|---|
+| usable content rate | 100.0% |
+| truncation rate | 70.0% |
+| status (before) | **warning** |
+
+Both numbers were correct and the status was not: cross-referencing page length
+against window size is arithmetic, not a quality signal. Any documentation-heavy
+corpus alerts permanently. The rate now appears under `notes` in the report and
+never changes `status`.
 
 ### A/B evaluation
 
