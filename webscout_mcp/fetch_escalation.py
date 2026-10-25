@@ -63,6 +63,8 @@ _JS_PLACEHOLDER_MARKERS = (
 )
 
 # Content types that have their own parsers and should never go to a browser.
+# Single source of truth: recovery.py imports this rather than keeping a second
+# copy, because two copies agreeing today is not the same as one definition.
 _NON_HTML_PREFIXES = (
     "application/pdf",
     "application/json",
@@ -77,6 +79,19 @@ _NON_HTML_PREFIXES = (
 _MIN_HTML_BYTES_FOR_LOW_DENSITY = 3000
 _MIN_TEXT_CHARS_FOR_REAL_PAGE = 200
 _MIN_PAGE_BYTES_FOR_LOW_QUALITY = 2000
+# Script-to-total ratio that marks an SPA shell inside the low-density rule.
+#
+# This is a DIFFERENT decision from recovery._HIGH_SCRIPT_RATIO (0.15), not a
+# drifted copy of it. The two rules differ in every dimension:
+#
+#   recovery thin_shell   html > 20000, text < 1500, ratio > 0.15 -> NOT escalated
+#   escalation low_density html >  3000, text <  200, ratio > 0.20 -> escalated
+#
+# Different document sizes, different text floors, and opposite actions. They
+# share the word "script ratio" and nothing else; unifying the numbers would
+# change behaviour in one direction or the other. Named anyway, because a bare
+# 0.2 inside the rule was invisible to the policy table.
+_LOW_DENSITY_SCRIPT_RATIO = 0.2
 
 
 @dataclass
@@ -198,7 +213,7 @@ def should_escalate_to_browser(response: FetchResponse) -> FetchEscalationDecisi
         # non-trivial. This is the classic "JS-rendered SPA" signature.
         if len(body) < _MIN_TEXT_CHARS_FOR_REAL_PAGE and len(raw_html) > _MIN_HTML_BYTES_FOR_LOW_DENSITY:
             sr = _script_ratio(raw_html)
-            if sr > 0.2 or _looks_like_js_placeholder(raw_html):
+            if sr > _LOW_DENSITY_SCRIPT_RATIO or _looks_like_js_placeholder(raw_html):
                 return FetchEscalationDecision(
                     escalate=True,
                     reason_code=EscalationReason.LOW_CONTENT_DENSITY,

@@ -12,7 +12,7 @@
 | `MIN_TEXT_CHARS_FOR_REAL_PAGE` | 200 | chars | fetch_escalation | Extracted text below this on a non-trivial document is an empty-shell signature. |
 | `MIN_HTML_BYTES_FOR_LOW_DENSITY` | 3000 | bytes | fetch_escalation | Low-density escalation requires a non-trivial document. Below this size a page is simply small, and escalating would burn a browser call for nothing. |
 | `MIN_PAGE_BYTES_FOR_LOW_QUALITY` | 2000 | bytes | fetch_escalation | The content-quality signal only counts on documents big enough to judge. |
-| `LOW_DENSITY_SCRIPT_RATIO` | 0.2 | ratio | fetch_escalation | Script ratio that marks an SPA shell inside the low-density rule. NOTE: this is currently hardcoded as a literal in fetch_escalation (sr > 0.2) and is stricter than HIGH_SCRIPT_RATIO (0.15) used by recovery. The divergence is real, not a typo, and is recorded here so it is visible rather than buried. |
+| `LOW_DENSITY_SCRIPT_RATIO` | 0.2 | ratio | fetch_escalation | Script ratio that marks an SPA shell inside the low-density rule. NOT the same decision as HIGH_SCRIPT_RATIO, despite sharing a name: that rule applies above 20000 bytes of HTML with under 1500 chars of text and yields a non-escalating AMBIGUOUS verdict, while this one applies above 3000 bytes with under 200 chars and triggers a browser escalation. Unifying the numbers would change behaviour, so the difference is documented rather than removed. |
 
 ## Classification stages (first match wins)
 
@@ -70,5 +70,4 @@
 
 ## Structural findings
 
-- script_ratio threshold differs by module: recovery uses 0.15, fetch_escalation low-density uses 0.2. Same signal, two bars.
-- NON_HTML_PREFIXES is defined twice (recovery.py and fetch_escalation.py). They agree today; nothing enforces that.
+- two distinct script-ratio gates: recovery thin_shell uses 0.15 (html>20000, text<1500, does NOT escalate), escalation low_density uses 0.2 (html>3000, text<200, DOES escalate). Different decisions; do not unify blindly.

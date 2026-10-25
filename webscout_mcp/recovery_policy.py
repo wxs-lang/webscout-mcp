@@ -151,10 +151,12 @@ THRESHOLDS: tuple[Threshold, ...] = (
         value=0.2,
         unit="ratio",
         rationale=(
-            "Script ratio that marks an SPA shell inside the low-density rule. NOTE: this is "
-            "currently hardcoded as a literal in fetch_escalation (sr > 0.2) and is stricter "
-            "than HIGH_SCRIPT_RATIO (0.15) used by recovery. The divergence is real, not a typo, "
-            "and is recorded here so it is visible rather than buried."
+            "Script ratio that marks an SPA shell inside the low-density rule. NOT the same "
+            "decision as HIGH_SCRIPT_RATIO, despite sharing a name: that rule applies above "
+            "20000 bytes of HTML with under 1500 chars of text and yields a non-escalating "
+            "AMBIGUOUS verdict, while this one applies above 3000 bytes with under 200 chars "
+            "and triggers a browser escalation. Unifying the numbers would change behaviour, "
+            "so the difference is documented rather than removed."
         ),
         module="fetch_escalation",
     ),
@@ -602,20 +604,28 @@ def build_policy_table() -> PolicyTable:
     """
     warnings: list[str] = []
 
-    # 1) Script-ratio threshold disagrees between the two modules.
+    # 1) Two script-ratio thresholds exist. They are DIFFERENT decisions, not a
+    #    drift bug, so this is reported as context rather than a problem. It is
+    #    still reported, because "same-looking number, twice" invites a future
+    #    reader to unify them and silently change behaviour.
     high = next(t.value for t in THRESHOLDS if t.name == "HIGH_SCRIPT_RATIO")
     low = next(t.value for t in THRESHOLDS if t.name == "LOW_DENSITY_SCRIPT_RATIO")
     if high != low:
         warnings.append(
-            f"script_ratio threshold differs by module: recovery uses {high}, "
-            f"fetch_escalation low-density uses {low}. Same signal, two bars."
+            f"two distinct script-ratio gates: recovery thin_shell uses {high} "
+            f"(html>20000, text<1500, does NOT escalate), escalation low_density uses {low} "
+            f"(html>3000, text<200, DOES escalate). Different decisions; do not unify blindly."
         )
 
-    # 2) NON_HTML_PREFIXES is declared in both modules.
-    warnings.append(
-        "NON_HTML_PREFIXES is defined twice (recovery.py and fetch_escalation.py). "
-        "They agree today; nothing enforces that."
-    )
+    # 2) NON_HTML_PREFIXES must have exactly one definition now.
+    import webscout_mcp.fetch_escalation as _fe
+    import webscout_mcp.recovery as _rc
+
+    if _rc._NON_HTML_PREFIXES is not _fe._NON_HTML_PREFIXES:
+        warnings.append(
+            "NON_HTML_PREFIXES is no longer shared between recovery and fetch_escalation: "
+            "recovery should import it, not redeclare it."
+        )
 
     # 3) Every browser-escalating reason must map to an action of BROWSER.
     for rule in REASON_RULES:

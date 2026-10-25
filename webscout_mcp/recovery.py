@@ -36,6 +36,7 @@ from typing import Any
 
 from .errors import StandardErrorCode
 from .fetch_escalation import (
+    _NON_HTML_PREFIXES,
     EscalationReason,
     FetchEscalationDecision,
     _looks_like_challenge,
@@ -44,14 +45,10 @@ from .fetch_escalation import (
 from .fetch_provider import FetchResponse
 
 # Content types that have dedicated parsers — never a browser repair.
-_NON_HTML_PREFIXES = (
-    "application/pdf",
-    "application/json",
-    "application/rss",
-    "application/xml",
-    "text/xml",
-    "image/",
-)
+# Imported from fetch_escalation rather than redeclared: this module's docstring
+# already promises not to keep a second copy of those markers, and a duplicate
+# tuple could drift with nothing to notice. Kept importable from here because
+# existing callers and tests reference recovery._NON_HTML_PREFIXES.
 
 # A genuinely small rendered page is at most this many extracted chars AND
 # must live on a small HTML document (see _complete_short_page).
