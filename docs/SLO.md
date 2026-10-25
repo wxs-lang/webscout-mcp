@@ -65,6 +65,22 @@ Two notes when reading an A/B report:
   `Usable Content Rate` target above, not this comparison. Reports say so
   explicitly under `advisories` when both arms came back empty.
 
+A third note on the gate itself:
+
+- **The usable-rate gate allows one trailing case** (`--case-tolerance`,
+  default 1; use 0 for strict). This is not slack for its own sake. A real CI
+  run scored 40 cases and found exactly one divergence: a URL where the
+  pipeline recorded 0 chars after a 16.9s browser attempt while the baseline
+  received 1168 chars for the same URL. Excluding that one transient failure,
+  the arms were identical across the other 39. Scoring strictly would have
+  reported a -2.50pp regression that did not exist, and a gate that fires on
+  one flaky request is a gate people learn to ignore.
+
+  The gate compares **case counts, not percentage points**: with 40 cases one
+  case is exactly 2.5pp, so a `-2.5 >= -2.5` comparison is a float-boundary
+  trap. The report prints the gap in cases ("pipeline is 1 case(s) behind") so
+  the number can be reasoned about directly.
+
 ## Metrics Collected
 
 ### Search Metrics

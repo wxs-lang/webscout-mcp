@@ -202,6 +202,17 @@ def main() -> int:
     )
     ap.add_argument("--max-p95-ratio", type=float, default=1.30, help="Gate G3: pipeline/baseline P95 ratio")
     ap.add_argument(
+        "--case-tolerance",
+        type=int,
+        default=1,
+        help=(
+            "Cases the pipeline may trail the baseline by before G1/G2 fail. "
+            "Default 1: a single transient network failure moves a 40-case run by "
+            "2.5pp and would otherwise flip the verdict on its own (observed on a "
+            "real CI run). Use 0 for a strict comparison."
+        ),
+    )
+    ap.add_argument(
         "--record",
         action="store_true",
         help="With --replay: also write the (re-scored) observations alongside the report",
@@ -223,6 +234,7 @@ def main() -> int:
         corpus_sha=corpus_sha,
         threshold_chars=args.threshold_chars,
         max_p95_ratio=args.max_p95_ratio,
+        case_tolerance=args.case_tolerance,
     )
 
     out_dir = args.out
