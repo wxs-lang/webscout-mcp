@@ -73,7 +73,7 @@ def run_preflight() -> dict[str, Any]:
     It deliberately excludes every secret value.
     """
     from . import decision_store, jev_store
-    from .config import Config
+    from .core.config import Config
     from .crawl4ai_backend import Crawl4AIBrowserBackend
 
     cfg = Config.from_env()

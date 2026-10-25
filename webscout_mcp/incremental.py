@@ -17,10 +17,10 @@ from urllib.parse import urljoin, urlparse
 import httpx
 from bs4 import BeautifulSoup
 
-from .config import Config
+from .core.config import Config
+from .core.utils import normalize_url
 from .fetcher import Fetcher, FetchResult
 from .logging_config import get_logger
-from .utils import normalize_url
 
 log = get_logger(__name__)
 

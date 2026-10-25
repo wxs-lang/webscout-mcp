@@ -22,8 +22,8 @@ from urllib.parse import parse_qs, unquote, urlparse
 import httpx
 from bs4 import BeautifulSoup
 
-from .cache import Cache
-from .config import Config
+from .core.cache import Cache
+from .core.config import Config
 from .exceptions import AllBackendsFailedError, SearchError, SearchParseError
 from .logging_config import get_logger
 from .search_health import SearchHealthManager
