@@ -293,10 +293,15 @@ Phase 4 已完成（PR #54，2026-09-20）
 
 **G 组的现状（2026-10-25 更新）**：
 
-- **G5 已达成（补完两处断链后）** —— 首版只做到"进程内可读"：`get_observability_summary()` 全仓库没有任何生产调用者，计数器随进程退出消失；`live_report.json` 只被聚合器读取、没有任何脚本生成。补上 `write_snapshot()` / `read_snapshot()` 并让 `slo_aggregator.py` 消费该字段之后，指标才真正走得到报告
+- **G5 已达成（补完四处断链后）** —— 完整链路是：
+  1. `get_observability_summary()` 全仓库无生产调用者 → 补 `write_snapshot()` / `read_snapshot()`
+  2. `live_report.json` 只被读、无人写 → 补 `eval_runners(eval_dir=)` 与 `--results-dir`
+  3. 聚合器不消费该字段 → 补 `slo_aggregator.py` 判定（violating / warning / no_data）
+  4. live 测试的 `LiveTestReport.to_dict()` 不含该块 → 补注入，否则 CI 的报告永远是 `no_data`
+  最后补 `enable_snapshot_on_exit()`（`serve` 自动启用）与 `webscout-mcp metrics snapshot`（CI 显式落盘）
 - **G1 有了度量手段，但基线值仍不可复核** —— 原 A/B 脚手架从未入库（缺陷 5），−7.3pp 这个数字无法重跑验证。现在能做的是让新指标在本仓库的 live/稳定性运行里持续累积，用**后续 7 天的 `usable_rate`** 建立可信基线，而不是继续引用一个不可复现的历史数字
 - **G3/G4 暂不可验收** —— 需要先自建一个**入库的**可复现 A/B 脚手架（缺陷 5 的硬约束）
-- **仍需人工接线** —— 目前没有任何脚本在运行结束时自动调用 `write_snapshot()`。要么在 CI 的 live 测试步骤里显式落盘，要么加进程退出钩子。这条不补，指标依然要靠人手动导出
+- **落盘已自动化** —— `serve` 在进程退出时自动落盘（有数据才写），CI 的 live job 用 `metrics snapshot` 显式落盘。两条路都不再需要人工导出
 
 
 ### 5.2 "自愈"分层承诺（补缺陷 2）

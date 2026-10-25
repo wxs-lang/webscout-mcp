@@ -14,6 +14,7 @@ Privacy rules (enforced by the helpers below, not by caller discipline):
 
 from __future__ import annotations
 
+import atexit
 import json
 import os
 import threading
@@ -384,3 +385,59 @@ def read_snapshot(path: str | Path) -> dict[str, Any] | None:
     except Exception:  # pragma: no cover - reporting must tolerate bad input
         log.debug("observability snapshot read failed", exc_info=True)
         return None
+
+
+def has_data() -> bool:
+    """True when at least one counter has recorded something worth persisting."""
+    with _LOCK:
+        if _CONTENT_QUALITY.get("fetches", 0) > 0:
+            return True
+        if any(b["calls"] for b in _BACKEND_BUCKETS.values()):
+            return True
+        if _ESCALATION_REASONS or _SSRF_BLOCKS or _RECOVERY_REASONS or _CRAWL:
+            return True
+        return bool(_CONTINUATION)
+
+
+# Guards against double registration of the exit hook.
+_exit_hook_registered = False
+
+
+def enable_snapshot_on_exit(path: str | Path) -> None:
+    """Persist a snapshot when the process exits.
+
+    Opt-in on purpose. Library use and the test suite must not litter the
+    filesystem with a snapshot for every short-lived process, so nothing is
+    written unless this was called explicitly — the MCP server does, and CI
+    calls it directly.
+
+    Runs that recorded nothing are skipped entirely: a process that served no
+    requests produces no file, rather than an all-zeroes snapshot that the
+    aggregator would read as "measured, 0% usable content".
+
+    Registration is idempotent; the first path wins. The write is wrapped so a
+    read-only or full disk can never turn a clean process exit into a failure.
+    """
+    global _exit_hook_registered
+
+    if _exit_hook_registered:
+        return
+
+    target = Path(path)
+
+    def _flush_at_exit() -> None:
+        try:
+            if not has_data():
+                log.debug("observability snapshot skipped: no data recorded")
+                return
+            write_snapshot(target)
+        except Exception:  # pragma: no cover - never fail process exit
+            log.debug("observability snapshot on exit failed", exc_info=True)
+
+    atexit.register(_flush_at_exit)
+    _exit_hook_registered = True
+
+
+def snapshot_on_exit_enabled() -> bool:
+    """True when :func:`enable_snapshot_on_exit` has been called."""
+    return _exit_hook_registered

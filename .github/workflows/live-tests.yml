@@ -64,6 +64,17 @@ jobs:
             echo "No report generated (tests may have failed)" >> $GITHUB_STEP_SUMMARY
           fi
 
+      - name: Persist observability counters
+        if: always()
+        run: |
+          # The content-quality counters live in process memory, so a run has to
+          # leave a snapshot on disk or the SLO aggregator below sees no quality
+          # data at all. This step makes the write explicit and deterministic
+          # instead of relying on a process-exit hook firing in the pytest run.
+          mkdir -p live-test-results
+          python -m webscout_mcp metrics snapshot \
+            --out live-test-results/live_report.json
+
       - name: Upload live test results
         if: always()
         uses: actions/upload-artifact@v4
