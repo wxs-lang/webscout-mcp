@@ -314,6 +314,12 @@ def get_observability_summary() -> dict[str, Any]:
             "by_backend": {k[len("backend_") :]: v for k, v in cq.items() if k.startswith("backend_")},
         }
         return {
+            # timestamp is what the SLO aggregator filters on to build the 7d/30d
+            # rolling windows. Without it every snapshot lands in the legacy
+            # bucket and is counted in every window forever, so the windows are
+            # not windows at all. Mirrors LiveTestReport.timestamp (epoch
+            # seconds), which the aggregator already parses.
+            "timestamp": datetime.now(timezone.utc).timestamp(),
             "started_at": _STARTED_AT,
             "backends": backends,
             "escalations": dict(_ESCALATION_REASONS),

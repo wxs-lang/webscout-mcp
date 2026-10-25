@@ -198,9 +198,30 @@ The exit hook is opt-in: library use and the test suite never write snapshots.
 A run that recorded nothing produces no file at all, rather than an all-zeroes
 snapshot that would be read as "measured, 0% usable".
 
+### How the rolling window actually rolls
+
+A timestamp is what makes "7-day" mean anything, and history is what makes it
+have more than one sample. Both were missing:
+
+- **Snapshots now carry `timestamp`** (epoch seconds, matching
+  `LiveTestReport.timestamp`). Before this, the aggregator treated every
+  snapshot as a legacy report with no date and counted it in *every* window, so
+  nothing was ever filtered out - the window covered all history forever.
+- **The CI job restores history from the `slo-history` branch.** Each job starts
+  from a fresh checkout and artifacts are per-run, so without a durable store the
+  window had exactly one sample. The branch is orphaned: CI appends one small
+  JSON per run under `runs/<run-id>/live_report.json` and never merges it, which
+  keeps monitoring data out of `main` while still being durable.
+
+The nested layout is required, not cosmetic: the loader globs for files literally
+named `live_report.json`, so a flat `runs/<id>.json` would be silently invisible
+and the history would appear empty.
+
 ### Aggregation Logic
-1. Load all `live_report.json` files from `live-test-results/`
-2. Filter by date (7-day and 30-day rolling windows)
+1. Load all `live_report.json` files from `live-test-results/` (recursively, so
+   restored history under `history/` is included)
+2. Filter by date using each report's `timestamp` (7-day and 30-day rolling
+   windows)
 3. Aggregate metrics across all test runs
 4. Calculate percentiles (P50, P95)
 5. Compare against SLO targets

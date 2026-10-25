@@ -122,6 +122,29 @@ jobs:
             live-test-results/
           retention-days: 90
 
+      - name: Restore historical live reports
+        if: always()
+        # Each CI job starts from a fresh checkout, so without this the
+        # aggregator only ever sees the current run and its "7d/30d windows" are
+        # windows over a single sample - a rolling baseline can never
+        # accumulate.
+        #
+        # Artifacts cannot be used here: actions/download-artifact@v4 fetches
+        # artifacts from the *current* run only. Durable history lives on the
+        # `slo-history` branch instead, one JSON file per run.
+        continue-on-error: true
+        run: |
+          mkdir -p live-test-results/history
+          if git ls-remote --exit-code --heads origin slo-history >/dev/null 2>&1; then
+            git fetch --depth=1 origin slo-history
+            # The branch stores runs/<id>/live_report.json, which is exactly the
+            # shape the aggregator's **/live_report.json glob expects.
+            git archive FETCH_HEAD | tar -x -C live-test-results/history
+            echo "Restored history: $(find live-test-results/history -name live_report.json | wc -l) report(s)"
+          else
+            echo "No slo-history branch yet; this run starts the baseline."
+          fi
+
       - name: Generate SLO report (7d/30d metrics)
         if: always()
         run: |
@@ -148,10 +171,61 @@ jobs:
             slo-reports/
           retention-days: 90
 
+      - name: Append this run to slo-history
+        if: always()
+        # The rolling window needs durable history, and artifacts expire and are
+        # per-run. A dedicated orphan branch keeps one small JSON per run:
+        # committed by CI, never merged, so it does not pollute main.
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          REPORT=live-test-results/live_report.json
+          if [ ! -f "$REPORT" ]; then
+            echo "No live_report.json produced; nothing to record."
+            exit 0
+          fi
 
-      # Note: Live test reports are stored as artifacts (90 days retention)
-      # and summarized in the GitHub Actions run summary.
-      # We do NOT push reports directly to main because:
+          STAMP=$(date -u '+%Y%m%dT%H%M%SZ')
+          RUNKEY="${GITHUB_RUN_ID:-local}-${STAMP}"
+
+          WORK=$(mktemp -d)
+          git config --global user.name  "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
+
+          if git ls-remote --exit-code --heads origin slo-history >/dev/null 2>&1; then
+            git clone --depth=1 --branch slo-history "https://github.com/${GITHUB_REPOSITORY}.git" "$WORK"
+          else
+            # Orphan branch: no shared history with main, so it can hold data
+            # without ever being merged.
+            git init "$WORK"
+            cd "$WORK"
+            git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+            git checkout --orphan slo-history
+            git rm -rf . >/dev/null 2>&1 || true
+          fi
+
+          cd "$WORK"
+          # Layout matters: the aggregator globs for files literally named
+          # live_report.json, so each run lives in its own directory. A flat
+          # runs/<id>.json would be invisible to it.
+          mkdir -p "runs/${RUNKEY}"
+          cp "$GITHUB_WORKSPACE/$REPORT" "runs/${RUNKEY}/live_report.json"
+          git add runs
+          if git diff --cached --quiet; then
+            echo "Nothing new to commit."
+            exit 0
+          fi
+          git commit -m "slo-history: ${RUNKEY}"
+          git push origin slo-history
+          echo "Recorded runs/${RUNKEY}/live_report.json ($(ls -1d runs/*/ | wc -l) run(s) total)"
+
+      # Note: per-run reports are also uploaded as artifacts (90 days), but the
+      # SLO rolling window reads the `slo-history` branch because artifacts are
+      # per-run and expire.
+      # We do NOT push reports to main because:
       # 1. main is a protected branch
-      # 2. main should only contain code and reviewed config, not daily monitoring data
-      # 3. Historical data can be analyzed from artifacts or a dedicated dashboard
+      # 2. main should hold code and reviewed config, not daily monitoring data
+      # 3. an orphan branch keeps the data without ever being merged
