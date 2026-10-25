@@ -33,13 +33,13 @@ from urllib.parse import urljoin, urlparse
 from bs4 import BeautifulSoup
 
 from . import observability as obs
-from .config import Config
+from .core.config import Config
+from .core.utils import normalize_url
 from .fetcher import Fetcher, FetchResult
 from .logging_config import get_logger
 from .robots import RobotsChecker
 from .url_canonicalize import canonical_url_key
 from .url_safety import check_url_safe
-from .utils import normalize_url
 
 log = get_logger(__name__)
 

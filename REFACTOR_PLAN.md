@@ -224,8 +224,8 @@ Agent 得到的应该是：
 - [x] 优化 `__init__.py` 使用延迟导入
 - [x] 标准化 Search Provider 接口 — `search_provider.py` 的 `SearchProvider(ABC)` + `@abstractmethod`
 - [x] 建立标准错误体系 — `errors.py` 的 `StandardErrorCode`
-- [ ] 五层架构重组 — **进行中（1/5 层）**：`core/` 已建立，`errors.py` 已迁入
-      完成 `core/` 后仍需迁 `services/`、`providers/`、`security/`、`observability/`（见下方说明）
+- [ ] 五层架构重组 — **进行中**：`core/` 已迁入 errors / utils / cache / config，
+      `logging_config` 待迁；其余五层未开始（见下方说明）
 - [x] 文档自动化生成脚本 — `scripts/generate_docs.py`，CI 以 `--check` 强制
 - [x] 故障注入测试 — `test_fault_injection.py` + `test_system_fault_injection.py`（53 个用例）
 - [x] Live Test 固定测试集框架 — `tests/live/test_live_search.py`（20 条搜索 + 10 个 URL，带分类）
@@ -240,7 +240,7 @@ Agent 得到的应该是：
 
 | 层 | 状态 | 说明 |
 |---|---|---|
-| `core/` | **部分完成** | `errors.py` 已迁入；`config` / `cache` / `logging_config` 待迁 |
+| `core/` | **接近完成** | `errors` / `utils` / `cache` / `config` 已迁入；`logging_config` 待迁（被 53 个模块依赖，风险最高） |
 | `services/` | 未开始 | `search_service`、`fetch_service` 等 |
 | `providers/` | 未开始 | 按 `search/`、`fetch/` 分组 |
 | `security/` | 未开始 | `url_safety`、`security` |

@@ -13,7 +13,7 @@ from typing import Any
 
 from bs4 import BeautifulSoup
 
-from .config import Config
+from .core.config import Config
 from .fetcher import Fetcher
 
 

@@ -13,11 +13,11 @@ from dataclasses import dataclass, field
 
 import httpx
 
-from .cache import Cache
-from .config import Config
+from .core.cache import Cache
+from .core.config import Config
+from .core.utils import TokenBucket, normalize_url
 from .url_safety import check_url_safe
 from .user_agent import UserAgentRotator
-from .utils import TokenBucket, normalize_url
 
 logger = logging.getLogger(__name__)
 

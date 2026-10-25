@@ -174,3 +174,114 @@ def test_a_structured_error_still_serialises():
     data = err.to_dict()
     assert data["code"] == "FETCH_TIMEOUT"
     assert data["message"] == "timed out"
+
+
+# --- Second batch: utils, cache, config -------------------------------
+
+
+@pytest.mark.parametrize(
+    ("module", "symbol"),
+    [
+        ("utils", "normalize_url"),
+        ("utils", "TokenBucket"),
+        ("cache", "Cache"),
+        ("config", "Config"),
+    ],
+)
+def test_second_batch_lives_in_core(module, symbol):
+    mod = _quiet(f"webscout_mcp.core.{module}")
+    assert hasattr(mod, symbol), f"core.{module} lost {symbol}"
+
+
+@pytest.mark.parametrize("module", ["utils", "cache", "config"])
+def test_second_batch_old_path_resolves_to_the_same_objects(module):
+    new = _quiet(f"webscout_mcp.core.{module}")
+    old = _quiet(f"webscout_mcp.{module}")
+    shared = [n for n in dir(new) if not n.startswith("_") and hasattr(old, n)]
+    assert shared, f"no shared names between old and new {module}"
+    for name in shared:
+        assert getattr(old, name) is getattr(new, name), f"{module}.{name} is not the same object"
+
+
+@pytest.mark.parametrize("module", ["utils", "cache", "config"])
+def test_second_batch_old_path_warns(module):
+    sys.modules.pop(f"webscout_mcp.{module}", None)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        importlib.import_module(f"webscout_mcp.{module}")
+    messages = [str(w.message) for w in caught if issubclass(w.category, DeprecationWarning)]
+    assert any(f"core.{module}" in m for m in messages), messages
+
+
+@pytest.mark.parametrize("module", ["utils", "cache", "config", "errors"])
+def test_no_core_module_imports_upward(module):
+    """The property that makes the layer a layer.
+
+    A core module that imports a caller would invert the dependency direction
+    silently - the interpreter would not complain, and the layering would be
+    decorative from then on.
+    """
+    src = (REPO / "webscout_mcp" / "core" / f"{module}.py").read_text(encoding="utf-8")
+    for line in src.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith(("from .", "import webscout_mcp")):
+            continue
+        assert stripped.startswith("from ."), f"core/{module}.py reaches outside core: {stripped}"
+        target = stripped.split()[1]
+        assert not target.startswith(".."), f"core/{module}.py imports from a parent package: {stripped}"
+
+
+def test_internal_callers_use_core_paths_directly():
+    """The shims are for external callers, not for our own code."""
+    offenders = []
+    for path in (REPO / "webscout_mcp").rglob("*.py"):
+        if "__pycache__" in str(path) or path.parent.name == "core":
+            continue
+        if path.name in ("errors.py", "utils.py", "cache.py", "config.py"):
+            continue  # the shims themselves
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        for mod in ("errors", "utils", "cache", "config"):
+            if f"from .{mod} import" in text:
+                offenders.append(f"{path.name}: {mod}")
+    assert offenders == [], f"still importing shims internally: {offenders}"
+
+
+def test_core_package_lists_its_modules():
+    core = _quiet("webscout_mcp.core")
+    assert set(core.__all__) >= {"cache", "config", "errors", "utils"}
+
+
+# --- Behaviour preserved ----------------------------------------------
+
+
+def test_url_normalisation_still_works():
+    mod = _quiet("webscout_mcp.core.utils")
+    assert mod.normalize_url("HTTPS://Example.COM/Path") == "https://example.com/Path"
+
+
+@pytest.mark.asyncio
+async def test_token_bucket_still_limits():
+    """acquire is a coroutine; with a generous rate it returns immediately."""
+    mod = _quiet("webscout_mcp.core.utils")
+    bucket = mod.TokenBucket(rate=1000.0, burst=2)
+    await bucket.acquire("https://example.com/a")
+
+
+def test_cache_still_round_trips():
+    import tempfile
+
+    mod = _quiet("webscout_mcp.core.cache")
+    from pathlib import Path as _Path
+
+    tmp = _Path(tempfile.mkdtemp())
+    cache = mod.Cache(db_path=tmp / "c.db", ttl=3600, max_size_mb=1)
+    cache.set("k", "v")
+    assert cache.get("k") is not None
+    assert cache.delete("k") is True or cache.get("k") is None
+
+
+def test_config_still_reads_the_environment():
+    mod = _quiet("webscout_mcp.core.config")
+    cfg = mod.Config.from_env()
+    assert cfg is not None
+    assert hasattr(cfg, "cache_dir")

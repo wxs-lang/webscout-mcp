@@ -26,8 +26,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from .cache import Cache
-from .config import Config
+from .core.cache import Cache
+from .core.config import Config
 from .fetcher import Fetcher
 from .logging_config import get_logger
 

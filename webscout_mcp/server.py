@@ -35,8 +35,8 @@ except ImportError:
     # MCP 1.x: use FastMCP
     from mcp.server.fastmcp import FastMCP as MCPServer
 
-from .cache import Cache
-from .config import Config
+from .core.cache import Cache
+from .core.config import Config
 from .crawler import Crawler
 from .extractor import DataExtractor, ExtractionRule
 from .extras.content_quality import ContentQualityAnalyzer

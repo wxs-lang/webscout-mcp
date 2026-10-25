@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from . import __version__
-from .config import Config
+from .core.config import Config
 from .logging_config import get_logger, setup_logging
 
 
@@ -68,7 +68,7 @@ async def _cmd_serve(args: argparse.Namespace) -> None:
 
 
 async def _cmd_search(args: argparse.Namespace) -> None:
-    from .cache import Cache
+    from .core.cache import Cache
     from .search import SearchEngine
 
     config = _build_config(args)
@@ -87,7 +87,7 @@ async def _cmd_search(args: argparse.Namespace) -> None:
 
 
 async def _cmd_fetch(args: argparse.Namespace) -> None:
-    from .cache import Cache
+    from .core.cache import Cache
     from .fetcher import Fetcher
 
     config = _build_config(args)
@@ -111,7 +111,7 @@ async def _cmd_fetch(args: argparse.Namespace) -> None:
 
 
 async def _cmd_crawl(args: argparse.Namespace) -> None:
-    from .cache import Cache
+    from .core.cache import Cache
     from .crawler import Crawler
     from .fetcher import Fetcher
     from .robots import RobotsChecker
@@ -184,7 +184,7 @@ async def _cmd_export(args: argparse.Namespace) -> None:
     from .exporter import Exporter
 
     if args.type == "search":
-        from .cache import Cache
+        from .core.cache import Cache
         from .search import SearchEngine
 
         config = _build_config(args)
@@ -209,7 +209,7 @@ async def _cmd_export(args: argparse.Namespace) -> None:
         finally:
             await engine.close()
     elif args.type == "fetch":
-        from .cache import Cache
+        from .core.cache import Cache
         from .fetcher import Fetcher
 
         config = _build_config(args)
@@ -266,7 +266,7 @@ async def _cmd_metrics(args: argparse.Namespace) -> None:
 
 async def _cmd_cache(args: argparse.Namespace) -> None:
     """Cache management commands."""
-    from .cache import Cache
+    from .core.cache import Cache
 
     config = _build_config(args)
     config.ensure_dirs()
