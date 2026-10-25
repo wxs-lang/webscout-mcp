@@ -36,6 +36,35 @@ requiring a hand-built A/B harness.
 navigation-only bodies as thin while leaving short legitimate answers out of
 the thin bucket.
 
+### A/B evaluation
+
+The SLO metrics above are absolute: they say how much usable content the service
+returns. A/B answers the complementary question — does the pipeline return more
+usable content than a plain HTTP GET would?
+
+```bash
+# Record a live run, then score it (writes observations + report)
+python scripts/ab_evaluate.py --limit 40 --out ab-report
+
+# Re-score recorded evidence offline, no network required
+python scripts/ab_evaluate.py --replay ab-report/observations.jsonl --out ab-report/rescore
+```
+
+The harness is committed (`webscout_mcp/ab_eval.py`), because its absence is
+what made the 2026-10-23 finding unverifiable: that run's harness lived in an
+uncommitted directory, so the -7.3pp deficit could never be re-checked. Scoring
+is a pure function, the recorded evidence is scalar-only, and the exit code
+carries the verdict so CI can gate on it.
+
+Two notes when reading an A/B report:
+
+- **Latency is directional only.** The arms differ in both work scope and
+  denominator; each summary records its own `latency_denominator`.
+- **A PASS is not a quality statement.** The gates compare the pipeline against
+  the baseline, so two equally bad arms pass. The absolute floor is the
+  `Usable Content Rate` target above, not this comparison. Reports say so
+  explicitly under `advisories` when both arms came back empty.
+
 ## Metrics Collected
 
 ### Search Metrics
