@@ -300,7 +300,11 @@ Phase 4 已完成（PR #54，2026-09-20）
   4. live 测试的 `LiveTestReport.to_dict()` 不含该块 → 补注入，否则 CI 的报告永远是 `no_data`
   最后补 `enable_snapshot_on_exit()`（`serve` 自动启用）与 `webscout-mcp metrics snapshot`（CI 显式落盘）
 - **G1 有了度量手段，但基线值仍不可复核** —— 原 A/B 脚手架从未入库（缺陷 5），−7.3pp 这个数字无法重跑验证。现在能做的是让新指标在本仓库的 live/稳定性运行里持续累积，用**后续 7 天的 `usable_rate`** 建立可信基线，而不是继续引用一个不可复现的历史数字
-- **G3/G4 暂不可验收** —— 需要先自建一个**入库的**可复现 A/B 脚手架（缺陷 5 的硬约束）
+- **G3/G4 已有可复现的验收工具**（2026-10-25）—— `webscout_mcp/ab_eval.py` + `scripts/ab_evaluate.py` 入库，
+  判据是三个 gate：G1 可用率不劣于裸基线、G2 错误率不升高、G3 P95 比值受控。
+  它满足缺陷 5 的硬约束：**评分是纯函数**（零网络可测）、**证据可序列化**（`observations.jsonl` 只含标量，无 URL/正文）、
+  **结论可离线重算**（`--replay` 重打分，实测两次运行 `report.json` 字节一致）。
+  这一项替掉了当初那个跑完即失的 `.ab-eval/`。
 - **落盘已自动化** —— `serve` 在进程退出时自动落盘（有数据才写），CI 的 live job 用 `metrics snapshot` 显式落盘。两条路都不再需要人工导出
 
 

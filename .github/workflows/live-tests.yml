@@ -75,6 +75,44 @@ jobs:
           python -m webscout_mcp metrics snapshot \
             --out live-test-results/live_report.json
 
+      - name: A/B evaluation (pipeline vs bare baseline)
+        if: always()
+        continue-on-error: true
+        run: |
+          # Measures whether the pipeline actually returns more usable content
+          # than a plain HTTP GET. This is the check whose 2026-10-23 result
+          # (-7.3pp) drove the whole quality-metrics effort, and whose harness
+          # was never committed, so it could not be repeated.
+          #
+          # continue-on-error: live-network variance must not turn the pipeline
+          # red, but the verdict and the raw observations are uploaded below so
+          # a FAIL is still visible and still re-scorable offline.
+          mkdir -p ab-report
+          python scripts/ab_evaluate.py \
+            --limit 40 \
+            --timeout 30 \
+            --run-id "ab-${GITHUB_RUN_ID:-local}" \
+            --out ab-report || true
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## A/B Evaluation (pipeline vs baseline)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f ab-report/report.md ]; then
+            cat ab-report/report.md >> $GITHUB_STEP_SUMMARY
+          else
+            echo "No A/B report generated." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload A/B evaluation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ab-evaluation
+          path: |
+            ab-report/
+          retention-days: 90
+          if-no-files-found: warn
+
       - name: Upload live test results
         if: always()
         uses: actions/upload-artifact@v4
