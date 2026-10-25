@@ -252,6 +252,11 @@ class HTTPFetchProvider(FetchProvider):
                 max_chars=request.max_chars,
                 bypass_cache=request.bypass_cache,
                 start_char=request.start_char,
+                # FetchService records what the caller finally receives, after
+                # browser/fallback recovery. Recording here as well counted one
+                # fetch twice (by_backend showed both 'fetcher' and 'fast-http')
+                # and inflated the denominator, skewing the usable rate.
+                record_quality=False,
             )
             latency_ms = self._measure_latency(start)
             response = FetchResponse.from_fetch_result(result, provider=self.name, latency_ms=latency_ms)

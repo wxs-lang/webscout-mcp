@@ -180,6 +180,52 @@ class Fetcher:
         bypass_cache: bool = False,
         start_char: int = 0,
         follow_redirects: bool = True,
+        record_quality: bool = True,
+    ) -> FetchResult:
+        """Fetch a URL and record content-quality counters.
+
+        Records at the exit of the one public entry point rather than at each of
+        the eight internal return statements. The counters used to be written
+        only by FetchService, so any caller that drove Fetcher directly - the
+        live test suite does exactly that - produced no quality data at all. The
+        SLO report then showed fetches=0 and the rolling baseline had nothing to
+        average.
+        """
+        result = await self._fetch_inner(
+            url=url,
+            extract=extract,
+            output_format=output_format,
+            max_chars=max_chars,
+            bypass_cache=bypass_cache,
+            start_char=start_char,
+            follow_redirects=follow_redirects,
+        )
+        if record_quality:
+            try:
+                from .observability import record_content_quality as _record
+
+                meta = result.metadata or {}
+                _record(
+                    returned_chars=len(result.content or ""),
+                    pre_limit_chars=meta.get("pre_limit_content_chars"),
+                    truncated=bool(meta.get("truncated_by_output_limit", False)),
+                    omitted_chars=int(meta.get("omitted_chars") or 0),
+                    backend="fetcher",
+                    status="success" if result.status_code and result.status_code < 400 else "failed",
+                )
+            except Exception:  # pragma: no cover - telemetry must never break a fetch
+                logger.debug("content quality telemetry failed", exc_info=True)
+        return result
+
+    async def _fetch_inner(
+        self,
+        url: str,
+        extract: bool = True,
+        output_format: str | None = None,
+        max_chars: int | None = None,
+        bypass_cache: bool = False,
+        start_char: int = 0,
+        follow_redirects: bool = True,
     ) -> FetchResult:
         url = normalize_url(url)
         fmt = output_format or self.config.extract_output_format
