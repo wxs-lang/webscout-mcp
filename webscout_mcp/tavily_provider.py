@@ -15,7 +15,7 @@ from typing import Any
 
 import httpx
 
-from .errors import StandardErrorCode
+from .core.errors import StandardErrorCode
 from .logging_config import get_logger
 from .search import SearchResult
 from .search_provider import (

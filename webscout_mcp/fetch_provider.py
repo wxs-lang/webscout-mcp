@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-from .errors import StandardErrorCode
+from .core.errors import StandardErrorCode
 from .logging_config import get_logger
 from .search_provider import ProviderHealth, ProviderHealthStatus
 

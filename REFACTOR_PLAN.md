@@ -224,15 +224,34 @@ Agent 得到的应该是：
 - [x] 优化 `__init__.py` 使用延迟导入
 - [x] 标准化 Search Provider 接口 — `search_provider.py` 的 `SearchProvider(ABC)` + `@abstractmethod`
 - [x] 建立标准错误体系 — `errors.py` 的 `StandardErrorCode`
-- [ ] 五层架构重组 — 唯一真正未完成项（见下方说明）
+- [ ] 五层架构重组 — **进行中（1/5 层）**：`core/` 已建立，`errors.py` 已迁入
+      完成 `core/` 后仍需迁 `services/`、`providers/`、`security/`、`observability/`（见下方说明）
 - [x] 文档自动化生成脚本 — `scripts/generate_docs.py`，CI 以 `--check` 强制
 - [x] 故障注入测试 — `test_fault_injection.py` + `test_system_fault_injection.py`（53 个用例）
 - [x] Live Test 固定测试集框架 — `tests/live/test_live_search.py`（20 条搜索 + 10 个 URL，带分类）
 
 > **勾选核对（2026-10-25）**：上面 5 项的完成状态此前一直没勾，属于记账遗漏，不是工作未做。
-> 已逐项核实代码与 CI 后补勾。`五层架构重组` 是唯一真正未完成项 —— 计划中的
-> `server/ services/ providers/ core/ security/ observability/` 子包一个都没建，
-> 实际是 `webscout_mcp/` 下扁平模块。这是纯工程债，不影响产品能力，排在最后。
+> 已逐项核实代码与 CI 后补勾。
+
+### 五层重组进度（2026-10-25）
+
+计划中的 `server/ services/ providers/ core/ security/ observability/` 六层，
+原本一个都没建，实际是 `webscout_mcp/` 下 95 个扁平模块、28.8k 行。
+
+| 层 | 状态 | 说明 |
+|---|---|---|
+| `core/` | **部分完成** | `errors.py` 已迁入；`config` / `cache` / `logging_config` 待迁 |
+| `services/` | 未开始 | `search_service`、`fetch_service` 等 |
+| `providers/` | 未开始 | 按 `search/`、`fetch/` 分组 |
+| `security/` | 未开始 | `url_safety`、`security` |
+| `observability/` | 未开始 | `observability`、`decision_event` |
+| `server/` | 未开始 | `server.py`、`api_server.py` |
+
+迁移方式：先建立子包，模块用 `git mv` 移入，原路径留 shim 并发 `DeprecationWarning`，
+内部引用改为新路径。每批独立 PR，跑完整测试后再继续。
+
+选 `errors.py` 作为第一批的理由：它零内部依赖、被 10 个模块引用，是真正的
+基础设施层。`logging_config` 被 53 个模块依赖，风险最高，排在最后。
 
 ---
 
