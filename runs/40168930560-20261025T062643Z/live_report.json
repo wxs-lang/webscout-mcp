@@ -1,0 +1,32 @@
+{
+  "timestamp": 1792909575.337334,
+  "started_at": "2026-10-25T06:26:15.337294+00:00",
+  "backends": {},
+  "escalations": {},
+  "ssrf_blocks": {},
+  "recovery_reasons": {},
+  "recovery_actions": {},
+  "recovery_execution": {},
+  "continuation": {},
+  "crawl": {},
+  "crawl_blocked": {},
+  "content_quality": {
+    "fetches": 0,
+    "usable": 0,
+    "thin": 0,
+    "empty": 0,
+    "usable_rate": 0.0,
+    "thin_rate": 0.0,
+    "empty_rate": 0.0,
+    "truncated_by_output_limit": 0,
+    "truncation_rate": 0.0,
+    "thin_threshold_chars": 200,
+    "chars_returned_total": 0,
+    "chars_omitted_total": 0,
+    "returned_p50": 0,
+    "returned_p95": 0,
+    "samples": 0,
+    "by_status": {},
+    "by_backend": {}
+  }
+}
