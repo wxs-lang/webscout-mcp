@@ -126,11 +126,18 @@ async def run_fetch_corpus(
     *,
     limit: int = 0,
     per_request_timeout: float = 30.0,
+    eval_dir: str | Path | None = None,
 ) -> dict[str, Any]:
     """Drive the production fetch corpus through ``FetchService.fetch``.
 
     The driver only feeds ``FetchRequest`` objects and flushes shadow state.
     It never builds decisions. Returns counts plus a human-pack result list.
+
+    When ``eval_dir`` is given, the process-wide observability counters are
+    written to ``<eval_dir>/live_report.json`` at the end of the run. Those
+    counters live in memory, so without this the run's content-quality numbers
+    are lost on exit and the SLO aggregator — which reads snapshots from disk —
+    has nothing to aggregate.
     """
     data = _load_json(_FETCH_CORPUS_PATH)
     entries = list(data.get("urls", []))
@@ -196,6 +203,14 @@ async def run_fetch_corpus(
         )
 
     await _drain_jev_tasks(fetch_service)
+
+    if eval_dir is not None:
+        try:
+            from .observability import write_snapshot
+
+            write_snapshot(Path(eval_dir) / "live_report.json")
+        except Exception:  # pragma: no cover - telemetry must never fail a run
+            log.debug("observability snapshot write failed", exc_info=True)
 
     return {
         "run_id": run_id,

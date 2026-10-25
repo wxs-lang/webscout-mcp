@@ -29,6 +29,11 @@ async def main() -> int:
     ap.add_argument("--run-id", default=os.environ.get("WEBSCOUT_RUN_ID", "eval-fetch-v150"))
     ap.add_argument("--limit", type=int, default=0, help="Cap number of URLs (0 = whole corpus)")
     ap.add_argument("--timeout", type=float, default=30.0, help="Per-request timeout seconds")
+    ap.add_argument(
+        "--results-dir",
+        default=os.environ.get("WEBSCOUT_RESULTS_DIR", "live-test-results"),
+        help="Where to write live_report.json so the SLO aggregator can read it",
+    )
     args = ap.parse_args()
 
     services = configure_eval_run(args.run_id)
@@ -38,6 +43,7 @@ async def main() -> int:
             args.run_id,
             limit=args.limit,
             per_request_timeout=args.timeout,
+            eval_dir=args.results_dir,
         )
     finally:
         await aclose_services(services)
@@ -46,6 +52,7 @@ async def main() -> int:
         f"fetch corpus run_id={args.run_id}: "
         f"total={summary['total']} succeeded={summary['succeeded']} failed={summary['failed']}"
     )
+    print(f"live_report={os.path.join(args.results_dir, 'live_report.json')}")
     print(f"decision_db={services['decision_db']}")
     return 0
 

@@ -14,9 +14,12 @@ Privacy rules (enforced by the helpers below, not by caller discipline):
 
 from __future__ import annotations
 
+import json
+import os
 import threading
 from collections import defaultdict
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
@@ -340,3 +343,44 @@ def reset_for_tests() -> None:
         _CONTENT_QUALITY.clear()
         _CONTENT_RETURNED_CHARS.clear()
         _STARTED_AT = datetime.now(timezone.utc).isoformat()
+
+
+def write_snapshot(path: str | Path) -> dict[str, Any]:
+    """Persist the current counters to ``path`` as JSON and return the snapshot.
+
+    Counters live in process memory, so without this they vanish on exit and
+    nothing outside the process can read them. The SLO aggregator reads
+    ``live_report.json`` files from disk, so a run has to leave one behind for
+    its numbers to reach a report at all.
+
+    The write is atomic (temp file + replace) so a crash mid-write cannot leave
+    a truncated JSON file for the aggregator to choke on. Telemetry must never
+    break the caller: failures are logged at debug level and swallowed.
+    """
+    snapshot = get_observability_summary()
+    try:
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        tmp = target.with_suffix(target.suffix + ".tmp")
+        tmp.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(tmp, target)
+    except Exception:  # pragma: no cover - disk problems must never break a run
+        log.debug("observability snapshot write failed", exc_info=True)
+    return snapshot
+
+
+def read_snapshot(path: str | Path) -> dict[str, Any] | None:
+    """Load a snapshot previously written by :func:`write_snapshot`.
+
+    Returns None when the file is absent or unreadable/corrupt, so a damaged
+    snapshot degrades to "no data" instead of raising in a reporting path.
+    """
+    try:
+        target = Path(path)
+        if not target.exists():
+            return None
+        data = json.loads(target.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else None
+    except Exception:  # pragma: no cover - reporting must tolerate bad input
+        log.debug("observability snapshot read failed", exc_info=True)
+        return None
