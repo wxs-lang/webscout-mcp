@@ -27,19 +27,27 @@ def main() -> int:
 
     print(f"**Overall Status:** `{report['overall_status'].upper()}`")
     print()
-    print("### 7-Day SLO")
-    slo7 = report.get("slo_7d", {})
-    print(f"- Status: `{slo7.get('status', 'unknown').upper()}`")
-    print(f"- Search Success: **{slo7.get('search', {}).get('success_rate', 'N/A')}%**")
-    print(f"- Fetch Success: **{slo7.get('fetch', {}).get('success_rate', 'N/A')}%**")
-    print(f"- Search P95: {slo7.get('search', {}).get('latency_p95_ms', 'N/A')}ms")
-    print()
-    print("### 30-Day SLO")
-    slo30 = report.get("slo_30d", {})
-    print(f"- Status: `{slo30.get('status', 'unknown').upper()}`")
-    print(f"- Search Success: **{slo30.get('search', {}).get('success_rate', 'N/A')}%**")
-    print(f"- Fetch Success: **{slo30.get('fetch', {}).get('success_rate', 'N/A')}%**")
-    print(f"- Search P95: {slo30.get('search', {}).get('latency_p95_ms', 'N/A')}ms")
+
+    def _pct(value: object) -> str:
+        # The aggregator reports None when a window holds no observations.
+        # Printing that as "None%" (or "N/A%" via a naive default) put junk in
+        # the CI summary and made missing data look like a measured value.
+        return "N/A (no data)" if value is None else f"{value}%"
+
+    def _ms(value: object) -> str:
+        return "N/A (no data)" if value is None else f"{value}ms"
+
+    for label, key in (("7-Day", "slo_7d"), ("30-Day", "slo_30d")):
+        window = report.get(key, {})
+        print(f"### {label} SLO")
+        print(f"- Status: `{window.get('status', 'unknown').upper()}`")
+        print(f"- Search Success: **{_pct(window.get('search', {}).get('success_rate'))}**")
+        print(f"- Fetch Success: **{_pct(window.get('fetch', {}).get('success_rate'))}**")
+        print(f"- Search P95: {_ms(window.get('search', {}).get('latency_p95_ms'))}")
+        cq = window.get("content_quality") or {}
+        with_data = cq.get("reports_with_data", 0)
+        print(f"- Usable Content: **{_pct(cq.get('usable_rate'))}** ({with_data} report(s) with data)")
+        print()
     return 0
 
 
