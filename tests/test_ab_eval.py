@@ -66,12 +66,75 @@ def _arm_pair(
 
 
 def test_reproduces_the_historic_minus_7pp_deficit_as_a_failure():
-    """The exact shape of the 2026-10-23 finding: 84% vs 91% usable."""
-    result = evaluate(_arm_pair(100, pipeline_usable=84, baseline_usable=91))
+    """The exact shape of the 2026-10-23 finding: 84% vs 91% usable.
+
+    Scored with zero tolerance: seven cases behind is far beyond any allowance
+    for flakiness, so this must fail however the tolerance is set.
+    """
+    result = evaluate(_arm_pair(100, pipeline_usable=84, baseline_usable=91), case_tolerance=0)
     assert result.usable_rate_delta_pp == pytest.approx(-7.0, abs=0.01)
     assert not result.passed
     gate = next(g for g in result.gates if g.name == "G1_usable_rate_not_worse")
     assert not gate.passed
+
+
+def test_deficit_beyond_tolerance_fails_even_with_slack():
+    """A 7-case gap is real, not flakiness, and must survive the tolerance."""
+    result = evaluate(_arm_pair(100, pipeline_usable=84, baseline_usable=91), case_tolerance=1)
+    assert not result.passed
+
+
+# --- Case tolerance: a single flaky request must not flip the verdict -----
+
+
+def test_one_case_behind_passes_with_default_tolerance():
+    """A live CI run measured exactly this: one URL failed transiently.
+
+    The pipeline recorded 0 chars after a 16.9s browser attempt while the same
+    URL returned 1168 chars to the baseline. Across the other 39 cases the arms
+    were identical. A gate that fails on that teaches people to ignore it.
+    """
+    obs = _arm_pair(40, pipeline_usable=39, baseline_usable=40)
+    assert evaluate(obs, case_tolerance=1).passed
+    assert not evaluate(obs, case_tolerance=0).passed
+
+
+def test_tolerance_is_expressed_in_cases_not_percentage_points():
+    """The gate reports a case gap, so boundaries cannot break on rounding.
+
+    With 40 cases one case is exactly 2.5pp; a pp comparison of -2.5 against
+    -2.5 is a float-boundary trap. The gate compares integers instead.
+    """
+    obs = _arm_pair(40, pipeline_usable=39, baseline_usable=40)
+    gate = next(g for g in evaluate(obs, case_tolerance=1).gates if g.name == "G1_usable_rate_not_worse")
+    assert gate.actual == 1
+    assert gate.threshold == 1
+    assert "1 case(s) behind" in gate.detail
+
+
+def test_tolerance_does_not_mask_larger_gaps():
+    obs = _arm_pair(40, pipeline_usable=37, baseline_usable=40)
+    assert not evaluate(obs, case_tolerance=1).passed
+
+
+def test_zero_tolerance_restores_strict_comparison():
+    obs = _arm_pair(40, pipeline_usable=39, baseline_usable=40)
+    assert not evaluate(obs, case_tolerance=0).passed
+
+
+def test_tolerance_also_applies_to_the_error_gate():
+    obs = _arm_pair(20, pipeline_usable=20, baseline_usable=20)
+    obs.append(ArmObservation("x0", "pipeline", False, 0, 100.0, escaped_error="TimeoutError"))
+    assert evaluate(obs, case_tolerance=1).passed
+    assert not evaluate(obs, case_tolerance=0).passed
+
+
+def test_tolerance_is_recorded_in_the_report():
+    """A passing run must still show how much slack it used."""
+    obs = _arm_pair(40, pipeline_usable=39, baseline_usable=40)
+    payload = evaluate(obs, case_tolerance=2).to_dict()
+    gate = next(g for g in payload["gates"] if g["name"] == "G1_usable_rate_not_worse")
+    assert gate["threshold"] == 2
 
 
 def test_equal_arms_pass():
