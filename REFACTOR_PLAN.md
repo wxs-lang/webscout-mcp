@@ -222,12 +222,17 @@ Agent 得到的应该是：
 - [x] 添加 MCP 协议级 E2E 测试（13 个）
 - [x] 修复 MCP 服务器 asyncio 事件循环问题
 - [x] 优化 `__init__.py` 使用延迟导入
-- [ ] 标准化 Search Provider 接口
-- [ ] 建立标准错误体系
-- [ ] 五层架构重组
-- [ ] 文档自动化生成脚本
-- [ ] 故障注入测试
-- [ ] Live Test 固定测试集框架
+- [x] 标准化 Search Provider 接口 — `search_provider.py` 的 `SearchProvider(ABC)` + `@abstractmethod`
+- [x] 建立标准错误体系 — `errors.py` 的 `StandardErrorCode`
+- [ ] 五层架构重组 — 唯一真正未完成项（见下方说明）
+- [x] 文档自动化生成脚本 — `scripts/generate_docs.py`，CI 以 `--check` 强制
+- [x] 故障注入测试 — `test_fault_injection.py` + `test_system_fault_injection.py`（53 个用例）
+- [x] Live Test 固定测试集框架 — `tests/live/test_live_search.py`（20 条搜索 + 10 个 URL，带分类）
+
+> **勾选核对（2026-10-25）**：上面 5 项的完成状态此前一直没勾，属于记账遗漏，不是工作未做。
+> 已逐项核实代码与 CI 后补勾。`五层架构重组` 是唯一真正未完成项 —— 计划中的
+> `server/ services/ providers/ core/ security/ observability/` 子包一个都没建，
+> 实际是 `webscout_mcp/` 下扁平模块。这是纯工程债，不影响产品能力，排在最后。
 
 ---
 
