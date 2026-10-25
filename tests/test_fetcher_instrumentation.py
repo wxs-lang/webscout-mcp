@@ -109,27 +109,44 @@ async def test_one_fetchservice_fetch_records_exactly_one_data_point():
 
     A doubled denominator makes a usable rate that divides by the wrong number,
     which is worse than no metric at all - it looks precise and is wrong.
-    """
-    from webscout_mcp.eval_services import aclose_services, configure_eval_run
-    from webscout_mcp.fetch_provider import FetchRequest
 
-    services = configure_eval_run("double-count-test")
-    try:
-        services["fetch_service"]._fallback_http = None
-        await services["fetch_service"].fetch(
-            FetchRequest(
-                url="https://example.com/",
-                extract=True,
-                output_format="markdown",
-                max_chars=5000,
-                bypass_cache=True,
-            )
+    Built from a plain ProviderRegistry rather than configure_eval_run. That
+    helper pins a process-wide run id by rewriting PROCESS_RUN_ID on already
+    imported modules and several env vars, and nothing restores them, so using
+    it here leaked the run id into every later test in the process. CI caught
+    it: test_jev_shadow_v2 saw 'double-count-test' instead of its own id.
+    """
+    from webscout_mcp.fetch_provider import FetchRequest, HTTPFetchProvider
+    from webscout_mcp.fetch_service import FetchService
+    from webscout_mcp.provider_registry import ProviderRegistry
+    from webscout_mcp.provider_router import ProviderCapability, ProviderCostTier, ProviderRouter
+
+    fetcher = _fetcher()
+    fetcher._fetch_inner = AsyncMock(return_value=_result())
+    provider = HTTPFetchProvider(fetcher)
+
+    router = ProviderRouter(
+        provider_names=["http"],
+        cost_tiers={"http": ProviderCostTier.FREE},
+        capabilities={"http": {ProviderCapability.FETCH}},
+    )
+    registry = ProviderRegistry(router=router)
+    registry.register(provider, capabilities={ProviderCapability.FETCH})
+
+    service = FetchService(registry=registry)
+    await service.fetch(
+        FetchRequest(
+            url="https://example.com/a",
+            extract=True,
+            output_format="markdown",
+            max_chars=5000,
+            bypass_cache=True,
         )
-        cq = _cq()
-        assert cq["fetches"] == 1, f"expected exactly 1, got {cq['fetches']} via {cq['by_backend']}"
-        assert cq["by_backend"] == {"fast-http": 1}, "the service layer owns the record, not the wrapped fetcher"
-    finally:
-        await aclose_services(services)
+    )
+
+    cq = _cq()
+    assert cq["fetches"] == 1, f"expected exactly 1, got {cq['fetches']} via {cq['by_backend']}"
+    assert cq["by_backend"] == {"fast-http": 1}, "the service layer owns the record, not the wrapped fetcher"
 
 
 @pytest.mark.asyncio
