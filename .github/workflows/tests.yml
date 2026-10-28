@@ -332,3 +332,90 @@ jobs:
             htmlcov/
             coverage_output.txt
           retention-days: 14
+
+  install-smoke:
+    # GOAL.md E2: after `pip install webscout-mcp` the CLI must start. Nothing
+    # tested this - no test file covered it, verify_installation.py never
+    # checked the entry point, and CI ran neither this script nor `pip install .`
+    # A broken entry point or a package missing from the wheel would have
+    # reached PyPI before anyone noticed.
+    name: Install Smoke (wheel + clean venv)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build wheel
+        run: |
+          set -o pipefail
+          python -m pip install --upgrade pip build
+          # Isolated build: `build` creates a temporary environment and installs
+          # what pyproject's [build-system] requires, which includes
+          # setuptools-scm. Isolation hides Python packages, not the filesystem,
+          # so setuptools_scm can still read .git from the working directory -
+          # disabling isolation (my first attempt) only meant the declared build
+          # requirement was never installed.
+          python -m build --wheel
+
+      - name: Install into a clean virtualenv
+        run: |
+          set -euo pipefail
+          python -m venv /tmp/smoke
+          # A fresh venv proves the wheel carries its own dependencies rather
+          # than borrowing them from the runner's site-packages.
+          /tmp/smoke/bin/python -m pip install --upgrade pip
+          /tmp/smoke/bin/python -m pip install dist/*.whl
+          echo "installed: $(/tmp/smoke/bin/python -m pip show webscout-mcp | grep -i ^Version: || echo unknown)"
+
+      - name: CLI must start
+        run: |
+          set -euo pipefail
+          echo "--- webscout-mcp --version ---"
+          /tmp/smoke/bin/webscout-mcp --version
+          echo "--- webscout-mcp --help (first 5 lines) ---"
+          /tmp/smoke/bin/webscout-mcp --help | head -5
+
+      - name: Version must match the git tag
+        run: |
+          set -euo pipefail
+          # Guards the stale-_version.py failure mode: an installed package
+          # reporting an old version is a packaging bug that no other check
+          # catches.
+          installed=$(/tmp/smoke/bin/webscout-mcp --version | awk '{print $2}')
+          expected=$(git describe --tags --abbrev=0 | sed 's/^v//')
+          echo "installed=$installed expected-tag=$expected"
+          case "$installed" in
+            "$expected"*) echo "OK: installed version matches tag $expected" ;;
+            *) echo "::error::installed version $installed does not start with tag $expected"; exit 1 ;;
+          esac
+
+      - name: verify_installation.py against the wheel
+        run: |
+          set -o pipefail
+          /tmp/smoke/bin/python -m pip install pytest
+          # The venv's bin must be on PATH: verify_installation locates the
+          # command with shutil.which(), and that is also the state a user is in
+          # after activating the venv. Calling the venv python by absolute path
+          # alone leaves PATH untouched, which is not a real deployment.
+          export PATH="/tmp/smoke/bin:$PATH"
+          PYTHONPATH="" /tmp/smoke/bin/python scripts/verify_installation.py \
+            2>&1 | tee install_smoke_output.txt
+          exit ${PIPESTATUS[0]}
+
+      - name: Upload smoke output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: install-smoke
+          path: install_smoke_output.txt
+          retention-days: 14
+          if-no-files-found: warn
