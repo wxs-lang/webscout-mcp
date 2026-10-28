@@ -25,6 +25,22 @@ import pytest
 CORPUS = Path(__file__).resolve().parents[1] / "scripts" / "eval_corpus" / "fetch_urls.json"
 
 
+def _host(url: str) -> str:
+    """Hostname of a URL, lowercased, or "" when unparseable.
+
+    Host comparison rather than substring matching: `"example.com" in url` also
+    matches `https://evil.test/example.com`, so a substring check cannot prove a
+    host is absent from the corpus. CodeQL's
+    py/incomplete-url-substring-sanitization caught this in three places.
+    """
+    from urllib.parse import urlparse
+
+    try:
+        return (urlparse(url).hostname or "").lower()
+    except ValueError:
+        return ""
+
+
 @pytest.fixture(scope="module")
 def corpus() -> dict:
     return json.loads(CORPUS.read_text(encoding="utf-8"))
@@ -54,8 +70,8 @@ def test_corpus_size_contract_is_intact(corpus):
 
 
 def test_unreliable_host_is_not_in_the_active_corpus(corpus):
-    urls = [e["url"] for e in corpus["urls"]]
-    assert not any("neverssl.com" in u for u in urls), "the unreliable host came back"
+    hosts = {_host(e["url"]) for e in corpus["urls"]}
+    assert "neverssl.com" not in hosts, "the unreliable host came back"
 
 
 def test_every_exclusion_records_a_reason(corpus):
@@ -68,15 +84,18 @@ def test_every_exclusion_records_a_reason(corpus):
 
 
 def test_the_removed_host_is_the_one_we_measured(corpus):
-    excluded = {e["url"] for e in corpus.get("excluded", [])}
-    assert "https://neverssl.com/" in excluded
+    excluded_hosts = {_host(e["url"]) for e in corpus.get("excluded", [])}
+    assert "neverssl.com" in excluded_hosts
 
 
 def test_the_replacement_host_is_present(corpus):
     """The point of a replacement is that coverage did not shrink."""
-    urls = {e["url"] for e in corpus["urls"]}
-    assert "https://www.w3.org/" in urls
-    assert any(e.get("stratum") == "short_static" for e in corpus["urls"] if e["url"] == "https://www.w3.org/")
+    # www.w3.org already had an entry (docs_spec) before this change, so match
+    # the exact URL being asserted rather than just the host.
+    exact = {e["url"] for e in corpus["urls"]}
+    assert "https://www.w3.org/" in exact
+    entry = next(e for e in corpus["urls"] if e["url"] == "https://www.w3.org/")
+    assert entry.get("stratum") == "short_static", "the replacement must sit in the same stratum"
 
 
 def test_corpus_still_covers_every_stratum(corpus):
