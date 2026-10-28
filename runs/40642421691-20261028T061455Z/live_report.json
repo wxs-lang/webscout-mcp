@@ -1,0 +1,225 @@
+{
+  "timestamp": 1793168050.3612802,
+  "datetime": "2026-10-28 06:14:10",
+  "search": {
+    "count": 40,
+    "success_count": 40,
+    "failure_count": 0,
+    "success_rate": 100.0,
+    "p50_latency_ms": 166.0,
+    "p95_latency_ms": 368.8,
+    "avg_latency_ms": 184.0,
+    "error_types": {},
+    "providers": {
+      "bing": 39,
+      "duckduckgo": 1
+    }
+  },
+  "fetch": {
+    "count": 10,
+    "success_count": 10,
+    "failure_count": 0,
+    "success_rate": 100.0,
+    "p50_latency_ms": 413.1,
+    "p95_latency_ms": 4272.8,
+    "avg_latency_ms": 815.8,
+    "error_types": {},
+    "providers": {
+      "WebScout Fetcher (status=200)": 10
+    }
+  },
+  "fallback": {
+    "count": 2,
+    "success_count": 2,
+    "failure_count": 0,
+    "success_rate": 100.0,
+    "p50_latency_ms": 673.2,
+    "p95_latency_ms": 673.2,
+    "avg_latency_ms": 633.0,
+    "error_types": {},
+    "providers": {
+      "duckduckgo": 2
+    }
+  },
+  "ddg_fallback_detail": {
+    "attempts": 2,
+    "successes": 2,
+    "failures": 0,
+    "success_rate": 100.0,
+    "p50_latency_ms": 673.2,
+    "p95_latency_ms": 673.2,
+    "avg_latency_ms": 633.0,
+    "error_types": {}
+  },
+  "search_by_category": {
+    "english_technical": {
+      "count": 10,
+      "success_count": 10,
+      "failure_count": 0,
+      "success_rate": 100.0,
+      "p50_latency_ms": 182.7,
+      "p95_latency_ms": 368.8,
+      "avg_latency_ms": 194.1,
+      "error_types": {},
+      "providers": {
+        "bing": 10
+      }
+    },
+    "english_news": {
+      "count": 6,
+      "success_count": 6,
+      "failure_count": 0,
+      "success_rate": 100.0,
+      "p50_latency_ms": 164.0,
+      "p95_latency_ms": 214.1,
+      "avg_latency_ms": 167.7,
+      "error_types": {},
+      "providers": {
+        "bing": 6
+      }
+    },
+    "english_github": {
+      "count": 4,
+      "success_count": 4,
+      "failure_count": 0,
+      "success_rate": 100.0,
+      "p50_latency_ms": 207.6,
+      "p95_latency_ms": 592.5,
+      "avg_latency_ms": 279.2,
+      "error_types": {},
+      "providers": {
+        "bing": 3,
+        "duckduckgo": 1
+      }
+    },
+    "chinese_technical": {
+      "count": 10,
+      "success_count": 10,
+      "failure_count": 0,
+      "success_rate": 100.0,
+      "p50_latency_ms": 172.6,
+      "p95_latency_ms": 210.2,
+      "avg_latency_ms": 175.6,
+      "error_types": {},
+      "providers": {
+        "bing": 10
+      }
+    },
+    "chinese_news": {
+      "count": 6,
+      "success_count": 6,
+      "failure_count": 0,
+      "success_rate": 100.0,
+      "p50_latency_ms": 157.8,
+      "p95_latency_ms": 182.7,
+      "avg_latency_ms": 158.8,
+      "error_types": {},
+      "providers": {
+        "bing": 6
+      }
+    },
+    "chinese_general": {
+      "count": 4,
+      "success_count": 4,
+      "failure_count": 0,
+      "success_rate": 100.0,
+      "p50_latency_ms": 146.6,
+      "p95_latency_ms": 166.7,
+      "avg_latency_ms": 146.9,
+      "error_types": {},
+      "providers": {
+        "bing": 4
+      }
+    }
+  },
+  "fetch_by_category": {
+    "technical_docs": {
+      "count": 5,
+      "success_count": 5,
+      "failure_count": 0,
+      "success_rate": 100.0,
+      "p50_latency_ms": 396.1,
+      "p95_latency_ms": 4272.8,
+      "avg_latency_ms": 1191.9,
+      "error_types": {},
+      "providers": {
+        "WebScout Fetcher (status=200)": 5
+      }
+    },
+    "news_sites": {
+      "count": 2,
+      "success_count": 2,
+      "failure_count": 0,
+      "success_rate": 100.0,
+      "p50_latency_ms": 413.1,
+      "p95_latency_ms": 413.1,
+      "avg_latency_ms": 236.6,
+      "error_types": {},
+      "providers": {
+        "WebScout Fetcher (status=200)": 2
+      }
+    },
+    "github_repo": {
+      "count": 1,
+      "success_count": 1,
+      "failure_count": 0,
+      "success_rate": 100.0,
+      "p50_latency_ms": 737.2,
+      "p95_latency_ms": 737.2,
+      "avg_latency_ms": 737.2,
+      "error_types": {},
+      "providers": {
+        "WebScout Fetcher (status=200)": 1
+      }
+    },
+    "redirect": {
+      "count": 1,
+      "success_count": 1,
+      "failure_count": 0,
+      "success_rate": 100.0,
+      "p50_latency_ms": 106.0,
+      "p95_latency_ms": 106.0,
+      "avg_latency_ms": 106.0,
+      "error_types": {},
+      "providers": {
+        "WebScout Fetcher (status=200)": 1
+      }
+    },
+    "js_heavy": {
+      "count": 1,
+      "success_count": 1,
+      "failure_count": 0,
+      "success_rate": 100.0,
+      "p50_latency_ms": 882.0,
+      "p95_latency_ms": 882.0,
+      "avg_latency_ms": 882.0,
+      "error_types": {},
+      "providers": {
+        "WebScout Fetcher (status=200)": 1
+      }
+    }
+  },
+  "content_quality": {
+    "fetches": 10,
+    "usable": 10,
+    "thin": 0,
+    "empty": 0,
+    "usable_rate": 1.0,
+    "thin_rate": 0.0,
+    "empty_rate": 0.0,
+    "truncated_by_output_limit": 7,
+    "truncation_rate": 0.7,
+    "thin_threshold_chars": 200,
+    "chars_returned_total": 42811,
+    "chars_omitted_total": 291150,
+    "returned_p50": 5000,
+    "returned_p95": 5000,
+    "samples": 10,
+    "by_status": {
+      "success": 10
+    },
+    "by_backend": {
+      "fetcher": 10
+    }
+  }
+}
