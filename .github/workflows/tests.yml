@@ -401,9 +401,12 @@ jobs:
       - name: verify_installation.py against the wheel
         run: |
           set -o pipefail
-          # Run the repo's own verification script, but with the venv python so
-          # it inspects the installed package rather than the source tree.
           /tmp/smoke/bin/python -m pip install pytest
+          # The venv's bin must be on PATH: verify_installation locates the
+          # command with shutil.which(), and that is also the state a user is in
+          # after activating the venv. Calling the venv python by absolute path
+          # alone leaves PATH untouched, which is not a real deployment.
+          export PATH="/tmp/smoke/bin:$PATH"
           PYTHONPATH="" /tmp/smoke/bin/python scripts/verify_installation.py \
             2>&1 | tee install_smoke_output.txt
           exit ${PIPESTATUS[0]}
