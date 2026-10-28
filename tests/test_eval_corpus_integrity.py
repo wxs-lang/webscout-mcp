@@ -84,16 +84,16 @@ def test_every_exclusion_records_a_reason(corpus):
 
 
 def test_the_removed_host_is_the_one_we_measured(corpus):
-    excluded_hosts = {_host(e["url"]) for e in corpus.get("excluded", [])}
-    assert "neverssl.com" in excluded_hosts
+    excluded_hosts = [_host(e["url"]) for e in corpus.get("excluded", [])]
+    assert any(h == "neverssl.com" for h in excluded_hosts), excluded_hosts
 
 
 def test_the_replacement_host_is_present(corpus):
     """The point of a replacement is that coverage did not shrink."""
     # www.w3.org already had an entry (docs_spec) before this change, so match
     # the exact URL being asserted rather than just the host.
-    exact = {e["url"] for e in corpus["urls"]}
-    assert "https://www.w3.org/" in exact
+    exact_urls = [e["url"] for e in corpus["urls"]]
+    assert any(u == "https://www.w3.org/" for u in exact_urls), "replacement URL missing"
     entry = next(e for e in corpus["urls"] if e["url"] == "https://www.w3.org/")
     assert entry.get("stratum") == "short_static", "the replacement must sit in the same stratum"
 
