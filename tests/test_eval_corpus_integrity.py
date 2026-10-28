@@ -39,7 +39,18 @@ def test_corpus_parses_and_has_urls(corpus):
 
 def test_corpus_version_carries_the_exclusion(corpus):
     """Bumping the version marks that verdicts before and after are not comparable."""
-    assert corpus["version"] == "v2", "removing a URL is a corpus change and must bump the version"
+    assert corpus["version"] == "v2", "changing a URL is a corpus change and must bump the version"
+
+
+def test_corpus_size_contract_is_intact(corpus):
+    """The unreliable host was replaced, not dropped.
+
+    tests/test_objective_evaluation.py asserts the corpus has at least 60 entries,
+    and the first attempt at this change broke it by deleting the host outright.
+    Shrinking coverage silently is worse than removing one host loudly, so the
+    replacement keeps the contract.
+    """
+    assert len(corpus["urls"]) >= 60, "the corpus size contract lives in test_objective_evaluation.py"
 
 
 def test_unreliable_host_is_not_in_the_active_corpus(corpus):
@@ -59,6 +70,13 @@ def test_every_exclusion_records_a_reason(corpus):
 def test_the_removed_host_is_the_one_we_measured(corpus):
     excluded = {e["url"] for e in corpus.get("excluded", [])}
     assert "https://neverssl.com/" in excluded
+
+
+def test_the_replacement_host_is_present(corpus):
+    """The point of a replacement is that coverage did not shrink."""
+    urls = {e["url"] for e in corpus["urls"]}
+    assert "https://www.w3.org/" in urls
+    assert any(e.get("stratum") == "short_static" for e in corpus["urls"] if e["url"] == "https://www.w3.org/")
 
 
 def test_corpus_still_covers_every_stratum(corpus):

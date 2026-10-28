@@ -544,8 +544,12 @@ class TestReproducibleMetadata:
 
     def test_corpus_files_present_and_parse(self):
         corpus = Path(__file__).resolve().parent.parent / "scripts" / "eval_corpus"
-        fetch = json.loads((corpus / "fetch_urls.json").read_text())
-        search = json.loads((corpus / "search_queries.json").read_text())
+        # encoding is explicit: read_text() defaults to the locale codec, which
+        # is cp936 on Windows and cannot decode the UTF-8 corpus. This surfaced
+        # when the corpus gained a non-ASCII field; it would fail for any user
+        # on a non-UTF-8 default locale regardless.
+        fetch = json.loads((corpus / "fetch_urls.json").read_text(encoding="utf-8"))
+        search = json.loads((corpus / "search_queries.json").read_text(encoding="utf-8"))
         assert len(fetch["urls"]) >= 60
         assert len(search["queries"]) >= 40
 

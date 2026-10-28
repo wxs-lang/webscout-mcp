@@ -26,6 +26,7 @@
     {"url": "https://www.iana.org/domains/reserved", "stratum": "short_static"},
     {"url": "https://example.edu/", "stratum": "short_static"},
     {"url": "https://www.example.com/", "stratum": "short_static"},
+    {"url": "https://www.w3.org/", "stratum": "short_static"},
     {"url": "https://httpbin.org/html", "stratum": "short_static"},
     {"url": "https://httpbin.org/robots.txt", "stratum": "short_static"},
 
@@ -70,6 +71,6 @@
     {"url": "https://www.whatismybrowser.com/detect/what-is-my-user-agent", "stratum": "troublesome_safe"}
   ],
   "excluded": [
-    {"url": "https://neverssl.com/", "stratum": "short_static", "reason": "Unreliable host: 8/8 direct HTTP attempts returned RemoteProtocolError after 6-8s. It produced the only A/B latency outlier (12.4s and 20.3s pipeline runs against a 78ms baseline for byte-identical content), which flipped G3. Removed rather than tolerated, because a corpus entry that fails on its own cannot measure the pipeline."}
+    {"url": "https://neverssl.com/", "stratum": "short_static", "reason": "Unreliable host: 8/8 direct HTTP attempts returned RemoteProtocolError after 6-8s. It produced the only A/B latency outlier (12.4s and 20.3s pipeline runs against a 78ms baseline for byte-identical content), which flipped G3. Replaced by https://www.w3.org/ rather than simply dropped, because the corpus has a size contract and losing coverage silently is worse than losing one host loudly."}
   ]
 }
