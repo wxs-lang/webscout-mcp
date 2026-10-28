@@ -357,10 +357,14 @@ jobs:
       - name: Build wheel
         run: |
           set -o pipefail
-          python -m pip install --upgrade pip setuptools wheel build
-          # --no-isolation so setuptools_scm can read the git tags we just
-          # fetched; without tags the version would fall back to 0.0.0-dev.
-          python -m build --wheel --no-isolation
+          python -m pip install --upgrade pip build
+          # Isolated build: `build` creates a temporary environment and installs
+          # what pyproject's [build-system] requires, which includes
+          # setuptools-scm. Isolation hides Python packages, not the filesystem,
+          # so setuptools_scm can still read .git from the working directory -
+          # disabling isolation (my first attempt) only meant the declared build
+          # requirement was never installed.
+          python -m build --wheel
 
       - name: Install into a clean virtualenv
         run: |
