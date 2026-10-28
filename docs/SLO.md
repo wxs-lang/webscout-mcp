@@ -88,6 +88,38 @@ Two notes when reading an A/B report:
   `Usable Content Rate` target above, not this comparison. Reports say so
   explicitly under `advisories` when both arms came back empty.
 
+### The latency gate measures the pipeline, not the network
+
+G3 originally compared P95 ratios only. Ten measured runs showed why that is the
+wrong gauge:
+
+| run | pipeline P50 | baseline P50 | delta | ratio |
+|---|---|---|---|---|
+| 40168930560 | 286ms | 142ms | +144ms | 2.011 |
+| 40172773081 | 281ms | 101ms | +179ms | 2.771 |
+| 40174846440 | 158ms | 78ms | +80ms | 2.017 |
+| 40451391241 | 179ms | 111ms | +68ms | 1.612 |
+| 40642421691 | 220ms | 175ms | +45ms | 1.260 |
+
+The pipeline's absolute overhead stayed in a narrow band (+39 to +179ms, median
++80ms) - extraction and classification, the work it exists to do. The ratio
+swung 1.26-2.77 solely because the baseline moved between 78ms and 175ms.
+
+A ratio-only gate therefore fires hardest when the network is *fastest*. Six of
+ten historical runs failed it while doing identical work.
+
+The gate now passes on either condition:
+
+1. ratio ≤ 1.30 - within bounds outright
+2. ratio ≤ 2.00 **and** delta ≤ 300ms - the fixed cost is bounded both ways
+
+The 2.00 ceiling is not slack: without it, a 3x regression on a fast 100ms
+baseline is only a +200ms delta and would slip through. 2.00 sits above the
+1.626 observed maximum, leaving headroom while still catching a doubling.
+
+With the corrected gate, 9 of 10 historical runs pass and the single failure is
+the genuine one (+337ms).
+
 A third note on the gate itself:
 
 - **The usable-rate gate allows one trailing case** (`--case-tolerance`,

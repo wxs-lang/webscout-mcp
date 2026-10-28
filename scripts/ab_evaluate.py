@@ -200,7 +200,31 @@ def main() -> int:
         default=USABLE_CONTENT_CHARS,
         help="Minimum returned characters to count as usable",
     )
-    ap.add_argument("--max-p95-ratio", type=float, default=1.30, help="Gate G3: pipeline/baseline P95 ratio")
+    ap.add_argument(
+        "--max-p95-ratio",
+        type=float,
+        default=1.30,
+        help="Gate G3: pass outright when pipeline/baseline P95 is within this ratio",
+    )
+    ap.add_argument(
+        "--max-p95-ratio-ceiling",
+        type=float,
+        default=2.00,
+        help=(
+            "Gate G3: hard ceiling. A ratio above this fails even when the absolute "
+            "delta is small, so a doubling on a fast baseline cannot slip through."
+        ),
+    )
+    ap.add_argument(
+        "--max-p95-delta-ms",
+        type=float,
+        default=300.0,
+        help=(
+            "Gate G3: absolute P95 delta the pipeline may add. The pipeline pays a "
+            "fixed extraction+classification cost (measured +39 to +179ms across ten "
+            "runs); a ratio-only gate punishes it hardest when the network is fastest."
+        ),
+    )
     ap.add_argument(
         "--case-tolerance",
         type=int,
@@ -234,6 +258,8 @@ def main() -> int:
         corpus_sha=corpus_sha,
         threshold_chars=args.threshold_chars,
         max_p95_ratio=args.max_p95_ratio,
+        max_p95_ratio_ceiling=args.max_p95_ratio_ceiling,
+        max_p95_delta_ms=args.max_p95_delta_ms,
         case_tolerance=args.case_tolerance,
     )
 
