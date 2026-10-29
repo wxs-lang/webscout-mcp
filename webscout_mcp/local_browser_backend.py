@@ -64,6 +64,7 @@ class LocalBrowserBackend(BrowserFetchProvider):
     name = "local-browser"
 
     def __init__(self, config: BrowserConfig | None = None) -> None:
+        super().__init__()
         self._config = config or BrowserConfig(headless=True, timeout=45000, navigation_timeout=45000)
         # Single worker: playwright's sync API binds its state to the creating
         # thread, so every call must land on the same one.

@@ -159,7 +159,6 @@ def create_server(config: Config | None = None) -> MCPServer:
                     "Local browser registered (playwright); escalation available "
                     "without a sidecar. Requires `playwright install chromium`."
                 )
-                browser_registered = True
             else:
                 log.info(
                     "No browser escalation: Crawl4AI sidecar not configured and the "

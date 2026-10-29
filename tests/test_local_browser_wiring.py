@@ -16,8 +16,6 @@ from __future__ import annotations
 import asyncio
 import inspect
 
-import pytest
-
 from webscout_mcp.fetch_provider import BrowserFetchProvider, FetchResponse
 from webscout_mcp.local_browser_backend import LocalBrowserBackend
 from webscout_mcp.recovery import RecoveryAction, RecoveryReason, classify_recovery
