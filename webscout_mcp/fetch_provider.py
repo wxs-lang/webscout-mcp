@@ -75,6 +75,7 @@ class FetchResponse:
     latency_ms: float = 0.0
     error_code: StandardErrorCode | None = None
     retryable: bool = False
+    extraction_status: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
     # Internal-only: raw decoded HTML used by escalation heuristics.
     # Never serialized to to_dict(), metadata, WebResult, logs, or SQLite.
@@ -116,6 +117,7 @@ class FetchResponse:
             latency_ms=latency_ms,
             error_code=error_code,
             retryable=retryable,
+            extraction_status=getattr(result, "extraction_status", None),
             metadata=dict(getattr(result, "metadata", {}) or {}),
             raw_html=getattr(result, "raw_html", "") or "",
         )
