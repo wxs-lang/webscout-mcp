@@ -884,7 +884,18 @@ def _map_http_status_to_standard_code(status_code: int) -> StandardErrorCode:
         return StandardErrorCode.FETCH_REDIRECT_ERROR
     if status_code == 401:
         return StandardErrorCode.FETCH_FORBIDDEN
-    return StandardErrorCode.FETCH_SERVER_ERROR
+    # Anything left in the 4xx band is a client-side error: the request itself is
+    # wrong, so repeating it unchanged fails identically. This used to fall
+    # through to FETCH_SERVER_ERROR, which lives in RETRYABLE_ERROR_CODES, and
+    # StructuredError.__post_init__ would then flip retryable to True - telling
+    # callers to retry a 400.
+    if 400 <= status_code < 500:
+        return StandardErrorCode.FETCH_FAILED
+    if 500 <= status_code < 600:
+        return StandardErrorCode.FETCH_SERVER_ERROR
+    # Not a real HTTP status (0 for a failed connection, 1xx, or nonsense >= 600).
+    # Calling that a server error invented a status the server never sent.
+    return StandardErrorCode.SYSTEM_ERROR
 
 
 def create_success_response(data: Any, **kwargs: Any) -> dict[str, Any]:
