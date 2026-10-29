@@ -100,6 +100,8 @@ class FetchRouteResult:
             "content": self.primary_response.content,
             "content_type": self.primary_response.content_type,
             "extracted": self.primary_response.extracted,
+            # Additive: why extraction did not happen, when it did not.
+            "extraction_status": self.primary_response.extraction_status,
             "cached": self.primary_response.cached,
             "error": self.primary_response.error,
             # The internal response has carried these since the error taxonomy

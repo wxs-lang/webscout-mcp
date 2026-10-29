@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass, field
+from functools import lru_cache
 
 import httpx
 
@@ -33,6 +34,11 @@ class FetchResult:
     content: str = ""
     content_type: str = ""
     extracted: bool = False
+    # Why extraction did or did not happen: "ok", "unavailable" (no
+    # extractor importable) or "empty" (ran, found too little). None when
+    # extraction was never requested. extracted=false alone could not tell a
+    # broken environment from an unextractable page.
+    extraction_status: str | None = None
     cached: bool = False
     error: str | None = None
     raw_html: str = ""
@@ -49,6 +55,7 @@ class FetchResult:
             "content": self.content,
             "content_type": self.content_type,
             "extracted": self.extracted,
+            "extraction_status": self.extraction_status,
             "cached": self.cached,
             "error": self.error,
             "metadata": self.metadata,
@@ -72,6 +79,27 @@ def _describe_exception(exc: BaseException | None) -> str:
     if not text:
         return name
     return f"{name}: {text}"
+
+
+_EXTRACTOR_MODULES = ("trafilatura", "readability", "html2text")
+
+
+@lru_cache(maxsize=1)
+def _extractor_available() -> bool:
+    """True when at least one HTML-to-text extractor can be imported.
+
+    trafilatura and readability-lxml are declared core dependencies, so this is
+    normally True. When a user's environment cannot satisfy them (dependency
+    conflict, platform wheel missing), extraction silently returned the raw HTML
+    and the payload said only extracted=false - no reason.
+    """
+    for module in _EXTRACTOR_MODULES:
+        try:
+            __import__(module)
+        except ImportError:
+            continue
+        return True
+    return False
 
 
 class Fetcher:
@@ -311,7 +339,8 @@ class Fetcher:
             if self._is_extractable(result.content_type):
                 result.raw_html = result.content
             if extract and self._is_extractable(result.content_type):
-                extracted = await asyncio.to_thread(self._extract_content, result.content, fmt)
+                extracted, status = await asyncio.to_thread(self._extract_content, result.content, fmt)
+                result.extraction_status = status
                 if extracted:
                     result.content = extracted
                     result.extracted = True
@@ -533,7 +562,7 @@ class Fetcher:
         output_format: str = "markdown",
         include_images: bool = False,
         include_videos: bool = False,
-    ) -> str:
+    ) -> tuple[str, str]:
         """Extract main article content.
 
         Uses multiple extractors in order:
@@ -546,6 +575,12 @@ class Fetcher:
             output_format: Output format (markdown, text, html).
             include_images: Whether to include images in output.
             include_videos: Whether to include videos in output.
+
+        Returns:
+            (content, status) where status is "ok" when text was produced,
+            "unavailable" when no extractor could be imported, and "empty" when
+            an extractor ran but yielded too little text. The distinction
+            matters: only "unavailable" is an environment fault.
         """
         fmt_map = {
             "markdown": "markdown",
@@ -570,7 +605,7 @@ class Fetcher:
                 deduplicate=True,
             )
             if extracted and len(extracted.strip()) > 50:
-                return extracted
+                return extracted, "ok"
         except Exception:
             pass
 
@@ -581,14 +616,14 @@ class Fetcher:
             doc = Document(html)
             summary_html = doc.summary(html_partial=True)
             if not summary_html:
-                return ""
+                return "", "empty"
             if fmt == "html":
                 return summary_html
             from bs4 import BeautifulSoup
 
             soup = BeautifulSoup(summary_html, "lxml")
             if fmt == "txt":
-                return soup.get_text(separator="\n", strip=True)
+                return soup.get_text(separator="\n", strip=True), "ok"
             # For markdown, use trafilatura to convert readability's HTML
             try:
                 import trafilatura
@@ -602,10 +637,10 @@ class Fetcher:
                     include_images=include_images,
                 )
                 if md and len(md.strip()) > 20:
-                    return md
+                    return md, "ok"
             except Exception:
                 pass
-            return soup.get_text(separator="\n", strip=True)
+            return soup.get_text(separator="\n", strip=True), "ok"
         except Exception:
             pass
 
@@ -619,8 +654,11 @@ class Fetcher:
             h.body_width = 0
             text = h.handle(html)
             if text and len(text.strip()) > 50:
-                return text
+                return text, "ok"
         except Exception:
             pass
 
-        return ""
+        # Nothing produced text. Say whether that was the environment or the page.
+        if not _extractor_available():
+            return "", "unavailable"
+        return "", "empty"

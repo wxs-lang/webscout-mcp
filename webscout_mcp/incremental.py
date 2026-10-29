@@ -190,7 +190,13 @@ class IncrementalCrawler:
                 continue
             result.pages_changed += 1
             if extract and fetch_result.raw_html:
-                extracted = await asyncio.to_thread(self.fetcher._extract_content, fetch_result.raw_html, "markdown")
+                extracted, status = await asyncio.to_thread(
+                    self.fetcher._extract_content, fetch_result.raw_html, "markdown"
+                )
+                fetch_result.extraction_status = status
+                # Unpack, do not truth-test the pair: a tuple is always truthy, so
+                # `if extracted:` would store ('', 'unavailable') as content whenever
+                # extraction produced nothing.
                 if extracted:
                     fetch_result.content = extracted
                     fetch_result.extracted = True
