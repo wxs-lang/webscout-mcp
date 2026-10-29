@@ -187,7 +187,7 @@ and vector/AI/browser extras are available separately."
 | F1 | 所有对外工具达到 Stable 或明确移出 Core（不长期滞留 Experimental） | `MODULE_STATUS.md` |
 | F2 | 文档由代码生成，不手写漂移 | `scripts/generate_docs.py` + CI diff |
 | F3 | 跨平台 + 多 Python 版本 CI 全绿 | GitHub Actions |
-| F4 | 版本晋级遵守既定标准（Beta→Stable 需 30 天 Live Test 等） | `REFACTOR_PLAN.md#L197-L212` |
+| F4 | 版本晋级遵守既定标准（Beta→Stable 需 30 天 Live Test 等） | `scripts/check_promotion_evidence.py` + `REFACTOR_PLAN.md#L197-L212` |
 
 ---
 
@@ -224,6 +224,22 @@ and vector/AI/browser extras are available separately."
 🔶 Beta         0 :
 🧪 Experimental 2 : content_quality, broken_links
 ```
+
+**晋级证据（F4，2026-10-29 实测）**：9 个 Stable 工具的定级**早于**
+`REFACTOR_PLAN.md` 要求的 30 天 Live Test。
+
+| 项 | 值 |
+|---|---|
+| 要求 | Beta→Stable 需 30 天 Live Test |
+| 现有证据 | **5 天**（2026-10-25 起，11 次运行） |
+| 缺口 | **25 天** |
+
+这不是把定级撤回的理由——工具已发布、用户在用。**问题在于这个差距此前无人测量**：
+文档宣称 Stable，而支撑它的数据从未被读过。
+
+`scripts/check_promotion_evidence.py` 现在每次 live-tests 运行都会输出实测天数与缺口，
+并写入 job summary。它**默认不阻塞**（退出 0），因为"宣称超前于证据"是既存事实而非
+新引入的故障；等证据达标后加 `--require` 即可转为硬门禁。
 
 ### 3.4 已知欠账
 
