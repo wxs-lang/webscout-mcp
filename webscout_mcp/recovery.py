@@ -263,9 +263,30 @@ def classify_recovery(response: FetchResponse) -> RecoveryDecision:
         details["content_type"] = response.content_type
         return _d(RecoveryReason.UNSUPPORTED_CONTENT_TYPE, RecoveryAction.ACCEPT, 0.8, **details)
 
+    # ---- 4b. an HTML body we could not extract is not article text ------
+    # Every length-based judgement below becomes wrong when the "content" is
+    # really the page source: a truncated HTML body looks like a truncated
+    # article (step 5) and a 2KB bot-check page looks complete (step 7). Detect
+    # the shape once, here, and route it through the browser signals in step 6.
+    _ctype = (getattr(response, "content_type", "") or "").lower()
+    _raw_html = getattr(response, "raw_html", "") or ""
+    # The signal is that CONTENT is markup, not that raw_html exists - raw_html
+    # always exists for HTML pages, including ones we extracted successfully.
+    # When extraction works, content is markdown and raw_html holds the source;
+    # when it fails, content still holds the source.
+    _head = (response.content or "")[:2000].lower()
+    _content_is_markup = "<html" in _head or "<!doctype" in _head
+    unextracted_html = "html" in _ctype and not bool(getattr(response, "extracted", False)) and _content_is_markup
+    if unextracted_html:
+        details.update(
+            text_len=len(response.content or ""),
+            html_len=len(_raw_html),
+            extraction_status=getattr(response, "extraction_status", None),
+        )
+
     # ---- 5. explicit output-limit truncation (real metadata, never guess)
     truncated = bool(meta.get("truncated_by_output_limit", False))
-    if truncated:
+    if truncated and not unextracted_html:
         details.update(
             pre_limit_content_chars=meta.get("pre_limit_content_chars"),
             returned_content_chars=meta.get("returned_content_chars"),
@@ -288,6 +309,12 @@ def classify_recovery(response: FetchResponse) -> RecoveryDecision:
         # HTTP success but no extractable content and no browser signal —
         # evidence is insufficient, prefer AMBIGUOUS over a false browser call.
         return _d(RecoveryReason.AMBIGUOUS, RecoveryAction.NONE, 0.4, **details)
+
+    if unextracted_html:
+        # The body exists but is markup, not text: we downloaded the page and
+        # could not read it. That is the content-poor case B2 describes, not a
+        # complete short page and not a longer article to continue into.
+        return _d(RecoveryReason.LOW_CONTENT_DENSITY, RecoveryAction.BROWSER, 0.7, **details)
 
     raw_html = getattr(response, "raw_html", "") or ""
     script_ratio = _script_ratio(raw_html)

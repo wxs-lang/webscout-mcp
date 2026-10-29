@@ -623,7 +623,12 @@ class Fetcher:
 
             soup = BeautifulSoup(summary_html, "lxml")
             if fmt == "txt":
-                return soup.get_text(separator="\n", strip=True), "ok"
+                # get_text() returns "" for a shell document (e.g. a bare
+                # <div id="root">). Reporting "ok" there made
+                # extraction_status claim success while extracted stayed False
+                # and the caller received raw HTML.
+                _readable = soup.get_text(separator="\n", strip=True)
+                return _readable, "ok" if _readable.strip() else "empty"
             # For markdown, use trafilatura to convert readability's HTML
             try:
                 import trafilatura
@@ -640,7 +645,12 @@ class Fetcher:
                     return md, "ok"
             except Exception:
                 pass
-            return soup.get_text(separator="\n", strip=True), "ok"
+            # get_text() returns "" for a shell document (e.g. a bare
+            # <div id="root">). Reporting "ok" there made
+            # extraction_status claim success while extracted stayed False
+            # and the caller received raw HTML.
+            _readable = soup.get_text(separator="\n", strip=True)
+            return _readable, "ok" if _readable.strip() else "empty"
         except Exception:
             pass
 
