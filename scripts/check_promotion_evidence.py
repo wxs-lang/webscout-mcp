@@ -30,7 +30,9 @@ import json
 import os
 import re
 import sys
-from datetime import UTC, datetime
+# timezone.utc, not datetime.UTC: the latter is 3.11+, and this project
+# supports 3.10 (REFACTOR_PLAN.md#L211).
+from datetime import datetime, timezone
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -77,10 +79,10 @@ def report_days(history_root: Path) -> list[datetime]:
             payload = json.loads(path.read_text(encoding="utf-8"))
             ts = payload.get("timestamp")
             if isinstance(ts, (int, float)) and ts > 0:
-                days.add(datetime.fromtimestamp(ts, UTC).strftime("%Y%m%d"))
+                days.add(datetime.fromtimestamp(ts, timezone.utc).strftime("%Y%m%d"))
         except (OSError, ValueError):
             continue
-    return sorted(datetime.strptime(d, "%Y%m%d").replace(tzinfo=UTC) for d in days)
+    return sorted(datetime.strptime(d, "%Y%m%d").replace(tzinfo=timezone.utc) for d in days)
 
 
 def main(argv: list[str] | None = None) -> int:
