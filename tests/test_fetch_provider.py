@@ -135,7 +135,12 @@ def test_fetch_response_to_dict():
         (408, None, StandardErrorCode.FETCH_TIMEOUT, True),
         (504, None, StandardErrorCode.FETCH_TIMEOUT, True),
         (500, None, StandardErrorCode.FETCH_SERVER_ERROR, True),
-        (404, None, StandardErrorCode.FETCH_FAILED, False),
+        # 404 was FETCH_FAILED here until the C-group fix. That was not a
+        # design choice: this mapper had no 404 case and fell through to
+        # `status >= 400`, while the canonical mapper in
+        # errors._map_http_status_to_standard_code already returned
+        # FETCH_NOT_FOUND for 404 and recovery.py branches on that code.
+        (404, None, StandardErrorCode.FETCH_NOT_FOUND, False),
         (0, "Connection refused", StandardErrorCode.FETCH_CONNECTION_ERROR, True),
         (0, "DNS resolution failed", StandardErrorCode.FETCH_DNS_ERROR, True),
         (0, "SSL certificate verify failed", StandardErrorCode.FETCH_SSL_ERROR, True),

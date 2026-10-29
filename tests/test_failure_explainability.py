@@ -219,3 +219,75 @@ def test_recovery_not_found_branch_is_no_longer_dead():
     decision = classify_recovery(resp)
     assert decision.reason.value == "ACCESS_DENIED"
     assert decision.action.value == "STOP"
+
+
+# --- Codes must be reachable, and 4xx must not read as a server error --
+
+
+def test_404_agrees_between_mappers():
+    """The one divergence that was a plain bug.
+
+    errors._map_http_status_to_standard_code returned FETCH_NOT_FOUND while the
+    fetch mapper fell through to FETCH_FAILED, and recovery.py branches on the
+    former. 404 was the only status where both mappers handled the same case
+    differently by accident rather than on purpose.
+    """
+    from webscout_mcp.core.errors import _map_http_status_to_standard_code
+
+    assert _map_fetch_error(404, None)[0] is _map_http_status_to_standard_code(404)
+
+
+@pytest.mark.parametrize("status", list(range(400, 600)))
+def test_every_error_status_yields_a_code(status):
+    """A status that maps to None is a status the caller cannot act on."""
+    code, _ = _map_fetch_error(status, None)
+    assert code is not None, f"status {status} produced no error code"
+
+
+@pytest.mark.parametrize("status", [400, 401, 403, 404, 408, 418, 429, 451])
+def test_client_errors_are_never_classified_as_server_errors(status):
+    """4xx means the request was wrong, not the server.
+
+    errors._map_http_status_to_standard_code currently returns
+    FETCH_SERVER_ERROR for 400 and 418, which is a real defect in that mapper -
+    recorded here so it is not silently inherited by the fetch path. The fetch
+    mapper already gets this right.
+    """
+    code, _ = _map_fetch_error(status, None)
+    assert code is not StandardErrorCode.FETCH_SERVER_ERROR, (
+        f"status {status} is a client error but mapped to FETCH_SERVER_ERROR"
+    )
+
+
+def test_504_stays_a_timeout_in_the_fetch_path():
+    """Deliberate divergence from the canonical mapper.
+
+    504 is a gateway timeout: retrying can help, so the fetch path classifies it
+    as FETCH_TIMEOUT rather than FETCH_SERVER_ERROR. A blanket "mappers must
+    agree" assertion would have erased this.
+    """
+    code, retryable = _map_fetch_error(504, None)
+    assert code is StandardErrorCode.FETCH_TIMEOUT
+    assert retryable is True
+
+
+def test_specific_codes_are_reachable_for_every_documented_4xx():
+    """FETCH_NOT_FOUND existed but no input reached it.
+
+    A code that cannot be produced is worse than a missing one: recovery and any
+    caller branching on it silently never fire.
+    """
+    reachable = set()
+    for status in range(400, 600):
+        code, _ = _map_fetch_error(status, None)
+        if code is not None:
+            reachable.add(code)
+
+    for code in (
+        StandardErrorCode.FETCH_FORBIDDEN,
+        StandardErrorCode.FETCH_NOT_FOUND,
+        StandardErrorCode.FETCH_RATE_LIMITED,
+        StandardErrorCode.FETCH_TIMEOUT,
+        StandardErrorCode.FETCH_SERVER_ERROR,
+    ):
+        assert code in reachable, f"{code.name} is defined but unreachable from any status"
