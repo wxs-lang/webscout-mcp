@@ -102,6 +102,16 @@ class FetchRouteResult:
             "extracted": self.primary_response.extracted,
             "cached": self.primary_response.cached,
             "error": self.primary_response.error,
+            # The internal response has carried these since the error taxonomy
+            # landed; the MCP payload never surfaced them, so a caller saw a bare
+            # status code and could not tell a missing page from a rate limit.
+            # Additive fields: COMPATIBILITY.md freezes names and schema, and
+            # extra keys are backwards-compatible (the v1.4.0 status/error
+            # additions set the same precedent).
+            "error_code": (
+                self.primary_response.error_code.value if self.primary_response.error_code is not None else None
+            ),
+            "retryable": self.primary_response.retryable,
             "latency_ms": round(self.primary_response.latency_ms, 2),
         }
         if self.escalation_decision is not None:
