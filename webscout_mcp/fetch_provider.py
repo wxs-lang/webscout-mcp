@@ -140,6 +140,11 @@ class FetchResponse:
 
 def _map_fetch_error(status_code: int, error: str | None) -> tuple[StandardErrorCode | None, bool]:
     """Map HTTP status / exception text to a standard error code."""
+    if status_code == 404:
+        # FETCH_NOT_FOUND exists and recovery.py even branches on it, but this
+        # mapping never returned it - so 404 fell through to the generic
+        # FETCH_FAILED and that recovery branch was dead code.
+        return StandardErrorCode.FETCH_NOT_FOUND, False
     if status_code == 403:
         return StandardErrorCode.FETCH_FORBIDDEN, False
     if status_code == 429:

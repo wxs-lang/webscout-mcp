@@ -57,6 +57,23 @@ class FetchResult:
         }
 
 
+def _describe_exception(exc: BaseException | None) -> str:
+    """One-line description of an exception that never renders as empty.
+
+    ``str(httpx.ConnectError(...))`` can be the empty string, which turned the
+    retry message into "Failed after 3 retries: " - a sentence with nothing
+    after the colon. Error mapping then had no text to match on, so a DNS
+    failure was classified as a generic FETCH_FAILED.
+    """
+    if exc is None:
+        return "no error captured"
+    name = type(exc).__name__
+    text = str(exc).strip()
+    if not text:
+        return name
+    return f"{name}: {text}"
+
+
 class Fetcher:
     """Async web fetcher with intelligent defaults.
 
@@ -451,6 +468,14 @@ class Fetcher:
 
                 text = response.text
                 title = self._extract_title(text)
+                # A non-2xx response is a failure the caller has to explain to a
+                # user. Leaving error=None meant a 404 arrived as
+                # {"status_code": 404, "error": null} - the status is there but
+                # nothing says what it means (GOAL.md C1/C2).
+                http_error: str | None = None
+                if response.status_code >= 400:
+                    reason = getattr(response, "reason_phrase", "") or ""
+                    http_error = f"HTTP {response.status_code} {reason}".strip()
                 return FetchResult(
                     url=url,
                     final_url=str(response.url),
@@ -458,6 +483,7 @@ class Fetcher:
                     title=title,
                     content=text,
                     content_type=response.headers.get("content-type", ""),
+                    error=http_error,
                     metadata={
                         "encoding": response.encoding,
                         "headers": dict(response.headers),
@@ -479,7 +505,7 @@ class Fetcher:
             url=url,
             final_url=url,
             status_code=0,
-            error=f"Failed after {self.config.max_retries} retries: {last_error}",
+            error=f"Failed after {self.config.max_retries} retries: {_describe_exception(last_error)}",
         )
 
     @staticmethod
