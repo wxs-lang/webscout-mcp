@@ -211,6 +211,27 @@ jobs:
           # block) so YAML indentation can never break it again.
           python scripts/slo_dashboard_summary.py >> $GITHUB_STEP_SUMMARY
 
+      - name: Check F4 promotion evidence
+        # MODULE_STATUS.md declares nine tools Stable; REFACTOR_PLAN.md requires
+        # 30 days of live tests for Beta -> Stable. The claim has run ahead of
+        # the evidence since the tools shipped first, so this reports the gap
+        # instead of failing - an unmeasured claim is the problem, not the
+        # promotion having happened. Pass --require once the bar is reached to
+        # make it a hard gate.
+        if: always()
+        run: |
+          set -o pipefail
+          python scripts/check_promotion_evidence.py \
+            --history-root live-test-results/history \
+            2>&1 | tee promotion_evidence.txt
+          # exit 0 by design: see the comment above. A real read failure still
+          # surfaces as exit 2, which fails the step.
+          rc=${PIPESTATUS[0]}
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::promotion evidence check failed to read its inputs (rc=$rc)"
+            exit 1
+          fi
+
       - name: Upload SLO report
         if: always()
         uses: actions/upload-artifact@v4
