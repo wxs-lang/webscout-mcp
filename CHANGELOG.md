@@ -5,13 +5,97 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## v1.9.2 (Unreleased)
+## v1.10.0 (2026-10-29)
+
+Twenty-nine changes since v1.9.1, grouped by what a user would notice.
+
+### Added
+
+- **`web_fetch` now explains failures.** Responses carry `error_code`
+  (`FETCH_NOT_FOUND`, `FETCH_SERVER_ERROR`, `FETCH_CONNECTION_ERROR`, ...) and
+  `retryable`. Previously a 404 arrived as `{"status_code": 404, "error": null}`
+  and a DNS failure as `"Failed after 3 retries: "` - the status was there but
+  nothing said what it meant or whether retrying was worth anything. Both fields
+  are additive.
+- **`extraction_status`** (`ok` / `empty` / `unavailable`) says why text was not
+  extracted. `extracted: false` alone could not distinguish a broken environment
+  from a page with no article, and in the `unavailable` case callers were
+  receiving raw HTML after asking for markdown.
+- **Recovery policy is inspectable as data** (`recovery_policy.py`): 9 thresholds,
+  17 reason rules, 7 stages, 6 escalation signals, rendered to
+  `docs/RECOVERY_POLICY.md`.
+- **A reproducible A/B harness** (`scripts/ab_evaluate.py`) comparing the pipeline
+  against a bare-HTTP baseline over a curated corpus, with per-arm observations
+  committed as JSONL so verdicts can be replayed.
+- **Content usability is measurable** and the rolling SLO window rolls: 7d/30d
+  metrics, persisted counters, snapshots on shutdown and from CI.
+- **Install smoke test in CI**: builds a wheel, installs it into a clean venv, runs
+  the console script and compares its version against the git tag.
+- **Promotion evidence check** (`scripts/check_promotion_evidence.py`): reports how
+  many days of live-test data back each Stable rating.
+
+### Fixed
+
+- **4xx was reported as a retryable server error.** Every unlisted 4xx (400, 402,
+  405, 409, 418, ...) fell through to `FETCH_SERVER_ERROR`, which is in the
+  retryable set, so `StructuredError` promoted `retryable` to true - telling
+  callers to retry a malformed request. Now classified by status class; a
+  non-HTTP status (0, 1xx, >=600) is `SYSTEM_ERROR` rather than a fabricated 5xx.
+- **404 was mapped to the generic `FETCH_FAILED`** while `FETCH_NOT_FOUND` existed
+  and `recovery.py` branched on it - a branch unreachable from a real 404.
+- **Empty retry messages**: `str(httpx.ConnectError(...))` can be empty, so the
+  error read `"Failed after 3 retries: "`. Now falls back to the exception type.
+- **The A/B latency gate measured the network, not the pipeline.** Across ten runs
+  the pipeline's overhead was a stable +39 to +179ms while the p95 ratio swung
+  1.26-2.77 solely because the baseline moved 78-175ms; a ratio-only gate fires
+  hardest when the network is fastest. Now passes on a bounded ratio or a bounded
+  absolute delta. Historical pass rate 6/10 -> 9/10.
+- **An unreliable corpus host** (neverssl.com, 8/8 direct attempts failed) was the
+  sole cause of the 2.10 latency ratio. Replaced rather than deleted, so the
+  corpus keeps its 60-entry contract.
+- **Truncation was treated as a quality failure.** `truncated_by_output_limit`
+  means the caller received window 1 of N with a continuation offset, not that
+  content was lost. Demoted to an informational note.
+- **SLO reporting**: no longer prints `None%` when there is no data, separates
+  "no observations" from "every observation failed", and stops overwriting the
+  live report with an empty snapshot.
+- **Quality was double-counted** on the fetch path; recorded exactly once now.
+- **`is_available` on the browser backend meant "configured"**, not reachable, so
+  the preflight reported a sidecar as usable when it was not.
+- **One transient case could flip an A/B verdict**; a single-case tolerance was
+  added.
+
+### Changed
+
+- **Five-layer reorganisation started.** `errors`, `utils`, `cache` and `config`
+  now live in `webscout_mcp/core/`, with deprecation shims at the old paths. The
+  error taxonomy moved first because dependency analysis showed zero internal
+  dependencies and ten dependents.
+- `content_quality` and `broken_link_checker` implementations moved to `extras/`;
+  both tools remain registered and callable.
+- Recovery policy constants named and de-duplicated.
+- 68 merged branches cleared; stale checkboxes corrected.
 
 ### Security
-- Harden `broken_links` against server-side request forgery: validate each link destination with the existing URL safety guard before requesting it, including every manually followed redirect target.
-- Fetch the starting page and each extracted link through a pinned-IP HTTP transport, validating every redirect hop before following it to close DNS-rebinding gaps.
-- Report blocked targets explicitly instead of misreporting them as ordinary broken links.
-- Add deterministic regression coverage for direct loopback targets and redirects to private addresses.
+
+- **`broken_links` hardened against SSRF**: every link destination is validated,
+  each hop goes through a pinned-IP transport, blocked targets are reported
+  explicitly instead of as ordinary broken links, with deterministic regression
+  coverage for loopback and private-address redirects.
+
+### Compatibility
+
+**11 MCP tools, unchanged.** No parameter was removed or renamed. The three new
+response fields are additive: consumers that ignore them behave exactly as before,
+and tests assert every pre-existing key survives. See `COMPATIBILITY.md`.
+
+### Known gaps
+
+- Nine tools are declared Stable, but live-test history began 2026-10-25, so the
+  30-day bar in `REFACTOR_PLAN.md` is not yet met. Measured, not hidden - see the
+  promotion evidence step in the live-tests workflow.
+- The five-layer reorganisation is 4/5 through `core/`; `services`, `providers`,
+  `security`, `observability` and `server` are not started.
 
 ## v1.9.1 (2026-10-24)
 
