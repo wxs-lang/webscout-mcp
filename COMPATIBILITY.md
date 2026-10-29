@@ -54,6 +54,22 @@ Fetch a single URL and extract main content, returning one window of the article
 
 **Returns:** JSON string with extracted content, metadata, and status. When more content remains, the response includes an additive `continuation` object (`has_more`, `start_char`, `end_char`, `next_start_char`, `total_chars`, `remaining_chars`, `served_from_snapshot`). Agents that ignore it behave exactly as before; the field is purely additive.
 
+**v1.10.0 additive fields** (backwards-compatible; old consumers may ignore):
+
+- `error_code` (string or null): the standard error taxonomy code for a failed
+  fetch, e.g. `FETCH_NOT_FOUND`, `FETCH_SERVER_ERROR`, `FETCH_CONNECTION_ERROR`.
+  Null on success. Before this, a caller saw only `status_code` and could not
+  distinguish a missing page from a rate limit without parsing prose.
+- `retryable` (boolean, always present): whether repeating the same request could
+  plausibly succeed. A 4xx is `false`; a 5xx, timeout, rate limit or connection
+  failure is `true`.
+- `extraction_status` (string or null): `"ok"` when text was extracted,
+  `"empty"` when an extractor ran but the page yielded too little, `"unavailable"`
+  when no extractor could be imported. Null when extraction was not requested.
+  `extracted: false` alone could not tell an environment fault from a page that
+  simply had no article - and in the `unavailable` case the caller was receiving
+  raw HTML while having asked for markdown.
+
 #### `web_crawl`
 Crawl a website with depth/page limits.
 

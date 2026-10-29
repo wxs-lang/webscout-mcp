@@ -191,18 +191,22 @@ and vector/AI/browser extras are available separately."
 
 ---
 
-## 3. 当前进度快照（2026-10-25）
+## 3. 当前进度快照（2026-10-29）
 
 ### 3.1 发布状态
 
 | 项 | 值 |
 |---|---|
-| 最新版本 | **v1.9.1** |
-| 发布时间 | 2026-10-24 15:38 (+08) |
-| `main` HEAD | `c44cd0b` = v1.9.1 tag |
-| Releases 总数 | 10 |
-| MCP 工具数 | 11（v1.9.1 release notes 明示 schema 未变） |
+| 最新版本 | **v1.10.0** |
+| 发布时间 | 2026-10-29 (+08) |
+| `main` HEAD | v1.10.0 tag |
+| Releases 总数 | 11 |
+| MCP 工具数 | 11（v1.10.0 仅新增可选响应字段，工具与参数未变） |
 | PyPI / Docker | 均已发布 |
+
+v1.10.0 相对 v1.9.1 包含 29 项改动，其中用户可感知的是：失败可解释
+（`error_code` / `retryable` / `extraction_status`）、4xx 不再被误报为可重试、
+A/B 延迟门禁改为度量 pipeline 而非网络。详见 `CHANGELOG.md`。
 
 ### 3.2 阶段完成度
 
@@ -212,7 +216,7 @@ and vector/AI/browser extras are available separately."
 | Phase 2 统一 Router | `provider_router.py`、`search_provider_adapter.py` | ✅ v1.3.0 |
 | Phase 3 健康/熔断 | `search_health.py`、`health.py` | ✅ v1.9.0 |
 | Phase 4 结果质量判定 | `normalization.py` content sufficiency 标量 → `recovery.py` `OUTPUT_TRUNCATED → CONTINUE_CONTENT`、`decision_adapter.py` | ✅ **2026-09-20（PR #54 合入）** |
-| Phase 5 自愈策略 | `recovery.py`、`fetch_escalation.py` | 🟡 部分（403 切片已上，策略层未收敛成可观测策略表） |
+| Phase 5 自愈策略 | `recovery.py`、`fetch_escalation.py`、`recovery_policy.py` | ✅ v1.10.0（策略层收敛为可检查的数据表：9 阈值 / 17 规则 / 7 阶段 / 6 升级信号，渲染到 `docs/RECOVERY_POLICY.md`） |
 | Phase 6 Agent 端到端验收 | 52 用例 / 208 次 A/B / 48 次故障注入 | ✅ 2026-10-23 |
 
 ### 3.3 工具定级（`MODULE_STATUS.md`）
