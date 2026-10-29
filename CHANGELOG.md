@@ -5,6 +5,62 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v1.11.0 (2026-10-29)
+
+Measured against sixteen real-world sites rather than the ten curated live-test
+URLs, which report 100% success and say nothing about pages with cookie walls,
+anti-bot checks or client-side rendering.
+
+### Added
+
+- **Browser escalation works without Docker.** `BrowserFetcher` was implemented
+  but never referenced, and could not have run: it uses playwright's synchronous
+  API inside an asyncio codebase. It now runs in a single-worker executor and is
+  registered as the BROWSER fallback when no Crawl4AI sidecar is configured.
+  `web_fetch` can escalate to a real browser after `pip install
+  'webscout-mcp[browser]'` and `playwright install chromium`.
+- Real-world usability measured end to end, with results recorded below.
+
+### Fixed
+
+- **Recovery treated unextractable HTML as article text.** `classify_recovery`
+  branched on `len(content)` without consulting `extracted`, so a JS shell
+  returned "the article is longer, fetch the next window" and a 2KB bot-check page
+  returned "content complete, accept". A body we could not extract is now detected
+  and routed to the browser-signal path.
+- **Extraction could report success with nothing to show.** The readability branch
+  returned `("", "ok")` for a bare `<div id="root">`, producing a payload that
+  claimed `extraction_status: "ok"` while `extracted` was False and raw HTML was
+  served.
+- **The browser advertised itself as HeadlessChrome.** The UA said Chrome/120
+  while `Sec-Ch-Ua` said `"Chromium";v="148", "HeadlessChrome";v="148"` - two
+  contradiction signals for any Client-Hints-aware bot check. UA and hints are now
+  derived from the engine's real version and agree.
+
+### Compatibility
+
+**11 MCP tools, unchanged.** No parameter was removed or renamed. The only
+behavioural change is that a page whose content cannot be extracted is now
+described as content-poor instead of complete - which is what B2 in `GOAL.md`
+already specified.
+
+### Known gaps
+
+Real-world usability went from 8/16 to 9/16. The remaining failures are
+anti-bot walls, and they are not fixed by this release:
+
+| Site | Response | What would be needed |
+|---|---|---|
+| medium.com | 403 | residential IP, TLS fingerprint |
+| stackoverflow.com | 403 | residential IP |
+| zhihu.com | 403 | residential IP, login session |
+| reuters.com | 401 | login session |
+
+Client Hints are now consistent, which removes two red flags - but Cloudflare-grade
+walls weigh IP reputation, TLS fingerprint and request history, none of which a
+headless Chromium on a datacenter or proxied IP can change. A proxy can be
+configured (`BrowserConfig.proxy_server`), and that is the lever available today.
+
 ## v1.10.0 (2026-10-29)
 
 Twenty-nine changes since v1.9.1, grouped by what a user would notice.
