@@ -191,22 +191,39 @@ and vector/AI/browser extras are available separately."
 
 ---
 
-## 3. 当前进度快照（2026-10-29）
+## 3. 当前进度快照（2026-10-29，v1.11.0）
 
 ### 3.1 发布状态
 
 | 项 | 值 |
 |---|---|
-| 最新版本 | **v1.10.0** |
+| 最新版本 | **v1.11.0** |
 | 发布时间 | 2026-10-29 (+08) |
-| `main` HEAD | v1.10.0 tag |
-| Releases 总数 | 11 |
-| MCP 工具数 | 11（v1.10.0 仅新增可选响应字段，工具与参数未变） |
+| `main` HEAD | v1.11.0 tag |
+| Releases 总数 | 12 |
+| MCP 工具数 | 11（工具与参数自 v1.9.1 起未变） |
 | PyPI / Docker | 均已发布 |
 
-v1.10.0 相对 v1.9.1 包含 29 项改动，其中用户可感知的是：失败可解释
-（`error_code` / `retryable` / `extraction_status`）、4xx 不再被误报为可重试、
-A/B 延迟门禁改为度量 pipeline 而非网络。详见 `CHANGELOG.md`。
+v1.10.0 让失败可解释（`error_code` / `retryable` / `extraction_status`）、4xx 不再
+被误报为可重试、A/B 延迟门禁改为度量 pipeline 而非网络。
+
+v1.11.0 补上了**浏览器升级能力**：此前 `BrowserFetcher` 从未被引用、且因使用
+playwright 同步 API 在异步代码库中根本无法运行，唯一可用的浏览器路径是需要
+Docker 的 Crawl4AI sidecar。现在 `pip install 'webscout-mcp[browser]'` +
+`playwright install chromium` 即可让 `web_fetch` 升级到真实浏览器，无需 sidecar。
+
+### 3.1.1 真实世界可用性（2026-10-29 实测，16 个站点）
+
+| 指标 | 值 |
+|---|---|
+| 可用率 | **9/16（56%）** |
+| 失败主因 | 反爬墙（403/401），非 JS 渲染 |
+| 延迟 | P50 1523ms，P95 5162ms |
+
+分难度层测得的结论（详见 `CHANGELOG.md` 的 Known gaps）：JS 渲染类页面已由本轮
+浏览器能力覆盖；Cloudflare 级反爬墙（medium / stackoverflow / zhihu）需要住宅 IP
+与 TLS 指纹，无头 Chromium 在当前网络条件下无法突破，可用 `BrowserConfig.proxy_server`
+缓解。**这一边界如实记录，不做夸大。**
 
 ### 3.2 阶段完成度
 

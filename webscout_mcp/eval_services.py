@@ -148,6 +148,7 @@ def configure_eval_run(run_id: str, *, base_dir: Path | None = None) -> dict[str
         log.warning("eval: could not register HTTP fetch provider: %s", exc)
 
     browser_backend = Crawl4AIBrowserBackend(cfg)
+    _browser_registered = False
     if browser_backend.is_available:
         try:
             registry.register(
@@ -157,10 +158,31 @@ def configure_eval_run(run_id: str, *, base_dir: Path | None = None) -> dict[str
                 description="Crawl4AI browser render sidecar (escalation only, BROWSER capability)",
             )
             log.info("eval: Crawl4AI sidecar registered at %s", browser_backend.base_url)
+            _browser_registered = True
         except Exception as exc:  # pragma: no cover - defensive
             log.warning("eval: could not register Crawl4AI backend: %s", exc)
-    else:
-        log.info("eval: Crawl4AI sidecar not configured; fetch uses fast path only")
+
+    if not _browser_registered:
+        # Mirror the server wiring: without this the harness would measure a
+        # product that cannot escalate while the shipped one can.
+        try:
+            from .local_browser_backend import LocalBrowserBackend
+
+            _local = LocalBrowserBackend()
+            if _local.is_available:
+                registry.register(
+                    _local,
+                    capabilities={ProviderCapability.BROWSER},
+                    cost_tier=ProviderCostTier.FREE,
+                    description="Local playwright browser (escalation only, BROWSER capability)",
+                )
+                log.info("eval: local playwright browser registered for escalation")
+                _browser_registered = True
+        except Exception as exc:  # pragma: no cover - defensive
+            log.warning("eval: could not register local browser backend: %s", exc)
+
+    if not _browser_registered:
+        log.info("eval: no browser escalation (no sidecar, playwright missing) - fetch uses the fast path only")
 
     fetch_service = FetchService(registry=registry, config=cfg)
 

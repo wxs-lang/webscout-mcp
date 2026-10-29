@@ -276,12 +276,23 @@ def classify_recovery(response: FetchResponse) -> RecoveryDecision:
     # when it fails, content still holds the source.
     _head = (response.content or "")[:2000].lower()
     _content_is_markup = "<html" in _head or "<!doctype" in _head
-    unextracted_html = "html" in _ctype and not bool(getattr(response, "extracted", False)) and _content_is_markup
+    _extraction_status = getattr(response, "extraction_status", None)
+    # "unavailable" means no extractor is installed. Rendering the page in a
+    # browser would return markup that the same missing extractor cannot read, so
+    # escalating only costs seconds. Only "empty" - an extractor ran and found
+    # nothing - is worth a browser attempt.
+    _extraction_could_improve = _extraction_status != "unavailable"
+    unextracted_html = (
+        "html" in _ctype
+        and not bool(getattr(response, "extracted", False))
+        and _content_is_markup
+        and _extraction_could_improve
+    )
     if unextracted_html:
         details.update(
             text_len=len(response.content or ""),
             html_len=len(_raw_html),
-            extraction_status=getattr(response, "extraction_status", None),
+            extraction_status=_extraction_status,
         )
 
     # ---- 5. explicit output-limit truncation (real metadata, never guess)
