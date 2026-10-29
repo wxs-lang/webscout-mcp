@@ -126,6 +126,7 @@ def create_server(config: Config | None = None) -> MCPServer:
     from .crawl4ai_backend import Crawl4AIBrowserBackend
 
     browser_backend = Crawl4AIBrowserBackend(cfg)
+    browser_registered = False
     if browser_backend.is_available:
         try:
             registry.register(
@@ -135,10 +136,38 @@ def create_server(config: Config | None = None) -> MCPServer:
                 description="Crawl4AI browser render sidecar (escalation only, BROWSER capability)",
             )
             log.info("Crawl4AI browser sidecar registered at %s", browser_backend.base_url)
+            browser_registered = True
         except Exception as e:  # pragma: no cover - defensive
             log.warning(f"Could not register Crawl4AI backend: {e}")
-    else:
-        log.info("Crawl4AI sidecar not configured; web_fetch uses fast path only")
+
+    if not browser_registered:
+        # No sidecar. Fall back to the browser playwright already gives us via
+        # the [browser] extra. Without this the only escalation target was a
+        # Docker container, and measured real-world usability stayed at 8/16.
+        try:
+            from .local_browser_backend import LocalBrowserBackend
+
+            local_backend = LocalBrowserBackend()
+            if local_backend.is_available:
+                registry.register(
+                    local_backend,
+                    capabilities={ProviderCapability.BROWSER},
+                    cost_tier=ProviderCostTier.FREE,
+                    description="Local playwright browser (escalation only, BROWSER capability)",
+                )
+                log.info(
+                    "Local browser registered (playwright); escalation available "
+                    "without a sidecar. Requires `playwright install chromium`."
+                )
+                browser_registered = True
+            else:
+                log.info(
+                    "No browser escalation: Crawl4AI sidecar not configured and the "
+                    "playwright dependency is missing. Install with "
+                    "`pip install 'webscout-mcp[browser]'` then `playwright install chromium`."
+                )
+        except Exception as e:  # pragma: no cover - defensive
+            log.warning(f"Could not register local browser backend: {e}")
 
     # Phase 2: FetchService owns fast-fetch selection + browser escalation.
     # server.py no longer makes routing decisions.
