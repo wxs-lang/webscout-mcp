@@ -1,0 +1,236 @@
+{
+  "timestamp": 1793338287.0611105,
+  "datetime": "2026-10-30 05:31:27",
+  "search": {
+    "count": 41,
+    "success_count": 39,
+    "failure_count": 2,
+    "success_rate": 95.1,
+    "p50_latency_ms": 291.0,
+    "p95_latency_ms": 805.2,
+    "avg_latency_ms": 372.1,
+    "error_types": {
+      "All 2 providers failed": 1,
+      "Search failed for 'fastapi github repository': All 2 providers failed\nassert False\n +  where False =": 1
+    },
+    "providers": {
+      "bing": 37,
+      "duckduckgo": 2
+    }
+  },
+  "fetch": {
+    "count": 10,
+    "success_count": 10,
+    "failure_count": 0,
+    "success_rate": 100.0,
+    "p50_latency_ms": 459.5,
+    "p95_latency_ms": 1112.6,
+    "avg_latency_ms": 524.2,
+    "error_types": {},
+    "providers": {
+      "WebScout Fetcher (status=200)": 10
+    }
+  },
+  "fallback": {
+    "count": 4,
+    "success_count": 0,
+    "failure_count": 4,
+    "success_rate": 0.0,
+    "p50_latency_ms": 205.0,
+    "p95_latency_ms": 205.1,
+    "avg_latency_ms": 203.2,
+    "error_types": {
+      "Fallback never triggered (total=0)": 2,
+      "Fallback never triggered for 'python asyncio documentation': total=0\nassert False": 1,
+      "Fallback never triggered for 'github actions workflow syntax': total=0\nassert False": 1
+    },
+    "providers": {}
+  },
+  "ddg_fallback_detail": {
+    "attempts": 4,
+    "successes": 0,
+    "failures": 4,
+    "success_rate": 0.0,
+    "p50_latency_ms": 205.0,
+    "p95_latency_ms": 205.1,
+    "avg_latency_ms": 203.2,
+    "error_types": {
+      "other": 4
+    }
+  },
+  "search_by_category": {
+    "english_technical": {
+      "count": 10,
+      "success_count": 10,
+      "failure_count": 0,
+      "success_rate": 100.0,
+      "p50_latency_ms": 325.3,
+      "p95_latency_ms": 805.2,
+      "avg_latency_ms": 436.5,
+      "error_types": {},
+      "providers": {
+        "bing": 10
+      }
+    },
+    "english_news": {
+      "count": 6,
+      "success_count": 6,
+      "failure_count": 0,
+      "success_rate": 100.0,
+      "p50_latency_ms": 290.1,
+      "p95_latency_ms": 455.3,
+      "avg_latency_ms": 311.1,
+      "error_types": {},
+      "providers": {
+        "bing": 6
+      }
+    },
+    "english_github": {
+      "count": 5,
+      "success_count": 3,
+      "failure_count": 2,
+      "success_rate": 60.0,
+      "p50_latency_ms": 321.9,
+      "p95_latency_ms": 473.1,
+      "avg_latency_ms": 374.4,
+      "error_types": {
+        "All 2 providers failed": 1,
+        "Search failed for 'fastapi github repository': All 2 providers failed\nassert False\n +  where False =": 1
+      },
+      "providers": {
+        "bing": 3
+      }
+    },
+    "chinese_technical": {
+      "count": 10,
+      "success_count": 10,
+      "failure_count": 0,
+      "success_rate": 100.0,
+      "p50_latency_ms": 271.2,
+      "p95_latency_ms": 291.0,
+      "avg_latency_ms": 270.8,
+      "error_types": {},
+      "providers": {
+        "bing": 10
+      }
+    },
+    "chinese_news": {
+      "count": 6,
+      "success_count": 6,
+      "failure_count": 0,
+      "success_rate": 100.0,
+      "p50_latency_ms": 305.1,
+      "p95_latency_ms": 1168.5,
+      "avg_latency_ms": 447.5,
+      "error_types": {},
+      "providers": {
+        "bing": 5,
+        "duckduckgo": 1
+      }
+    },
+    "chinese_general": {
+      "count": 4,
+      "success_count": 4,
+      "failure_count": 0,
+      "success_rate": 100.0,
+      "p50_latency_ms": 294.3,
+      "p95_latency_ms": 909.1,
+      "avg_latency_ms": 440.4,
+      "error_types": {},
+      "providers": {
+        "duckduckgo": 1,
+        "bing": 3
+      }
+    }
+  },
+  "fetch_by_category": {
+    "technical_docs": {
+      "count": 5,
+      "success_count": 5,
+      "failure_count": 0,
+      "success_rate": 100.0,
+      "p50_latency_ms": 374.2,
+      "p95_latency_ms": 797.7,
+      "avg_latency_ms": 447.9,
+      "error_types": {},
+      "providers": {
+        "WebScout Fetcher (status=200)": 5
+      }
+    },
+    "news_sites": {
+      "count": 2,
+      "success_count": 2,
+      "failure_count": 0,
+      "success_rate": 100.0,
+      "p50_latency_ms": 459.5,
+      "p95_latency_ms": 459.5,
+      "avg_latency_ms": 305.9,
+      "error_types": {},
+      "providers": {
+        "WebScout Fetcher (status=200)": 2
+      }
+    },
+    "github_repo": {
+      "count": 1,
+      "success_count": 1,
+      "failure_count": 0,
+      "success_rate": 100.0,
+      "p50_latency_ms": 1112.6,
+      "p95_latency_ms": 1112.6,
+      "avg_latency_ms": 1112.6,
+      "error_types": {},
+      "providers": {
+        "WebScout Fetcher (status=200)": 1
+      }
+    },
+    "redirect": {
+      "count": 1,
+      "success_count": 1,
+      "failure_count": 0,
+      "success_rate": 100.0,
+      "p50_latency_ms": 296.7,
+      "p95_latency_ms": 296.7,
+      "avg_latency_ms": 296.7,
+      "error_types": {},
+      "providers": {
+        "WebScout Fetcher (status=200)": 1
+      }
+    },
+    "js_heavy": {
+      "count": 1,
+      "success_count": 1,
+      "failure_count": 0,
+      "success_rate": 100.0,
+      "p50_latency_ms": 981.1,
+      "p95_latency_ms": 981.1,
+      "avg_latency_ms": 981.1,
+      "error_types": {},
+      "providers": {
+        "WebScout Fetcher (status=200)": 1
+      }
+    }
+  },
+  "content_quality": {
+    "fetches": 10,
+    "usable": 10,
+    "thin": 0,
+    "empty": 0,
+    "usable_rate": 1.0,
+    "thin_rate": 0.0,
+    "empty_rate": 0.0,
+    "truncated_by_output_limit": 7,
+    "truncation_rate": 0.7,
+    "thin_threshold_chars": 200,
+    "chars_returned_total": 42983,
+    "chars_omitted_total": 288841,
+    "returned_p50": 5000,
+    "returned_p95": 5000,
+    "samples": 10,
+    "by_status": {
+      "success": 10
+    },
+    "by_backend": {
+      "fetcher": 10
+    }
+  }
+}
