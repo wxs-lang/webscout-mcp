@@ -51,6 +51,10 @@ dev = [
 ]
 browser = [
     "playwright>=1.40.0",
+    # TLS fingerprint impersonation: gets past handshake-level blocks that reject
+    # a plain httpx client, without launching a browser. Pinned below 0.17 - that
+    # line failed with curl error 77 on paths the 0.15 line handles.
+    "curl_cffi>=0.15.0,<0.17.0",
 ]
 vector = [
     "chromadb>=0.4.0",
