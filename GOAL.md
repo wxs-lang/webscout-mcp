@@ -175,7 +175,7 @@ and vector/AI/browser extras are available separately."
 
 | ID | 判据 | 验收方式 |
 |---|---|---|
-| E1 | MCP 工具数量稳定在 11，schema 向后兼容 | `test_doc_drift.py` |
+| E1 | MCP 工具 schema 向后兼容；数量变更须在 COMPATIBILITY.md 记录 | `test_doc_drift.py` |
 | E2 | `pip install webscout-mcp` 后 CLI 可启动 | 安装冒烟 |
 | E3 | 默认不需要任何 API Key | 干净环境安装测试 |
 | E4 | 内部组件（SearXNG/Crawl4AI/Router/SSRF）对用户不可见 | README 只讲 11 个工具 |
@@ -191,18 +191,18 @@ and vector/AI/browser extras are available separately."
 
 ---
 
-## 3. 当前进度快照（2026-11-01，v2.0.0）
+## 3. 当前进度快照（2026-11-02，v2.1.0）
 
 ### 3.1 发布状态
 
 | 项 | 值 |
 |---|---|
-| 最新版本 | **v2.0.0** |
+| 最新版本 | **v2.1.0** |
 | 发布时间 | 2026-11-01 (+08) |
-| `main` HEAD | v2.0.0 tag |
+| `main` HEAD | v2.1.0 tag |
 | Releases 总数 | 16 |
-| MCP 工具数 | **14**（v1.x 冻结时为 11）|
-| MCP 工具数 | 11（工具与参数自 v1.9.1 起未变） |
+| MCP 工具数 | **15**（v1.x 冻结时为 11）|
+| MCP 工具数 | 15（v2.0.0 起扩充，见 COMPATIBILITY.md） |
 | PyPI / Docker | 均已发布 |
 
 v1.10.0 让失败可解释（`error_code` / `retryable` / `extraction_status`）、4xx 不再
@@ -239,6 +239,18 @@ v1.14.0 修的是**可解释性在最后一公里断掉**：挑战页返回 200�
 
 三个工具都标为 **beta**，因为它们是规则式的、不需要 API Key，代价是比模型输出粗糙。
 这一取舍写在工具描述和响应自带的 `notes` 里，调用方不必读文档才知道边界。
+
+**v2.1.0 补的是「跟踪」——从查一次到查变化。** `web_monitor` 是第一个**需要跨调用
+记忆**的工具，而这恰好暴露了三个连锁缺陷，每一个都被前一个掩盖：
+
+| 缺陷 | 表现 | 为何被掩盖 |
+|---|---|---|
+| 比较基线从未持久化 | 首检（按定义无变更）不写盘，之后永远报不出变更 | 状态文件「看起来」存在（变更日志在里面）|
+| 通知永远发不出去 | 两个同名 `AlertMessage` 字段不同，发送必抛异常 | 异常被逐渠道 try/except 吞掉，只记日志 |
+| `webhook://` 强制 https | 本地端点全部 `SSL: WRONG_VERSION_NUMBER` | 前一个缺陷让发送根本没走到网络 |
+
+**修复顺序是被迫的**：必须先让投递结果可见（不再丢弃），第三个缺陷才现形。这条经验值得
+记住——**吞掉异常等于把后续缺陷藏起来**，与 v1.13.0 的 brotli 缺陷是同一模式。
 
 ### 3.1.1 真实世界可用性（2026-10-29 实测，16 个站点）
 
