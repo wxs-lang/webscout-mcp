@@ -29,8 +29,14 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      - name: Install ruff
-        run: pip install ruff
+      - name: Install ruff and the minimal runtime deps
+        # The doc check imports webscout_mcp.recovery_policy, whose chain reaches
+        # httpx (recovery_policy -> fetch_escalation -> fetch_provider). Installing
+        # the whole package would work too, but this job only compares generated
+        # text, so it gets the single package that import actually needs.
+        run: |
+          pip install ruff
+          python -m pip install httpx
 
       - name: Run ruff lint
         run: |
