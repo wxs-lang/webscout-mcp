@@ -26,6 +26,9 @@ def test_mcp_tool_count_unchanged():
             "rss_parse",
             "content_quality",
             "broken_links",
+            # Added deliberately for content understanding; see COMPATIBILITY.md.
+            # The eleven above are unchanged in name and schema.
+            "web_knowledge_graph",
         ]
     )
     assert names == expected, names
