@@ -5,6 +5,88 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v2.1.0 (2026-11-02)
+
+### Added
+
+- **`web_monitor`** - check a URL for changes since the last check. Reports text changes,
+  price moves and keyword appearances; filters noise through `ignore_text` and
+  `ignore_selector`; pushes findings to one or more targets through `notify`.
+  15th tool, marked beta.
+
+  **It checks once per call and does not schedule itself.** That is stated in the tool
+  description because a user who configures it once and expects automatic tracking would
+  otherwise reasonably conclude the feature is broken. The first call for a URL records a
+  baseline and reports nothing, signalled by `baseline_established: true`.
+
+- **`ignore_text` / `ignore_selector` on the monitor** - the two filters that make
+  monitoring usable. Without them any page carrying a timestamp, session id or rotating
+  ad reports a change on every check.
+
+### Fixed
+
+Three defects stood between the existing monitor code and it working. Each one hid the
+next, which is worth recording:
+
+- **The comparison baseline was never persisted.** `_save_history` stored only the change
+  log, and `check_url` called it only inside `if changes:`. The first check for a URL -
+  which by definition reports nothing - therefore wrote nothing, so every process started
+  with an empty baseline and could never report a change at all. Measured through the
+  tool: the second call, after a price moved from 100 to 900, returned 0 changes and no
+  state file existed.
+
+  Fixed twice over, because the first fix alone was not enough: `_last_content` is stored
+  under a `__baseline__` key, *and* the save happens whenever the baseline moved rather
+  than only when something was reported.
+
+- **Notifications could never fire.** `_send_alerts` built `monitor.AlertMessage` and
+  handed it to a channel, whose `format_message` reads `message.level`. But
+  `alert_channels.AlertMessage` is a *different* dataclass: `level` instead of
+  `change_type`, float instead of ISO timestamp. Every send raised, was caught by a
+  per-channel `try/except`, and logged. Converted at the boundary, and - more importantly
+  - the per-send result is now **returned** instead of discarded, because a swallowed
+  exception is indistinguishable from success when nobody sees the outcome.
+
+- **`webhook://` always rebuilt as `https`.** Only visible once delivery results were
+  surfaced: the first real attempt failed in seconds with `SSL: WRONG_VERSION_NUMBER`, so
+  every local or internal http endpoint was unreachable. Loopback hosts now default to
+  http, others to https, and `?http=1` forces plain http for a public host.
+
+- Also: `open()` without an encoding in both history functions (cp936 on Windows would
+  corrupt non-ASCII content), and a state file written before `__baseline__` existed now
+  loads as "no baseline" rather than raising.
+
+### Changed
+
+- `web_monitor`'s price comparison is independent of `min_change_size`. A one-character
+  move like `$100.00` -> `$900.00` is exactly what a text-size threshold swallows, so
+  with `price_selector` set the comparison is a percentage against
+  `price_change_threshold`.
+- The monitor's `min_change_size` now measures characters that actually differ rather
+  than `abs(len(new) - len(old))`. The old measure reported 0 for any same-length rewrite,
+  including every price change of equal digit count.
+
+### Compatibility
+
+**15 tools.** The fourteen from v2.0.0 keep their names, parameters and response shapes;
+`web_monitor` is additive. `COMPATIBILITY.md` records it as beta with its two behavioural
+caveats (no self-scheduling; first call is a baseline).
+
+### Verified
+
+- 24 new tests, one per defect plus the end-to-end delivery path
+- delivered against a real local HTTP server: change detected -> `{"channel":"webhook",
+  "success":true,"message":"HTTP 200"}` and a payload containing the new price
+- a bad target is reported in `notifications.errors` while the good one still fires
+- credentials embedded in a target URL never appear in the response
+
+### Known gaps
+
+- `web_monitor` uses the monitor's own fetcher, not `fetch_service`, so it gets no TLS
+  impersonation or browser escalation yet. Stated in the tool description rather than
+  left for a user to discover.
+- Scheduling is the caller's responsibility; there is no built-in interval runner.
+
 ## v2.0.0 (2026-11-01)
 
 The v2 line begins the "AI / RAG / Knowledge Graph" scope from `REFACTOR_PLAN.md`. For
