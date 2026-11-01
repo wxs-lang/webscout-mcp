@@ -31,6 +31,7 @@ def test_mcp_tool_count_unchanged():
             "web_knowledge_graph",
             "web_rag_context",
             "web_compare_sites",
+            "web_monitor",
         ]
     )
     assert names == expected, names

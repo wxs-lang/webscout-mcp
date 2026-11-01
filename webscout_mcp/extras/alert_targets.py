@@ -39,8 +39,26 @@ def _build_webhook(parts) -> object:
     from .alert_channels import WebhookAlert
 
     host = _require(parts.netloc, "webhook")
-    scheme = parts.scheme if parts.scheme in ("http", "https") else "https"
-    return WebhookAlert(webhook_url=f"{scheme}://{host}{parts.path}")
+    # The scheme of a `webhook://` URL says nothing about transport, so default to https
+    # and let `?http=1` (or a loopback host) opt into plain HTTP. Forcing https broke
+    # local and internal endpoints with an SSL "wrong version number" error, which is
+    # confusing because the server is fine.
+    query = {k.lower(): v for k, v in parse_qs(parts.query).items()}
+    host_only = (parts.hostname or "").lower()
+    loopback = host_only in ("localhost", "127.0.0.1", "::1") or host_only.startswith("127.")
+    force_http = (query.get("http") or ["0"])[0].lower() in ("1", "true", "yes")
+    scheme = "http" if (force_http or loopback) else "https"
+
+    suffix = ""
+    if parts.query and not force_http:
+        # preserve other query parameters (tokens etc.) on the rebuilt URL
+        kept = {k: v[0] for k, v in parse_qs(parts.query).items() if k.lower() not in ("http",)}
+        if kept:
+            from urllib.parse import urlencode
+
+            suffix = "?" + urlencode(kept)
+
+    return WebhookAlert(webhook_url=f"{scheme}://{host}{parts.path}{suffix}")
 
 
 def _build_dingtalk(parts) -> object:

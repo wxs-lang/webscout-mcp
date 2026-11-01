@@ -12,7 +12,7 @@ v2.0.0. Agents and integrations can rely on these being stable.
 
 ## 1. MCP Tools (Frozen)
 
-The following 14 MCP tools are frozen. Their names, parameter schemas,
+The following 15 MCP tools are frozen. Their names, parameter schemas,
 and return structure will remain backwards-compatible.
 
 ### Core Web Tools
@@ -238,6 +238,38 @@ and `failures` for URLs that could not be fetched.
   the comparison, so one dead competitor cannot sink the other nine
 
 Frozen: the tool name and the parameter schema. Not frozen: the metric payload shape.
+
+#### `web_monitor`
+
+Check a URL for changes since the last check, and return what changed.
+
+**Parameters:**
+- `url` (string, required): page to check
+- `ignore_text` (array of strings, optional): regexes removed before comparing, for values that change every request
+- `ignore_selector` (array of strings, optional): CSS selectors whose subtrees are excluded
+- `price_selector` (string, optional): CSS selector for a price to track
+- `price_change_threshold` (float, default `0.0`): minimum fractional move to report, e.g. `0.05` for 5%
+- `min_change_size` (integer, default `10`): characters that must differ before a text change counts
+- `keywords_appear` (array of strings, optional): report when these appear
+- `include_diff` (boolean, default `true`): include a unified diff
+- `state_path` (string, optional): where the snapshot lives; defaults to `~/.cache/webscout/monitor_history.json`
+
+**Returns:** JSON string with `changes`, `change_count`, `baseline_established`,
+`state_path` and `notes`.
+
+**Stability: beta**, with two behaviours a caller must know:
+
+- **it checks once per call and does not schedule itself.** Monitoring continuously
+  requires the MCP client or an external scheduler to call it again. A user who sets it
+  once and expects automatic tracking would reasonably conclude it is broken.
+- **the first call for a URL only records a baseline** and reports no changes, signalled
+  by `baseline_established: true`.
+
+State persists to disk between calls, because the comparison baseline is written
+alongside the change log. Without that the tool could never report a change - see the
+v2.1.0 note below.
+
+Frozen: the tool name and the parameter schema. Not frozen: the change payload shape.
 
 Note on a scoring change this release: readability used to contribute up to 35 points
 without a minimum body length, which made a 6-word stub (readability 88) outscore a
