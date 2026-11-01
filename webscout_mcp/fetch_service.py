@@ -18,6 +18,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
+from .content_quality import assess
 from .fetch_escalation import FetchEscalationDecision
 from .fetch_provider import FetchProvider, FetchRequest, FetchResponse
 from .logging_config import get_logger
@@ -520,6 +521,10 @@ class FetchService:
                 omitted_chars=int(_served_meta.get("omitted_chars") or 0),
                 backend=web_result.backend or primary_name or "",
                 status=web_result.status.value if web_result and web_result.status else "",
+                # Graded here, where the text already exists: a 256-char navigation
+                # shell and a 279-char complete page differ in prose structure, not
+                # size. Only the label crosses into the metrics sink.
+                content_grade=assess(_served_content).grade,
             )
         except Exception:  # pragma: no cover - telemetry must never break production
             log.debug("content quality telemetry failed", exc_info=True)

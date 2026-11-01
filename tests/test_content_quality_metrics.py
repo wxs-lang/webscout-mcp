@@ -171,9 +171,20 @@ def test_recorder_accepts_scalars_only_by_signature() -> None:
         "omitted_chars",
         "backend",
         "status",
+        # A label produced by the caller from text it already held. Added instead
+        # of a `text` parameter precisely to keep this boundary: content never
+        # enters the sink, only its grade.
+        "content_grade",
     }
     for forbidden in ("content", "body", "html", "text", "url", "headers"):
         assert forbidden not in params
+
+    # The grade is a closed vocabulary, so a caller cannot smuggle anything else
+    # through it.
+    import inspect as _inspect
+
+    default = _inspect.signature(record_content_quality).parameters["content_grade"].default
+    assert default == "", "content_grade must default to empty so old callers are unaffected"
 
 
 def test_reset_clears_content_quality() -> None:
