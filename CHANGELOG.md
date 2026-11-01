@@ -5,6 +5,56 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v1.12.0 (2026-11-01)
+
+### Added
+
+- **TLS fingerprint impersonation** (`curl_cffi`), tried before escalating to a
+  browser. The blocking signal is often the TLS handshake rather than the
+  rendering: reuters returned 401 to a plain client and 403 to headless Chromium,
+  then 200 with a full article when the handshake matched Safari - in 955ms rather
+  than a 3-6s browser launch. Applies to a 401/403 response and to TLS/trust-store
+  failures; a 200 never triggers it.
+- **Profile rotation.** Which fingerprint works is target-dependent, measured
+  rather than assumed: reddit returns 166KB to `chrome131` and 8KB to
+  `safari17_0`; reuters returns 1.3MB to `safari17_0` and 774 bytes to
+  `chrome131`. Profiles are tried in order until one succeeds.
+
+### Fixed
+
+- **A broken system trust store no longer fails the whole fetch.** When every
+  `httpx` request fails with `CERTIFICATE_VERIFY_FAILED` - which is what a
+  TLS-rewriting corporate proxy produces - the fetch now falls back to
+  `curl_cffi`, which carries its own CA bundle and TLS stack.
+- **libcurl could not read a CA bundle under a non-ASCII path** (curl error 77,
+  e.g. an install under `D:\测试\...`). The bundle is now staged to an ASCII
+  location. The failure previously surfaced as an apparent network error.
+
+### Compatibility
+
+**11 MCP tools, unchanged.** No parameter was removed or renamed. Impersonation
+adds a retry path; the shape of a failed response is identical to before when it
+cannot help.
+
+### Known gaps
+
+`curl_cffi` and the local browser are both opt-in through the `[browser]` extra.
+With it installed, real-world usability over the 16-site probe is 10/16. The
+remaining six are not addressable by fingerprint work:
+
+| Site | Response to every profile tried | What would be needed |
+|---|---|---|
+| medium.com | 200, but 149 chars of navigation | JS rendering (SPA) |
+| stackoverflow.com | 403 | residential IP |
+| zhihu.com | 403 | residential IP, login session |
+| amazon.com | 202 | JS + cookie handshake |
+| reddit.com | 200, humanity challenge | residential IP |
+| bbc.com | connect failure | - |
+
+A proxy can be configured for the browser (`BrowserConfig.proxy_server`); nothing
+in this release changes the IP reputation, which is the binding constraint on
+those sites.
+
 ## v1.11.0 (2026-10-29)
 
 Measured against sixteen real-world sites rather than the ten curated live-test
