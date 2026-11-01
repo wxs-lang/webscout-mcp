@@ -90,7 +90,11 @@ class RecoveryReason(str, Enum):
 
     OUTPUT_TRUNCATED = "OUTPUT_TRUNCATED"  # WebScout's own output limit cut content
     JS_REQUIRED = "JS_REQUIRED"
-    SOFT_BLOCK = "SOFT_BLOCK"  # 403 challenge / captcha that a browser may pass
+    SOFT_BLOCK = "SOFT_BLOCK"
+    # An explicit interstitial telling the visitor to wait for a check. Distinct
+    # from SOFT_BLOCK ("server rejected our fingerprint") because the page says
+    # what it is, and a caller can act on that difference.
+    CHALLENGE = "CHALLENGE"  # 403 challenge / captcha that a browser may pass
     LOW_CONTENT_DENSITY = "LOW_CONTENT_DENSITY"
     LOW_QUALITY = "LOW_QUALITY"
     RATE_LIMITED = "RATE_LIMITED"
@@ -123,6 +127,7 @@ class RecoveryAction(str, Enum):
 
 _BROWSER_REASONS = {
     EscalationReason.SOFT_BLOCK: RecoveryReason.SOFT_BLOCK,
+    EscalationReason.CHALLENGE: RecoveryReason.CHALLENGE,
     EscalationReason.JS_REQUIRED: RecoveryReason.JS_REQUIRED,
     EscalationReason.LOW_CONTENT_DENSITY: RecoveryReason.LOW_CONTENT_DENSITY,
     EscalationReason.LOW_QUALITY: RecoveryReason.LOW_QUALITY,
