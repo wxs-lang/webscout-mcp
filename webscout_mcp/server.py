@@ -20,6 +20,9 @@ Content Analysis:
 - ``rss_parse`` - Parse RSS/Atom feeds and return entries.
 - ``content_quality`` - Analyze content quality (readability, keyword density, structure).
 - ``broken_links`` - Check for broken links on a web page.
+
+Content Understanding:
+- ``web_knowledge_graph`` - Build a knowledge graph of entities and relationships.
 """
 
 from __future__ import annotations

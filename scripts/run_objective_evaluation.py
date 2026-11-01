@@ -2,7 +2,7 @@
 """WebScout v1.5.0 Phase 2.1 UNIFIED objective evaluation CLI.
 
 Evaluation-only. It changes NO production routing, recovery decision, Jev
-semantics (Jev stays a pure shadow) and NO MCP tool surface (still 11 tools).
+semantics (Jev stays a pure shadow) and NO MCP tool surface (11 original toolsols).
 
 Three mutually exclusive modes (default = report-only):
 
