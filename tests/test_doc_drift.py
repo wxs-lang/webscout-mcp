@@ -24,7 +24,7 @@ def test_mcp_tool_count_is_pinned():
     requires those two things; it is not a number to update when a test goes red.
     """
     src = SRC.read_text(encoding="utf-8")
-    assert src.count("@mcp.tool()") == 12, (
+    assert src.count("@mcp.tool()") == 13, (
         "MCP tool count changed. Adding a tool requires updating COMPATIBILITY.md "
         "(count, parameters, stability) and docs/tools.md via scripts/generate_docs.py."
     )

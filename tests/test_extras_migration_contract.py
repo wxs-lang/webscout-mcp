@@ -111,7 +111,7 @@ def test_mcp_tool_surface_is_unchanged():
 
     mcp = create_server(Config(cache_dir=pathlib.Path(tempfile.mkdtemp())))
     names = {t.name for t in asyncio.run(mcp.list_tools())}
-    assert len(names) == 12, sorted(names)  # 12 since web_knowledge_graph; see COMPATIBILITY.md
+    assert len(names) == 13, sorted(names)  # 13 since web_rag_context; see COMPATIBILITY.md
     assert "content_quality" in names
     assert "broken_links" in names
 

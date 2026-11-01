@@ -330,7 +330,7 @@ class TestMCPToolActualInvocation:
                     elif hasattr(tools_result, "tools"):
                         tool_names = [t.name for t in tools_result.tools]
                 assert "metadata_extract" in tool_names, f"metadata_extract not in: {tool_names}"
-                assert len(tool_names) == 12, f"Expected 12 MCP tools, got {len(tool_names)}"
+                assert len(tool_names) == 13, f"Expected 13 MCP tools, got {len(tool_names)}"
 
                 call_result = await server.call_tool(
                     "metadata_extract",
@@ -515,5 +515,5 @@ class TestMCPSchemaUnchanged:
                     tool_names = [t.name for t in tools_result]
                 else:
                     tool_names = [t.name for t in tools_result.tools]
-                assert len(tool_names) == 12, f"Expected 12 tools, got {len(tool_names)}: {tool_names}"
+                assert len(tool_names) == 13, f"Expected 13 tools, got {len(tool_names)}: {tool_names}"
                 assert "metadata_extract" in tool_names

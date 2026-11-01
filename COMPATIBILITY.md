@@ -12,7 +12,7 @@ v2.0.0. Agents and integrations can rely on these being stable.
 
 ## 1. MCP Tools (Frozen)
 
-The following 12 MCP tools are frozen. Their names, parameter schemas,
+The following 13 MCP tools are frozen. Their names, parameter schemas,
 and return structure will remain backwards-compatible.
 
 ### Core Web Tools
@@ -184,6 +184,38 @@ says so in its `notes` field:
 Frozen: the tool name and the parameter schema. Not frozen: the entity and
 relationship payload shape, which may gain fields (the same additive precedent as
 `error_code` / `retryable` / `extraction_status`).
+
+#### `web_rag_context`
+
+Retrieve the passages of a page most relevant to a query, compressed to fit a context
+window.
+
+**Parameters:**
+- `url` (string, optional): page to fetch first
+- `text` (string, optional): text to analyse directly
+- `query` (string, required): what to retrieve passages about
+- `top_k` (integer, default `5`): number of passages returned
+- `max_chunk_size` (integer, default `60`): words per passage
+
+Exactly one of `url` or `text` must be supplied, plus `query`.
+
+**Returns:** JSON string with `passages` (each carrying `chunk_id`, `score`, `words`,
+`text`), `compressed_context`, `stats`, `retrieval_score`, `confidence`, and `notes`.
+
+**Stability: beta.** Ranking is lexical, not semantic:
+
+- passages are ranked by stop-word-filtered IDF over content terms; there is no
+  embedding model, so a query phrased with different vocabulary than the document will
+  miss. Synonyms do not match.
+- the default `max_chunk_size` of 60 words is deliberately small. At the library
+  default of 500 a normal article stays a single passage and there is nothing to rank;
+  measured retrieval went from 0/5 to 5/5 on a probe set after this change.
+- passages are sentence-aligned, so each one reads as complete sentences.
+
+`compressed_context` is the field intended to be handed to a model; `passages` are for
+inspection and citation.
+
+Frozen: the tool name and the parameter schema. Not frozen: the passage payload shape.
 
 ---
 

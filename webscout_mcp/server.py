@@ -23,6 +23,7 @@ Content Analysis:
 
 Content Understanding:
 - ``web_knowledge_graph`` - Build a knowledge graph of entities and relationships.
+- `web_rag_context` - Retrieve the passages most relevant to a query, compressed to fit a context window.
 """
 
 from __future__ import annotations
@@ -652,6 +653,130 @@ def create_server(config: Config | None = None) -> MCPServer:
             log.error("web_knowledge_graph failed", extra={"url": url, "error": str(exc)})
             return json.dumps(
                 {"error": f"Knowledge graph extraction failed: {exc}", "url": url},
+                ensure_ascii=False,
+            )
+
+    @mcp.tool()
+    async def web_rag_context(
+        url: str = "",
+        text: str = "",
+        query: str = "",
+        top_k: int = 5,
+        max_chunk_size: int = 60,
+    ) -> str:
+        """Retrieve the passages of a page most relevant to a query, compressed to fit a context window.
+
+        Splits the content into sentence-aligned passages, ranks them against `query`,
+        and returns the best ones together with a compressed context block. Use this
+        when a page is too long to hand to a model whole, or when you need to find the
+        specific passages that answer a question.
+
+        Provide either `url` (fetched first) or `text` (used directly). `query` is
+        required: this tool retrieves, it does not summarise.
+
+        Ranking is lexical (stop-word-filtered IDF over content terms), not embedding
+        based, so a query phrased with different vocabulary than the document will miss.
+        Use `compressed_context` as the text to pass to a model; `chunks` are for
+        inspection and citation.
+        """
+        if not url and not text:
+            return json.dumps(
+                {"error": "Provide either 'url' or 'text'"},
+                ensure_ascii=False,
+            )
+        if not query.strip():
+            return json.dumps(
+                {
+                    "error": (
+                        "Provide a 'query'. This tool retrieves relevant passages; "
+                        "it does not summarise the whole page."
+                    )
+                },
+                ensure_ascii=False,
+            )
+
+        try:
+            from .extras.rag_optimizer import RAGOptimizer
+            from .fetch_provider import FetchRequest
+
+            source = "text"
+            source_url = None
+            payload = text
+
+            if url:
+                # Through fetch_service, exactly as web_fetch does.
+                route = await fetch_service.fetch(
+                    FetchRequest(
+                        url=url,
+                        extract=True,
+                        output_format="text",
+                        max_chars=200_000,
+                    )
+                )
+                fetched = route.primary_response.content or ""
+                if not fetched:
+                    return json.dumps(
+                        {
+                            "error": "Failed to fetch page content",
+                            "url": url,
+                            "recovery_reason": (
+                                route.recovery_decision.reason.value if route.recovery_decision is not None else None
+                            ),
+                            "recovery_outcome": route.recovery_outcome,
+                        },
+                        ensure_ascii=False,
+                    )
+                payload = fetched
+                source = "url"
+                source_url = url
+
+            # A sentence-scale chunk size: at the library default of 500 words a normal
+            # article stays one chunk and there is nothing to rank.
+            optimizer = RAGOptimizer(max_chunk_size=max(20, int(max_chunk_size)))
+            chunks = optimizer.prepare_documents([payload])
+            response = optimizer.retrieve(query, chunks, top_k=max(1, int(top_k)))
+
+            passages = [
+                {
+                    "chunk_id": c.chunk_id,
+                    "score": c.score,
+                    "words": c.word_count,
+                    "text": c.text,
+                }
+                for c in response.chunks
+            ]
+
+            out: dict = {
+                "source": source,
+                "query": query,
+                "rewritten_query": response.rewritten_query or None,
+                "passages": passages,
+                "compressed_context": response.compressed_context,
+                "stats": {
+                    "chunks_total": len(chunks),
+                    "chunks_returned": len(passages),
+                    "chars_analyzed": len(payload),
+                    "processing_time_ms": response.processing_time_ms,
+                },
+                "retrieval_score": round(response.retrieval_score, 4),
+                "confidence": round(response.confidence, 4),
+                "notes": [
+                    (
+                        "Ranking is lexical (stop-word-filtered IDF), not embedding-based: "
+                        "a query worded differently from the document may miss."
+                    ),
+                    "compressed_context is the text to hand to a model; passages are for citation.",
+                    "Chunks are sentence-aligned, so each passage reads as complete sentences.",
+                ],
+            }
+            if source_url:
+                out["url"] = source_url
+
+            return json.dumps(out, ensure_ascii=False, indent=2, default=str)
+        except Exception as exc:
+            log.error("web_rag_context failed", extra={"url": url, "error": str(exc)})
+            return json.dumps(
+                {"error": f"RAG retrieval failed: {exc}", "url": url},
                 ensure_ascii=False,
             )
 

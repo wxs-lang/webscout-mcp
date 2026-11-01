@@ -486,4 +486,4 @@ def test_mcp_tool_count_unchanged():
     # Explicit encoding: read_text() defaults to the locale codec (cp936 on
     # Windows) and cannot decode this UTF-8 source there.
     server = Path(fs_mod.__file__).with_name("server.py").read_text(encoding="utf-8")
-    assert server.count("@mcp.tool()") == 12  # 12 since web_knowledge_graph; see COMPATIBILITY.md
+    assert server.count("@mcp.tool()") == 13  # 13 since web_rag_context; see COMPATIBILITY.md
