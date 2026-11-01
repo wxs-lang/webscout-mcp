@@ -191,16 +191,16 @@ and vector/AI/browser extras are available separately."
 
 ---
 
-## 3. 当前进度快照（2026-11-01，v1.13.0）
+## 3. 当前进度快照（2026-11-01，v1.14.0）
 
 ### 3.1 发布状态
 
 | 项 | 值 |
 |---|---|
-| 最新版本 | **v1.13.0** |
+| 最新版本 | **v1.14.0** |
 | 发布时间 | 2026-11-01 (+08) |
-| `main` HEAD | v1.13.0 tag |
-| Releases 总数 | 14 |
+| `main` HEAD | v1.14.0 tag |
+| Releases 总数 | 15 |
 | MCP 工具数 | 11（工具与参数自 v1.9.1 起未变） |
 | PyPI / Docker | 均已发布 |
 
@@ -217,6 +217,12 @@ v1.12.0 在纯 HTTP 与浏览器之间加入 **TLS 指纹伪装**（`curl_cffi`�
 对 httpx 返回 401、对无头 Chromium 返回 403，而匹配 Safari 握手指纹后返回 200 与
 2901 字符正文，耗时 955ms（浏览器为 3-6 秒）。同时修复了两处真实故障：系统信任库
 损坏时整个抓取失败、以及 libcurl 无法读取非 ASCII 路径下的 CA 文件（curl error 77）。
+
+v1.14.0 修的是**可解释性在最后一公里断掉**：挑战页返回 200、无错误、提取 okay，
+而 pipeline 已判定「CHALLENGE / 需要浏览器 / 没有后端」——这个结论只存在于
+`route_trace` 里，MCP 调用方看不到。现在 payload 直接带 `recovery_reason` /
+`recovery_action` / `recovery_outcome`，其中 outcome 区分「没装后端」「升级成功」
+「升级了但被拒」三种需要不同处理的情况。
 
 ### 3.1.1 真实世界可用性（2026-10-29 实测，16 个站点）
 

@@ -5,6 +5,81 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v1.14.0 (2026-11-01)
+
+### Fixed
+
+- **A challenge page was indistinguishable from a successful fetch.** Reported as a
+  200 with no error, and it reached that state through four separate gaps:
+
+  | Layer | Problem |
+  |---|---|
+  | marker set | eight markers, all English/Cloudflare - a Chinese interstitial matched none |
+  | scan window | `html[:4096]` only; the marker sat at byte 25065 of a 25258-byte page |
+  | reason name | reused `SOFT_BLOCK`, which means "rejected silently", not "told to wait" |
+  | payload | the decision existed only in `route_trace`, invisible to an MCP caller |
+
+  Each is fixed: three measured Chinese markers added, the extracted body is scanned
+  as well as the HTML head, `CHALLENGE` is its own reason, and the payload now
+  reports it.
+
+  The scan-window fix matters most. `_looks_like_challenge` read the first 4KB, which
+  on the real page was `<head>` boilerplate and inline CSS. The extracted body is 58
+  characters with the marker at position 0. Measured against two legitimate short
+  pages, checking the body produced no false positives; scanning all 25KB would have
+  matched any large page whose scripts mention "captcha".
+
+### Added
+
+- **`recovery_reason` / `recovery_action` / `recovery_outcome` in the payload.** Three
+  additive scalars, present only when a decision was made. Before this, a caller
+  received:
+
+  ```json
+  {"status_code": 200, "error": null, "error_code": null, "extraction_status": "ok"}
+  ```
+
+  and had no way to know the pipeline had concluded "CHALLENGE, a browser is needed,
+  none is registered". `browser_attempted` could not convey it: that field is set only
+  when a browser ran, so its absence conflates "not needed" with "not installed" -
+  which need different remedies.
+
+  `recovery_outcome` is the one that separates:
+
+  | value | meaning | remedy |
+  |---|---|---|
+  | `browser_unavailable:fallback_unavailable` | no backend registered | install `[browser]` |
+  | `browser_success` | escalated and worked | nothing |
+  | `browser_failed:...` | escalated, site rejected | network/IP, not code |
+
+- **A troubleshooting section in README** covering what a challenge page looks like,
+  the two commands that enable escalation, the honest boundary of what a browser does
+  not fix, proxy configuration, and how to read `route_trace`. `README_zh.md` got a
+  short pointer. Every command in it was executed before committing.
+
+### Compatibility
+
+**11 MCP tools, unchanged.** No parameter was removed or renamed. Three additive
+response fields, following the same precedent as v1.10.0's `error_code` / `retryable`
+/ `extraction_status` and v1.4.0's `status` / `error`.
+
+### Changed
+
+- `docs/RECOVERY_POLICY.md` is now generated from the policy table and checked in CI
+  rather than hand-written. It had drifted to 17 rules and 8 markers against 18 and 11
+  in code while `--check` reported everything up to date. The CI `git diff` guard now
+  covers it.
+- The lint job installs the project instead of individual packages. Naming a package
+  per CI failure was guesswork; the import chain is
+  `recovery_policy -> fetch_escalation -> fetch_provider -> search -> search_health ->
+  serpapi_backend`.
+- `generate_docs.py` no longer crashes on a console whose default codec is not UTF-8
+  (`UnicodeEncodeError: 'gbk' codec can't encode character '\u2705'`), found by
+  running it in a clean venv instead of a configured shell.
+- `test_snapshot_on_exit.py` no longer leaves a `somewhere.json` in the working
+  directory: the exit hook was armed with a relative path and stayed armed
+  process-wide.
+
 ## v1.13.0 (2026-11-01)
 
 ### Fixed
