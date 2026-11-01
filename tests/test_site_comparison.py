@@ -193,6 +193,7 @@ def test_failed_fetches_do_not_raise():
     assert isinstance(out, dict)
     assert "error" in out or "failures" in out or "sites" in out
 
+
 def test_script_end_tag_with_whitespace_is_stripped():
     """`</script >` is a valid HTML end tag; a bare pattern misses it.
 
@@ -202,7 +203,7 @@ def test_script_end_tag_with_whitespace_is_stripped():
     """
     import re
 
-    html = '<html><body><p>real content here</p><script>var SECRET_DATA = 1;</script ></body></html>'
+    html = "<html><body><p>real content here</p><script>var SECRET_DATA = 1;</script ></body></html>"
     plain = re.sub(r"<script[^>]*>.*?</script\s*>", " ", html, flags=re.DOTALL | re.IGNORECASE)
     plain = re.sub(r"<[^>]+>", " ", plain)
     assert "SECRET_DATA" not in plain, "script body survived the strip"
