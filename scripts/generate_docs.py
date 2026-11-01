@@ -401,7 +401,7 @@ def main() -> int:
         # Check MODULE_STATUS.md
         module_status_path = args.output_dir / "MODULE_STATUS.md"
         if module_status_path.exists():
-            existing = module_status_path.read_text()
+            existing = module_status_path.read_text(encoding="utf-8")
             generated = generate_module_status(tools)
             if existing.strip() != generated.strip():
                 print("  ❌ MODULE_STATUS.md is out of date")
@@ -412,13 +412,28 @@ def main() -> int:
         # Check docs/tools.md
         tools_doc_path = args.output_dir / "docs" / "tools.md"
         if tools_doc_path.exists():
-            existing = tools_doc_path.read_text()
+            existing = tools_doc_path.read_text(encoding="utf-8")
             generated = generate_tools_doc(tools)
             if existing.strip() != generated.strip():
                 print("  ❌ docs/tools.md is out of date")
                 checks_passed = False
             else:
                 print("  ✅ docs/tools.md is up to date")
+
+        # Check docs/RECOVERY_POLICY.md - generated from the policy table, which is
+        # what makes the policy inspectable. It was hand-written once and had already
+        # drifted: 17 rules and 8 markers in the doc against 18 and 11 in the code.
+        recovery_doc_path = args.output_dir / "docs" / "RECOVERY_POLICY.md"
+        if recovery_doc_path.exists():
+            from webscout_mcp.recovery_policy import build_policy_table, render_markdown
+
+            existing = recovery_doc_path.read_text(encoding="utf-8")
+            generated = render_markdown(build_policy_table())
+            if existing.strip() != generated.strip():
+                print("  ❌ docs/RECOVERY_POLICY.md is out of date")
+                checks_passed = False
+            else:
+                print("  ✅ docs/RECOVERY_POLICY.md is up to date")
 
         if not checks_passed:
             print("\n❌ Documentation is out of date. Run 'python scripts/generate_docs.py' to update.")
@@ -441,6 +456,14 @@ def main() -> int:
     tools_doc_content = generate_tools_doc(tools)
     tools_doc_path.write_text(tools_doc_content)
     print(f"  ✅ Generated {tools_doc_path}")
+
+    # Generate docs/RECOVERY_POLICY.md from the policy table.
+    from webscout_mcp.recovery_policy import build_policy_table, render_markdown
+
+    recovery_doc_path = args.output_dir / "docs" / "RECOVERY_POLICY.md"
+    recovery_doc_path.parent.mkdir(parents=True, exist_ok=True)
+    recovery_doc_path.write_text(render_markdown(build_policy_table()), encoding="utf-8", newline="\n")
+    print(f"  ✅ Generated {recovery_doc_path}")
 
     print(f"\n✅ Generated documentation for {len(tools)} MCP tools!")
     return 0

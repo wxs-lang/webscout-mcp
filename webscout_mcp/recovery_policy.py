@@ -554,14 +554,14 @@ ESCALATION_SIGNALS: tuple[EscalationSignal, ...] = (
     EscalationSignal(
         "challenge_on_any_status",
         "CHALLENGE_MARKERS present",
-        "SOFT_BLOCK",
+        "CHALLENGE",
         0.90,
         "Checked before status branching: a challenge page can arrive with non-200 too.",
     ),
     EscalationSignal(
         "challenge_on_200",
         "CHALLENGE_MARKERS present in a 200 body",
-        "SOFT_BLOCK",
+        "CHALLENGE",
         0.95,
     ),
     EscalationSignal(
