@@ -524,4 +524,132 @@ def create_server(config: Config | None = None) -> MCPServer:
             log.error("broken_links failed", extra={"url": url, "error": str(exc)})
             return json.dumps({"error": f"Broken link check failed: {exc}", "url": url}, ensure_ascii=False)
 
+    @mcp.tool()
+    async def web_knowledge_graph(
+        url: str = "",
+        text: str = "",
+        max_entities: int = 50,
+        include_centrality: bool = True,
+    ) -> str:
+        """Build a knowledge graph of entities and relationships from a page or text.
+
+        Extracts named entities (people, organizations, locations, technologies) and
+        the relationships between them, then ranks entities by centrality.
+
+        Provide either `url` (fetched first) or `text` (used directly). This is useful
+        for mapping who/what a document is about and how they connect, rather than
+        reading it linearly.
+
+        Relationship types are currently `co_occurs_with` only: relationships come
+        from proximity, not from parsing sentence semantics. Entity types are
+        rule-based, so some are reported as `unknown` rather than guessed.
+        """
+        if not url and not text:
+            return json.dumps(
+                {"error": "Provide either 'url' or 'text'"},
+                ensure_ascii=False,
+            )
+
+        try:
+            from .extras.knowledge_graph import KnowledgeGraphBuilder
+            from .fetch_provider import FetchRequest
+
+            source = "text"
+            source_url = None
+            payload = text
+
+            if url:
+                # Through fetch_service, like web_fetch: that is where the SSRF guard,
+                # provider selection, TLS impersonation fallback, browser escalation and
+                # recovery classification live. Calling `fetcher` directly bypassed all
+                # of it and returned empty content on pages web_fetch reads fine.
+                route = await fetch_service.fetch(
+                    FetchRequest(
+                        url=url,
+                        extract=True,
+                        output_format="text",
+                        max_chars=200_000,
+                    )
+                )
+                fetched = route.primary_response.content or ""
+                if not fetched:
+                    return json.dumps(
+                        {
+                            "error": "Failed to fetch page content",
+                            "url": url,
+                            # A challenge page is a 200 with a short body. Reporting the
+                            # recovery outcome lets the caller tell "blocked" from
+                            # "genuinely empty" instead of receiving an empty graph.
+                            "recovery_reason": (
+                                route.recovery_decision.reason.value if route.recovery_decision is not None else None
+                            ),
+                            "recovery_outcome": route.recovery_outcome,
+                        },
+                        ensure_ascii=False,
+                    )
+                payload = fetched
+                source = "url"
+                source_url = url
+
+            builder = KnowledgeGraphBuilder()
+            graph = builder.build(payload)
+
+            entities = sorted(graph.entities.values(), key=lambda e: e.count, reverse=True)[: max(1, max_entities)]
+
+            entity_rows = [
+                {
+                    "id": e.id,
+                    "name": e.name,
+                    "type": e.type,
+                    "mentions": e.count,
+                }
+                for e in entities
+            ]
+
+            top_ids = {e.id for e in entities}
+            relationships = [
+                {
+                    "source": r.source,
+                    "target": r.target,
+                    "type": r.type,
+                    "weight": r.weight,
+                    "count": r.count,
+                }
+                for r in graph.relationships
+                if r.source in top_ids and r.target in top_ids
+            ]
+
+            out: dict = {
+                "source": source,
+                "entities": entity_rows,
+                "relationships": relationships,
+                "stats": {
+                    "entity_count": len(graph.entities),
+                    "relationship_count": len(graph.relationships),
+                    "chars_analyzed": len(payload),
+                },
+                "notes": [
+                    "Relationships are co-occurrence based (type: co_occurs_with), not semantic.",
+                    "Entity type 'unknown' means the pattern did not identify it; it is not a guess.",
+                ],
+            }
+            if source_url:
+                out["url"] = source_url
+
+            if include_centrality:
+                try:
+                    centrality = builder.calculate_centrality(graph)
+                    top = sorted(centrality.items(), key=lambda kv: kv[1], reverse=True)[:10]
+                    out["top_entities_by_centrality"] = [{"id": k, "score": round(v, 4)} for k, v in top]
+                except Exception:  # pragma: no cover - ranking is best-effort
+                    log.debug("centrality failed", exc_info=True)
+
+            return json.dumps(out, ensure_ascii=False, indent=2, default=str)
+        except Exception as exc:
+            log.error("web_knowledge_graph failed", extra={"url": url, "error": str(exc)})
+            return json.dumps(
+                {"error": f"Knowledge graph extraction failed: {exc}", "url": url},
+                ensure_ascii=False,
+            )
+
     return mcp

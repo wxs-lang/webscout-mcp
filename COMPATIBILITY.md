@@ -12,7 +12,7 @@ v2.0.0. Agents and integrations can rely on these being stable.
 
 ## 1. MCP Tools (Frozen)
 
-The following 11 MCP tools are frozen. Their names, parameter schemas,
+The following 12 MCP tools are frozen. Their names, parameter schemas,
 and return structure will remain backwards-compatible.
 
 ### Core Web Tools
@@ -153,6 +153,37 @@ Check for broken links on a web page.
 - `url` (string, required): URL to check
 
 **Returns:** JSON string with broken links and status codes.
+
+### Content Understanding
+
+#### `web_knowledge_graph`
+
+Build a knowledge graph of entities and relationships from a page or from text.
+
+**Parameters:**
+- `url` (string, optional): page to fetch first
+- `text` (string, optional): text to analyse directly
+- `max_entities` (integer, default `50`): cap on returned entities
+- `include_centrality` (boolean, default `true`): include the centrality ranking
+
+Exactly one of `url` or `text` must be supplied; passing neither returns an explicit
+error rather than an empty graph.
+
+**Returns:** JSON string with `entities`, `relationships`, `stats`, `notes`, and
+`top_entities_by_centrality` when enabled.
+
+**Stability: beta.** The extraction is rule-based, not model-based, and the response
+says so in its `notes` field:
+
+- relationships are proximity-derived and always typed `co_occurs_with`; there is no
+  sentence-level semantic parsing yet
+- entity types come from suffix and keyword patterns. A word the patterns cannot
+  classify is reported as `unknown` rather than guessed, and a known technology
+  keyword upgrades it to `technology`
+
+Frozen: the tool name and the parameter schema. Not frozen: the entity and
+relationship payload shape, which may gain fields (the same additive precedent as
+`error_code` / `retryable` / `extraction_status`).
 
 ---
 
