@@ -23,8 +23,23 @@ from webscout_mcp.observability import (
     read_snapshot,
     record_content_quality,
     reset_for_tests,
+    reset_snapshot_on_exit,
     snapshot_on_exit_enabled,
 )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_exit_hook():
+    """Every test starts with the exit hook un-armed.
+
+    The hook is global: once one test arms it, later tests inherit that path and
+    any content record can write a file outside tmp. I found a stray
+    somewhere.json in the repo root after a run because of exactly that.
+    """
+    reset_snapshot_on_exit()
+    yield
+    reset_snapshot_on_exit()
+
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -63,8 +78,11 @@ def test_hook_is_off_by_default():
     assert snapshot_on_exit_enabled() is False
 
 
-def test_enable_marks_the_hook_as_armed():
-    enable_snapshot_on_exit(Path("somewhere.json"))
+def test_enable_marks_the_hook_as_armed(tmp_path):
+    # tmp_path, not Path("somewhere.json"): a relative target made the atexit hook
+    # write into whatever the working directory was, and I found a stray
+    # somewhere.json in the repo root after a run.
+    enable_snapshot_on_exit(tmp_path / "somewhere.json")
     assert snapshot_on_exit_enabled() is True
 
 
