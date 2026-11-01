@@ -5,6 +5,75 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v1.13.0 (2026-11-01)
+
+### Fixed
+
+- **Brotli responses were served as raw bytes.** The browser fingerprint advertised
+  `Accept-Encoding: gzip, deflate, br`, but `pyproject.toml` never declared the
+  `brotli` package. httpx only decodes brotli when it is installed, and it fails
+  silently when it is not: status 200, `content-encoding: br`, and the compressed
+  bytes decoded as text. Measured on example.com in an environment without brotli:
+
+  | request headers | result |
+  |---|---|
+  | fingerprint (`gzip, deflate, br`) | 311 chars, readable ratio 0.412 |
+  | without `Accept-Encoding` | 577 chars, readable ratio 1.000 |
+
+  This is present from the initial commit (2026-08-28), so for any default install
+  every brotli-compressed page has been mojibake. Extraction then ran over that
+  mojibake and reported `extraction_status: "ok"`, because it had produced text.
+
+  **Effect on the numbers you may have been reading:** the content-usability SLO was
+  counting mojibake as usable content. v1.12.0 and earlier dashboards are not
+  comparable to v1.13.0 ones; the new figures are lower and correct.
+
+  Fixed at the source: the fingerprint no longer emits `Accept-Encoding`, and httpx
+  negotiates it, adding `br` only when it can decode it.
+
+### Added
+
+- **`content_grading`** grades extracted text by shape: `usable`, `thin`, `empty`,
+  or `garbled`. `garbled` is what surfaced the defect above - 145 replacement
+  characters were previously indistinguishable from content. The rule is layered
+  because no single feature separates real prose from page chrome:
+
+  | sample | chars | avg sentence | truth |
+  |---|---|---|---|
+  | example.com | 279 | 92.3 | useful - short but real sentences |
+  | news.ycombinator | 4136 | 7.8 | useful - long, link list |
+  | medium.com | 149 | 7.4 | useless - fragments |
+  | thepaper.cn | 253 | 8.2 | useless - fragments |
+
+  Sentence length alone rejects hackernews; length alone accepts thepaper, so the
+  rule takes both plus a script-aware floor (CJK expresses the same content in fewer
+  characters, and an English-calibrated threshold rejected legitimate Chinese
+  sentences averaging 19).
+
+- The SLO counters now carry a `content_grade` label and the aggregator reports a
+  `garbled_rate` alongside the existing rates.
+
+### Compatibility
+
+**11 MCP tools, unchanged.** `webscout_mcp.content_quality` remains the
+compatibility shim for the website-analysis module; the new grader lives at
+`webscout_mcp.content_grading`. No parameter was removed or renamed.
+
+### Measured after the fix
+
+Ten pages, graded by the new module:
+
+```
+usable  7   iana.org, wikipedia, docs.python, mozilla, hackernews, reuters
+thin    0
+empty   3   example.com (156 chars), medium.com (149), 36kr (58)
+garbled 0
+usable_rate 70.0%
+```
+
+reuters now yields 2844 characters of article text through TLS impersonation, which
+it could not do before this release.
+
 ## v1.12.0 (2026-11-01)
 
 ### Added
