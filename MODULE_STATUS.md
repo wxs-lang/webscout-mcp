@@ -14,7 +14,7 @@ This document provides transparency about the stability and integration status o
 
 ## MCP Tool Integration Status
 
-### ✅ Currently Exposed as MCP Tools (13 tools)
+### ✅ Currently Exposed as MCP Tools (14 tools)
 
 | Tool | Category | Stability | Description |
 |------|----------|-----------|-------------|
@@ -28,6 +28,7 @@ This document provides transparency about the stability and integration status o
 | `web_extract` | Crawl & Extract | ✅ Stable | Extract structured data from a web page using CSS selectors. |
 | `web_fetch` | Fetch | ✅ Stable | Fetch a URL and return one window of its extracted main content. |
 | `search_health` | Health | ✅ Stable | Get health report for all search backends. |
+| `web_compare_sites` | Other | 🧪 Experimental | Compare several websites side by side on SEO, performance, content and links. |
 | `web_knowledge_graph` | Other | 🧪 Experimental | Build a knowledge graph of entities and relationships from a page or text. |
 | `web_rag_context` | Other | 🧪 Experimental | Retrieve the passages of a page most relevant to a query, compressed to fit a co... |
 | `web_search` | Search | ✅ Stable | Search the web and return structured results. |
@@ -67,7 +68,7 @@ This document provides transparency about the stability and integration status o
 |-------|-------|-------|
 | ✅ Stable | 9 | `web_search`, `web_fetch`, `web_crawl`, `web_extract`, `cache_stats`, `cache_clear`, `search_health`, `metadata_extract`, `rss_parse` |
 | 🔶 Beta | 0 |  |
-| 🧪 Experimental | 4 | `content_quality`, `broken_links`, `web_knowledge_graph`, `web_rag_context` |
+| 🧪 Experimental | 5 | `content_quality`, `broken_links`, `web_knowledge_graph`, `web_rag_context`, `web_compare_sites` |
 
 ---
 

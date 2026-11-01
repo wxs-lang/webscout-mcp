@@ -40,7 +40,7 @@ def _call(args: dict) -> dict:
 # --- registration -----------------------------------------------------
 
 
-def test_tool_is_registered_and_count_is_thirteen():
+def test_tool_is_registered_with_its_siblings():
     async def go():
         server = create_server()
         return await server.list_tools()
@@ -48,7 +48,7 @@ def test_tool_is_registered_and_count_is_thirteen():
     tools = asyncio.run(go())
     names = {t.name for t in tools}
     assert "web_rag_context" in names
-    assert len(names) == 13, f"tool count changed: {sorted(names)}"
+    assert len(names) == 14, f"tool count changed: {sorted(names)}"
 
 
 def test_description_states_that_ranking_is_lexical():

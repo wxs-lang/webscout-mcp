@@ -255,13 +255,13 @@ class TestMCPToolCount:
 
     @pytest.mark.asyncio
     async def test_exact_tool_count(self) -> None:
-        """Test that exactly 13 tools are registered (as documented)."""
+        """Test that exactly 14 tools are registered (as documented)."""
         server_params = get_server_params()
         async with stdio_client(server_params) as (read_stream, write_stream):
             async with ClientSession(read_stream, write_stream) as session:
                 await session.initialize()
                 result = await session.list_tools()
                 # Should have at least 11 core tools
-                assert len(result.tools) >= 13, f"Expected at least 13 tools, got {len(result.tools)}"
+                assert len(result.tools) >= 14, f"Expected at least 14 tools, got {len(result.tools)}"
                 tool_names = sorted([tool.name for tool in result.tools])
                 print(f"Registered tools ({len(tool_names)}): {tool_names}")
