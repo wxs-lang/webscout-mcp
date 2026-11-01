@@ -35,6 +35,17 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+# The tool table contains emoji status markers. A console whose default codec is
+# not UTF-8 (cp936 on Windows; the default on a bare CI runner reading a pipe)
+# cannot encode them:
+#   UnicodeEncodeError: gbk codec cannot encode character u2705
+# Found by running this script in a clean venv rather than a configured shell.
+if sys.stdout.encoding and sys.stdout.encoding.lower().replace("-", "") != "utf8":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):  # pragma: no cover - exotic streams
+        pass
+
 
 @dataclass
 class ToolParam:
