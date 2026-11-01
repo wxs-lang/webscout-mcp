@@ -27,8 +27,9 @@ def test_mcp_tool_count_unchanged():
             "content_quality",
             "broken_links",
             # Added deliberately for content understanding; see COMPATIBILITY.md.
-            # The eleven above are unchanged in name and schema.
+            # The eleven originals are unchanged in name and schema.
             "web_knowledge_graph",
+            "web_rag_context",
         ]
     )
     assert names == expected, names

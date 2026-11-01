@@ -45,7 +45,7 @@ def _call(name: str, args: dict) -> dict:
 # --- registration -----------------------------------------------------
 
 
-def test_tool_is_registered_and_count_is_twelve():
+def test_tool_is_registered_with_its_siblings():
     async def go():
         server = create_server()
         return await server.list_tools()
@@ -53,7 +53,7 @@ def test_tool_is_registered_and_count_is_twelve():
     tools = asyncio.run(go())
     names = {t.name for t in tools}
     assert "web_knowledge_graph" in names
-    assert len(names) == 12, f"tool count changed: {sorted(names)}"
+    assert len(names) == 13, f"tool count changed: {sorted(names)}"
 
 
 def test_tool_declares_its_limits_in_the_docstring():
