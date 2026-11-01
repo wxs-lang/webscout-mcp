@@ -117,6 +117,22 @@ class FetchRouteResult:
             "retryable": self.primary_response.retryable,
             "latency_ms": round(self.primary_response.latency_ms, 2),
         }
+        # What the recovery layer concluded, and what it did about it.
+        #
+        # Without these a challenge page is indistinguishable from a good fetch:
+        # status 200, error null, extraction ok - while the pipeline had already
+        # decided "CHALLENGE, need a browser, none registered". That conclusion was
+        # only visible through route_trace on the Python API.
+        #
+        # `browser_attempted` cannot carry this: it is set only when a browser ran,
+        # so its absence means either "not needed" or "no backend", which need
+        # different remedies.
+        _decision = self.recovery_decision
+        if _decision is not None:
+            out["recovery_reason"] = _decision.reason.value
+            out["recovery_action"] = _decision.action.value
+        if self.recovery_outcome:
+            out["recovery_outcome"] = self.recovery_outcome
         if self.escalation_decision is not None:
             out["escalation"] = self.escalation_decision.to_dict()
         # Progressive content delivery (Phase 2.7C). Sourced from the FINAL
