@@ -38,7 +38,7 @@ from .fetch_provider import FetchResponse
 class EscalationReason(str, Enum):
     SOFT_BLOCK = "SOFT_BLOCK"  # 403 / challenge / captcha
     # An explicit interstitial asking the visitor to wait for a check.
-    CHALLENGE = "challenge"
+    CHALLENGE = "CHALLENGE"
     JS_REQUIRED = "JS_REQUIRED"  # explicit "enable JavaScript" placeholder
     LOW_CONTENT_DENSITY = "LOW_CONTENT_DENSITY"  # short text + heavy HTML/scripts
     LOW_QUALITY = "LOW_QUALITY"  # analyzer marked the extracted content low quality

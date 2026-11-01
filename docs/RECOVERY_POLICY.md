@@ -41,6 +41,7 @@
 | `ACCESS_DENIED` | STOP | 0.85 | no | 403 with no challenge, 404, robots denial, or a login wall. A browser would hit the same denial; escalating is pure cost. |
 | `UNSUPPORTED_CONTENT_TYPE` | ACCEPT | 0.8 | no | Non-HTML payload (PDF/JSON/XML/image): a dedicated parser handles it, a browser cannot. |
 | `OUTPUT_TRUNCATED` | CONTINUE_CONTENT | 0.95 | no | WebScout's own max_chars cut a larger body. The content exists and is already fetched; the fix is to serve the next window, never to open Chromium. |
+| `CHALLENGE` | BROWSER | 0.95 | no | An explicit interstitial ('security check in progress'). The page states that a browser-side check is running, which is stronger evidence than the absence of content in SOFT_BLOCK. |
 | `JS_REQUIRED` | BROWSER | 0.85 | yes | Page renders nothing without client-side JS, so a real browser is the only way in. |
 | `LOW_CONTENT_DENSITY` | BROWSER | 0.8 | yes | Classic SPA shell: very little text on a non-trivial, script-heavy document. |
 | `LOW_QUALITY` | BROWSER | 0.6 | yes | The content-quality analyzer flagged the page. Lowest confidence of the browser reasons, because the analyzer is a heuristic over already-extracted text. |
@@ -53,8 +54,8 @@
 | Signal | Condition | Reason | Confidence |
 |---|---|---|---|
 | non_html | content type in NON_HTML_PREFIXES | NOT_ESCALATED | 0.0 |
-| challenge_on_any_status | CHALLENGE_MARKERS present | SOFT_BLOCK | 0.9 |
-| challenge_on_200 | CHALLENGE_MARKERS present in a 200 body | SOFT_BLOCK | 0.95 |
+| challenge_on_any_status | CHALLENGE_MARKERS present | CHALLENGE | 0.9 |
+| challenge_on_200 | CHALLENGE_MARKERS present in a 200 body | CHALLENGE | 0.95 |
 | js_placeholder_on_200 | JS_PLACEHOLDER_MARKERS present in a 200 body | JS_REQUIRED | 0.85 |
 | low_density | text < MIN_TEXT_CHARS_FOR_REAL_PAGE AND html > MIN_HTML_BYTES_FOR_LOW_DENSITY AND (script_ratio > LOW_DENSITY_SCRIPT_RATIO OR js placeholder) | LOW_CONTENT_DENSITY | 0.8 |
 | low_quality | metadata.content_quality == 'low' AND html > MIN_PAGE_BYTES_FOR_LOW_QUALITY | LOW_QUALITY | 0.6 |
@@ -63,7 +64,7 @@
 
 | Set | Count | Purpose |
 |---|---|---|
-| `CHALLENGE_MARKERS` | 8 | Detect an interstitial challenge page where a browser could plausibly pass. |
+| `CHALLENGE_MARKERS` | 11 | Detect an interstitial challenge page where a browser could plausibly pass. |
 | `JS_PLACEHOLDER_MARKERS` | 5 | Detect a page that renders nothing without client-side JS. |
 | `LOGIN_WALL_MARKERS` | 13 | Detect a genuine authentication requirement. A browser cannot bypass a real login, so this must NOT escalate - escalating here wastes a browser call and still fails. Includes Chinese markers because the target sites are not all English. |
 | `NON_HTML_PREFIXES` | 6 | Content types that dedicated parsers handle. Escalating to a browser for these would be wrong. NOTE: this tuple is currently defined twice - once in recovery and once in fetch_escalation. |
