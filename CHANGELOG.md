@@ -5,6 +5,94 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v2.0.0 (2026-11-01)
+
+The v2 line begins the "AI / RAG / Knowledge Graph" scope from `REFACTOR_PLAN.md`. For
+the first time the tool surface does more than retrieve content - it understands it.
+
+### Compatibility: what actually changed
+
+**11 tools became 14.** All eleven existing tools keep their names, parameters and
+response shapes; the three new ones are additive. But three capabilities that existed
+in `extras/` and were reachable by import now behave differently, and their outputs are
+numbers a caller may have stored:
+
+| Surface | Change | Why it counts as breaking |
+|---|---|---|
+| `content_quality` / `web_compare_sites` scores | readability only contributes once a page has 100+ words | **scores for very short pages are lower than in v1.x** |
+| `rag_optimizer` retrieval ranking | stop-word filtering + IDF, sentence-aligned chunks | a stored result set will not match a fresh one |
+| `competitor_analyzer.ComparisonResult.to_dict()` | now includes `comparison_matrix` | additive, but the dict has a new key |
+
+If you compare v1.x metrics against v2.0.0, expect lower content scores on thin pages
+and different retrieval orderings. Both were wrong before.
+
+### Added
+
+Three tools, each marked **beta** in `COMPATIBILITY.md` with its limits stated in the
+tool description and in its own response `notes` - so a caller does not need to read
+documentation to learn what it cannot do.
+
+- **`web_knowledge_graph`** - entities and relationships from a page or text, with
+  centrality ranking. Relationships are proximity-based and always
+  `co_occurs_with`; entity types come from patterns, and a word the patterns cannot
+  classify is `unknown` rather than guessed.
+- **`web_rag_context`** - the passages most relevant to a query, compressed to fit a
+  context window. Lexical IDF ranking, not embeddings, so synonyms do not match.
+- **`web_compare_sites`** - SEO, performance, content and link comparison across 1-10
+  sites, with a per-metric matrix and prioritised recommendations. A URL that cannot be
+  fetched appears in `failures` rather than aborting the comparison.
+
+### Fixed
+
+Each of these was measured before and after; the before-numbers are in the section for
+the release that fixed them, and every fix has a test that fails if the number regresses.
+
+- **`rag_optimizer` did not retrieve.** Five probe queries, answer present in the
+  retrieved top-2: **0 of 5**. Every query returned the same first chunk. Four causes: a
+  scoring formula that spent its budget on stop words, chunk heads severed mid-sentence
+  by the overlap, long paragraphs never split, and compression emitting the same
+  sentence twice. Now **5 of 5** at top-1.
+- **`competitor_analyzer` gave identical scores to everything.** A 667-word article and
+  a 6-word stub both scored 63.5. Four causes: `compare_sites` read keys
+  `seo`/`performance`/`content`/`links` while callers passed `*_metrics`; the SEO field
+  names it expects are emitted by nothing; readability worth 35 points inverted the
+  ranking for thin pages; and `to_dict` dropped the comparison matrix it had computed.
+  Now 86.0 versus 67.0 with the right winner.
+- **`knowledge_graph` split entities and mislabelled types.** The technology pass
+  registered `tech_python` alongside an existing `python`, producing one node linked to
+  itself; and every single capitalised word defaulted to `person`, so Python, Django and
+  Transformer were people. Split nodes and self-edges are now zero, and unclassifiable
+  words are `unknown`.
+- **Script bodies could survive tag stripping.** `</script >` and `</script\t\n bar>` are
+  valid HTML end tags that a bare `</script>` pattern misses, letting script text reach
+  the text metrics and inflate the content score of a page with little real content.
+  Caught by CodeQL.
+
+### Changed
+
+- `docs/RECOVERY_POLICY.md` is generated from the policy table and checked in CI rather
+  than hand-written; it had drifted to 17 rules and 8 markers against 18 and 11.
+- `web_fetch`'s response now carries `recovery_reason`, `recovery_action` and
+  `recovery_outcome`, so a challenge page - which returns 200 with no error - is
+  distinguishable from a successful fetch.
+- Challenge detection recognises non-English interstitials and scans the extracted body,
+  not only the first 4KB of HTML where the marker may not appear.
+- `extras/seo_metrics.py` added: the SEO field set `competitor_analyzer` expects, which
+  no existing analyzer emitted.
+
+### Known gaps
+
+Unchanged from v1.x, and restated because v2.0.0 does not address them:
+
+- Sites that block by IP reputation (stackoverflow, zhihu, amazon, reddit) still return
+  403/202 even through a browser. A residential proxy is the remedy; no client-side
+  change is.
+- The three new tools are **rule-based, not model-based**. They need no API key, which is
+  why they work out of the box, and it is also why their output is coarser than a model
+  would produce. The response `notes` say so in each case.
+- `web_monitor` (from the v2 scope) is not included. It needs persisted state and a time
+  dimension, and where that state lives is a design decision not yet made.
+
 ## v1.14.0 (2026-11-01)
 
 ### Fixed
