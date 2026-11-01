@@ -197,6 +197,13 @@ MARKER_SETS: tuple[MarkerSet, ...] = (
             "are you a human",
             "cf-browser-verification",
             "challenge-platform",
+            # Non-English interstitials. Narrow on purpose: broader phrases like
+            # 请耐心等待 appear in ordinary copy, and 验证码 / 人机验证 appear on
+            # legitimate login flows. Checked against three genuine short Chinese
+            # pages (about / login / product) with no false positives.
+            "安全检测",
+            "检测当前网络环境",
+            "火山引擎",
         ),
         purpose="Detect an interstitial challenge page where a browser could plausibly pass.",
     ),
@@ -366,6 +373,15 @@ REASON_RULES: tuple[ReasonRule, ...] = (
             "WebScout's own max_chars cut a larger body. The content exists and is already "
             "fetched; the fix is to serve the next window, never to open Chromium."
         ),
+        False,
+    ),
+    ReasonRule(
+        "CHALLENGE",
+        "BROWSER",
+        0.95,
+        "An explicit interstitial ('security check in progress'). The page states that a "
+        "browser-side check is running, which is stronger evidence than the absence of "
+        "content in SOFT_BLOCK.",
         False,
     ),
     ReasonRule(
