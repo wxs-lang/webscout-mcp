@@ -18,7 +18,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from .content_quality import assess
+from .content_grading import assess
 from .fetch_escalation import FetchEscalationDecision
 from .fetch_provider import FetchProvider, FetchRequest, FetchResponse
 from .logging_config import get_logger

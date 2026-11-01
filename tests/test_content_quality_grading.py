@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import pytest
 
-from webscout_mcp.content_quality import (
+from webscout_mcp.content_grading import (
     LONG_BODY_CHARS,
     MIN_READABLE_RATIO,
     MIN_SENTENCE_CHARS,

@@ -71,6 +71,9 @@ def _extract_content_quality(report: dict[str, Any]) -> dict[str, Any] | None:
         "usable": int(block.get("usable", 0) or 0),
         "thin": int(block.get("thin", 0) or 0),
         "empty": int(block.get("empty", 0) or 0),
+        # Unreadable bytes. Kept rather than dropped: a window of mojibake must
+        # not look better than one of thin pages.
+        "garbled": int(block.get("garbled", 0) or 0),
         "truncated": int(block.get("truncated_by_output_limit", 0) or 0),
     }
 
@@ -231,6 +234,7 @@ def aggregate_slo_metrics(reports: list[dict[str, Any]], days: int) -> dict[str,
     cq_fetches = 0
     cq_usable = 0
     cq_thin = 0
+    cq_garbled = 0
     cq_empty = 0
     cq_truncated = 0
     cq_reports = 0
@@ -244,6 +248,7 @@ def aggregate_slo_metrics(reports: list[dict[str, Any]], days: int) -> dict[str,
             cq_fetches += cq["fetches"]
             cq_usable += cq["usable"]
             cq_thin += cq["thin"]
+            cq_garbled += cq.get("garbled", 0)
             cq_empty += cq["empty"]
             cq_truncated += cq["truncated"]
 
@@ -301,10 +306,12 @@ def aggregate_slo_metrics(reports: list[dict[str, Any]], days: int) -> dict[str,
     if cq_fetches > 0:
         usable_content_rate = cq_usable / cq_fetches * 100
         thin_content_rate = cq_thin / cq_fetches * 100
+        garbled_content_rate = cq_garbled / cq_fetches * 100
         empty_content_rate = cq_empty / cq_fetches * 100
         truncation_rate = cq_truncated / cq_fetches * 100
     else:
         usable_content_rate = thin_content_rate = empty_content_rate = truncation_rate = None
+        garbled_content_rate = None
 
     # Determine SLO status
     status = "healthy"
@@ -414,10 +421,12 @@ def aggregate_slo_metrics(reports: list[dict[str, Any]], days: int) -> dict[str,
             "fetches": cq_fetches,
             "usable": cq_usable,
             "thin": cq_thin,
+            "garbled": cq_garbled,
             "empty": cq_empty,
             "truncated_by_output_limit": cq_truncated,
             "usable_rate": None if usable_content_rate is None else round(usable_content_rate, 2),
             "thin_rate": None if thin_content_rate is None else round(thin_content_rate, 2),
+            "garbled_rate": None if garbled_content_rate is None else round(garbled_content_rate, 2),
             "empty_rate": None if empty_content_rate is None else round(empty_content_rate, 2),
             "truncation_rate": None if truncation_rate is None else round(truncation_rate, 2),
             "status": "no_data" if usable_content_rate is None else "measured",

@@ -118,7 +118,7 @@ def test_undecodable_encoding_leaves_the_body_unreadable(tmp_path):
     with an unknown encoding, so "not decoded" and "already readable" were the same
     string and the assertion could not fail for the right reason.
     """
-    from webscout_mcp.content_quality import readable_ratio
+    from webscout_mcp.content_grading import readable_ratio
 
     payload = b"<html><body>" + b"real article text. " * 40 + b"</body></html>"
     compressed = gzip.compress(payload)
@@ -148,14 +148,14 @@ def test_undecodable_encoding_leaves_the_body_unreadable(tmp_path):
 
 def test_grader_flags_mojibake_as_garbled():
     """Defence in depth: even if decoding regresses, quality reporting notices."""
-    from webscout_mcp.content_quality import assess
+    from webscout_mcp.content_grading import assess
 
     mojibake = "\ufffd" * 200 + "Some text " + "\ufffd" * 150
     assert assess(mojibake).grade == "garbled"
 
 
 def test_grader_accepts_genuinely_decoded_text():
-    from webscout_mcp.content_quality import assess
+    from webscout_mcp.content_grading import assess
 
     good = "This domain is for use in documentation examples. " * 10
     assert assess(good).usable
