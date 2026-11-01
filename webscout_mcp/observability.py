@@ -207,6 +207,7 @@ def record_content_quality(
     omitted_chars: int = 0,
     backend: str = "",
     status: str = "",
+    content_grade: str = "",
 ) -> None:
     """Record the usability of one served fetch result (GOAL G1/G4).
 
@@ -228,7 +229,13 @@ def record_content_quality(
         if backend:
             _CONTENT_QUALITY[f"backend_{backend}"] += 1
 
-        if chars == 0:
+        # A caller-supplied grade wins: it was computed where the text already
+        # existed, so content never passes through this sink. Without one, fall
+        # back to the length rule so existing callers behave as before.
+        if content_grade in {"usable", "thin", "garbled", "empty"}:
+            _CONTENT_QUALITY[content_grade] += 1
+            _CONTENT_QUALITY["graded_by_shape"] += 1
+        elif chars == 0:
             _CONTENT_QUALITY["empty"] += 1
         elif chars < THIN_CONTENT_CHARS:
             _CONTENT_QUALITY["thin"] += 1

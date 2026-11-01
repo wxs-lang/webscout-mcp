@@ -93,7 +93,11 @@ async def test_captcha_shell_body_is_recorded_as_thin():
 
     cq = _cq()
     assert cq["fetches"] == 1
-    assert cq["thin"] == 1
+    # "Captcha required" is 16 chars: nothing to read at all, so the grader files
+    # it under "empty" rather than "thin". Either label fails the "counted as
+    # success" regression this test exists to catch.
+    assert cq["empty"] == 1
+    assert cq.get("usable", 0) == 0
     assert cq["usable"] == 0
     assert cq["usable_rate"] == 0.0
 

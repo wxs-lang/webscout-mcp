@@ -65,7 +65,14 @@ class TestBrowserFingerprint:
         assert headers["User-Agent"] == "test-ua"
         assert headers["Accept"] == "test-accept"
         assert headers["Accept-Language"] == "test-lang"
-        assert headers["Accept-Encoding"] == "gzip, deflate, br"
+        # Accept-Encoding is deliberately absent. It used to assert
+        # "gzip, deflate, br", which was the brotli defect in test form: the header
+        # claimed an encoding this project never depended on a decoder for, and
+        # httpx passes compressed bytes through untouched when it cannot decode
+        # them. httpx now negotiates this itself, adding `br` only when the brotli
+        # package is present. The value stays on the dataclass for diagnostics.
+        assert "Accept-Encoding" not in headers
+        assert fp.accept_encoding == "gzip, deflate, br"
         assert headers["Connection"] == "keep-alive"
         assert headers["Upgrade-Insecure-Requests"] == "1"
         assert headers["Sec-Fetch-Dest"] == "document"

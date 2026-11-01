@@ -142,6 +142,23 @@ class Fetcher:
             # Use complete browser fingerprint headers
             fingerprint = self._ua_rotator.get_fingerprint()
             headers = fingerprint.to_headers()
+            # Belt and braces: the fingerprint no longer emits this header, but
+            # popping here keeps the guarantee local to the client in case a
+            # fingerprint with a custom accept_encoding is ever supplied.
+            #
+            # The fingerprint used to advertise "br", but this project never declares the
+            # `brotli` package, and httpx only decodes brotli when it is present.
+            # Without it httpX fails silently: status 200, content-encoding br, and
+            # the raw compressed bytes decoded as text. Measured on example.com in
+            # an environment without brotli: 311 chars at readability 0.412, versus
+            # 577 chars at 1.000 once the header is dropped and the server falls
+            # back to gzip - which httpx handles through its own zlib.
+            #
+            # Dropping the header locally keeps the rest of the fingerprint intact
+            # (UA, Accept, Accept-Language, Sec-Fetch) while removing a claim the
+            # install cannot honour.
+            for _enc_header in ("Accept-Encoding", "accept-encoding"):
+                headers.pop(_enc_header, None)
             # Override User-Agent with config value if set
             if self.config.user_agent:
                 headers["User-Agent"] = self.config.user_agent
