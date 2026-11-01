@@ -856,8 +856,8 @@ def create_server(config: Config | None = None) -> MCPServer:
                     # `</script>` pattern misses it, letting script text survive into the text
                     # metrics and inflate the content score. CodeQL flagged this before release.
                     # Strip tags for the text-based analyzers; keep markup for the rest.
-                    plain = re.sub(r"<script[^>]*>.*?</script\s*>", " ", html, flags=re.DOTALL | re.IGNORECASE)
-                    plain = re.sub(r"<style[^>]*>.*?</style\s*>", " ", plain, flags=re.DOTALL | re.IGNORECASE)
+                    plain = re.sub(r"<script[^>]*>.*?</script[^>]*>", " ", html, flags=re.DOTALL | re.IGNORECASE)
+                    plain = re.sub(r"<style[^>]*>.*?</style[^>]*>", " ", plain, flags=re.DOTALL | re.IGNORECASE)
                     plain = re.sub(r"<[^>]+>", " ", plain)
 
                     perf = analyze_performance(html, url=url)

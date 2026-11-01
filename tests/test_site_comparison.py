@@ -16,8 +16,6 @@ from __future__ import annotations
 import asyncio
 import json
 
-import pytest
-
 from webscout_mcp.extras.competitor_analyzer import compare_sites
 from webscout_mcp.extras.seo_metrics import extract_seo_metrics
 from webscout_mcp.server import create_server
@@ -204,7 +202,7 @@ def test_script_end_tag_with_whitespace_is_stripped():
     import re
 
     html = "<html><body><p>real content here</p><script>var SECRET_DATA = 1;</script ></body></html>"
-    plain = re.sub(r"<script[^>]*>.*?</script\s*>", " ", html, flags=re.DOTALL | re.IGNORECASE)
+    plain = re.sub(r"<script[^>]*>.*?</script[^>]*>", " ", html, flags=re.DOTALL | re.IGNORECASE)
     plain = re.sub(r"<[^>]+>", " ", plain)
     assert "SECRET_DATA" not in plain, "script body survived the strip"
     assert "real content" in plain
