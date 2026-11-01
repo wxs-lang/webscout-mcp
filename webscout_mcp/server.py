@@ -981,7 +981,13 @@ def create_server(config: Config | None = None) -> MCPServer:
                 config_kwargs["history_path"] = state_path
 
             config = MonitorConfig(**config_kwargs)
-            monitor = WebMonitor(config=config)
+            # Route through fetch_service so monitoring inherits TLS impersonation,
+            # browser escalation and recovery classification. Without this the monitor
+            # does its own HTTP and a page that needs either of those returns "no change"
+            # forever, because the fetch itself never succeeds.
+            from .monitor_adapter import FetchServiceAdapter
+
+            monitor = WebMonitor(config=config, fetcher=FetchServiceAdapter(fetch_service))
 
             # Notification targets resolved from URLs: the eight channels each need their
             # own constructor, so a URL is the only shape a caller can assemble reliably.
@@ -1024,7 +1030,10 @@ def create_server(config: Config | None = None) -> MCPServer:
                 },
                 "notes": [
                     "This tool checks once per call; scheduling is the caller's job.",
-                    "Uses the monitor's own fetcher: no browser escalation for this tool yet.",
+                    (
+                        "Routes through fetch_service: inherits TLS impersonation, browser "
+                        "escalation and recovery classification."
+                    ),
                     "Reported changes are stored, so a repeat call sees only new ones.",
                 ],
             }
