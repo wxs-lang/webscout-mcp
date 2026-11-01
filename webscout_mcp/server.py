@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 
 # MCP compatibility: support both 1.x (FastMCP) and 2.x (MCPServer)
 try:
@@ -777,6 +778,140 @@ def create_server(config: Config | None = None) -> MCPServer:
             log.error("web_rag_context failed", extra={"url": url, "error": str(exc)})
             return json.dumps(
                 {"error": f"RAG retrieval failed: {exc}", "url": url},
+                ensure_ascii=False,
+            )
+
+    @mcp.tool()
+    async def web_compare_sites(urls: list[str], names: list[str] = None) -> str:
+        """Compare several websites side by side on SEO, performance, content and links.
+
+        Fetches each URL, computes metrics, and returns a ranked comparison with a
+        per-metric matrix and prioritised recommendations. Use this to benchmark a page
+        against competitors, or to check whether your own pages regress.
+
+        Scores are 0-100 per axis and a weighted overall. Comparisons are only as good
+        as the markup available to a plain HTTP fetch: a JavaScript-rendered page may
+        look thin even when it is not, and that will be visible as a low content score.
+
+        A URL that cannot be fetched is reported as an entry with an `error` and its
+        recovery reason, rather than failing the whole comparison.
+        """
+        if not urls:
+            return json.dumps({"error": "Provide at least one URL in 'urls'"}, ensure_ascii=False)
+        if len(urls) > 10:
+            return json.dumps(
+                {"error": "At most 10 URLs per comparison", "count": len(urls)},
+                ensure_ascii=False,
+            )
+        if names is not None and len(names) != len(urls):
+            return json.dumps(
+                {
+                    "error": "'names' must have the same length as 'urls'",
+                    "urls": len(urls),
+                    "names": len(names),
+                },
+                ensure_ascii=False,
+            )
+
+        try:
+            from .extras.competitor_analyzer import compare_sites
+            from .extras.content_quality import analyze_content_quality
+            from .extras.performance_analyzer import analyze_performance
+            from .extras.seo_metrics import extract_seo_metrics
+            from .fetch_provider import FetchRequest
+
+            sites: list[dict] = []
+            failures: list[dict] = []
+
+            for index, url in enumerate(urls):
+                label = names[index] if names else url
+                try:
+                    # Raw HTML: performance and SEO metrics both need the markup.
+                    route = await fetch_service.fetch(
+                        FetchRequest(
+                            url=url,
+                            extract=False,
+                            output_format="html",
+                            max_chars=2_000_000,
+                        )
+                    )
+                    html = route.primary_response.content or ""
+                    if not html:
+                        failures.append(
+                            {
+                                "url": url,
+                                "name": label,
+                                "error": "Failed to fetch page content",
+                                "recovery_reason": (
+                                    route.recovery_decision.reason.value
+                                    if route.recovery_decision is not None
+                                    else None
+                                ),
+                                "recovery_outcome": route.recovery_outcome,
+                            }
+                        )
+                        continue
+
+                    # The end tag may carry whitespace (`</script >` is valid HTML). A bare
+                    # `</script>` pattern misses it, letting script text survive into the text
+                    # metrics and inflate the content score. CodeQL flagged this before release.
+                    # Strip tags for the text-based analyzers; keep markup for the rest.
+                    plain = re.sub(r"<script[^>]*>.*?</script[^>]*>", " ", html, flags=re.DOTALL | re.IGNORECASE)
+                    plain = re.sub(r"<style[^>]*>.*?</style[^>]*>", " ", plain, flags=re.DOTALL | re.IGNORECASE)
+                    plain = re.sub(r"<[^>]+>", " ", plain)
+
+                    perf = analyze_performance(html, url=url)
+                    quality = analyze_content_quality(plain, html=html)
+
+                    sites.append(
+                        {
+                            "url": url,
+                            "name": label,
+                            "seo": extract_seo_metrics(html, url),
+                            "performance": (perf.to_dict() if hasattr(perf, "to_dict") else vars(perf)),
+                            "content": (quality.to_dict() if hasattr(quality, "to_dict") else vars(quality)),
+                            "links": {},
+                            "status_code": route.primary_response.status_code,
+                        }
+                    )
+                except Exception as exc:  # noqa: BLE001 - one bad site must not sink the rest
+                    log.warning("compare_sites: fetch failed", extra={"url": url, "error": str(exc)})
+                    failures.append({"url": url, "name": label, "error": str(exc)})
+
+            if not sites:
+                return json.dumps(
+                    {
+                        "error": "No site could be fetched",
+                        "failures": failures,
+                    },
+                    ensure_ascii=False,
+                )
+
+            result = compare_sites(
+                [
+                    {
+                        "url": s["url"],
+                        "name": s["name"],
+                        "seo": s["seo"],
+                        "performance": s["performance"],
+                        "content": s["content"],
+                        "links": s["links"],
+                    }
+                    for s in sites
+                ]
+            )
+            payload = result.to_dict() if hasattr(result, "to_dict") else vars(result)
+            payload["failures"] = failures
+            payload["notes"] = [
+                "Scores are heuristic (0-100 per axis, weighted overall), not a search-engine ranking.",
+                "Metrics come from a plain HTTP fetch: a JS-rendered page can look thin when it is not.",
+                "Images with an empty alt attribute do not count toward accessibility.",
+            ]
+            return json.dumps(payload, ensure_ascii=False, indent=2, default=str)
+        except Exception as exc:
+            log.error("web_compare_sites failed", extra={"urls": urls, "error": str(exc)})
+            return json.dumps(
+                {"error": f"Site comparison failed: {exc}", "urls": urls},
                 ensure_ascii=False,
             )
 

@@ -30,6 +30,7 @@ def test_mcp_tool_count_unchanged():
             # The eleven originals are unchanged in name and schema.
             "web_knowledge_graph",
             "web_rag_context",
+            "web_compare_sites",
         ]
     )
     assert names == expected, names

@@ -12,7 +12,7 @@ v2.0.0. Agents and integrations can rely on these being stable.
 
 ## 1. MCP Tools (Frozen)
 
-The following 13 MCP tools are frozen. Their names, parameter schemas,
+The following 14 MCP tools are frozen. Their names, parameter schemas,
 and return structure will remain backwards-compatible.
 
 ### Core Web Tools
@@ -216,6 +216,34 @@ Exactly one of `url` or `text` must be supplied, plus `query`.
 inspection and citation.
 
 Frozen: the tool name and the parameter schema. Not frozen: the passage payload shape.
+
+#### `web_compare_sites`
+
+Compare several websites side by side on SEO, performance, content and links.
+
+**Parameters:**
+- `urls` (array of strings, required): 1 to 10 pages to compare
+- `names` (array of strings, optional): labels, same length as `urls`
+
+**Returns:** JSON string with `sites` (each with per-axis and overall scores), a
+`comparison_matrix` of 15 metrics across sites, `winner`, `recommendations`, `summary`,
+and `failures` for URLs that could not be fetched.
+
+**Stability: beta.** The scores are heuristics, and the response says so in its `notes`:
+
+- each axis is 0-100 from hand-written thresholds, not a search engine's ranking
+- metrics come from a plain HTTP fetch, so a JavaScript-rendered page can look thin when
+  it is not; that shows up as a low content score rather than an error
+- an unfetchable URL appears in `failures` with its recovery reason instead of aborting
+  the comparison, so one dead competitor cannot sink the other nine
+
+Frozen: the tool name and the parameter schema. Not frozen: the metric payload shape.
+
+Note on a scoring change this release: readability used to contribute up to 35 points
+without a minimum body length, which made a 6-word stub (readability 88) outscore a
+667-word article (readability 30). Readability now only contributes once a page has at
+least 100 words. Scores for very short pages are therefore lower than in earlier
+versions; for substantial pages nothing changed.
 
 ---
 

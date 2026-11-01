@@ -247,4 +247,4 @@ def test_mcp_tool_count_unchanged():
     """
 
     server = (Path(__file__).resolve().parents[1] / "webscout_mcp" / "server.py").read_text(encoding="utf-8")
-    assert server.count("@mcp.tool()") == 13  # 13 since web_rag_context; see COMPATIBILITY.md
+    assert server.count("@mcp.tool()") == 14  # 14 since web_compare_sites; see COMPATIBILITY.md
