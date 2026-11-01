@@ -23,7 +23,9 @@ Content Analysis:
 
 Content Understanding:
 - ``web_knowledge_graph`` - Build a knowledge graph of entities and relationships.
-- `web_rag_context` - Retrieve the passages most relevant to a query, compressed to fit a context window.
+- ``web_rag_context`` - Retrieve the passages most relevant to a query, compressed.
+- ``web_compare_sites`` - Compare several sites on SEO, performance, content and links.
+- ``web_monitor`` - Check a URL for changes since the last check.
 """
 
 from __future__ import annotations
@@ -912,6 +914,130 @@ def create_server(config: Config | None = None) -> MCPServer:
             log.error("web_compare_sites failed", extra={"urls": urls, "error": str(exc)})
             return json.dumps(
                 {"error": f"Site comparison failed: {exc}", "urls": urls},
+                ensure_ascii=False,
+            )
+
+    @mcp.tool()
+    async def web_monitor(
+        url: str,
+        ignore_text: list[str] = None,
+        ignore_selector: list[str] = None,
+        price_selector: str = "",
+        price_change_threshold: float = 0.0,
+        min_change_size: int = 10,
+        keywords_appear: list[str] = None,
+        include_diff: bool = True,
+        state_path: str = "",
+        notify: list[str] = None,
+    ) -> str:
+        """Check a URL for changes since the last check, and return what changed.
+
+        Compares the page against the last snapshot stored on disk and reports text
+        changes, price moves, and keyword appearances or disappearances. Useful for
+        tracking a page across sessions: docs, prices, availability, job postings.
+
+        **This checks once per call.** It does not schedule itself - an MCP tool is
+        passive. To monitor continuously, call it again from your MCP client or an
+        external scheduler. The first call for a URL only records a baseline and returns
+        no changes.
+
+        Use `ignore_text` (regexes) for values that change on every request such as
+        timestamps or session ids, and `ignore_selector` (CSS) for regions that churn
+        independently such as ad slots. Without them most pages report a change every
+        time, which is why they exist.
+
+        Price watching is independent of `min_change_size`: a one-character move like
+        $100.00 to $900.00 is exactly what a text threshold would swallow, so it is
+        compared as a percentage when `price_selector` is set.
+
+        `notify` takes target URLs such as `webhook://example.com/hook`,
+        `dingtalk://oapi.dingtalk.com/robot/send?access_token=X`, `telegram://TOKEN@CHAT`
+        or `smtp://user:pass@host:587?to=a@b.c`. When a change is found it is pushed to
+        those channels, and the send result is reported in `notifications`. Credentials
+        stay in the URL and are never echoed back.
+        """
+        if not url or not url.strip():
+            return json.dumps({"error": "Provide a 'url' to check"}, ensure_ascii=False)
+
+        try:
+            from .extras.monitor import MonitorConfig, WebMonitor
+
+            config_kwargs: dict = {
+                "monitor_text": True,
+                "monitor_html": False,
+                "min_change_size": max(0, int(min_change_size)),
+                "include_diff": bool(include_diff),
+            }
+            if ignore_text:
+                config_kwargs["ignore_text"] = list(ignore_text)
+            if ignore_selector:
+                config_kwargs["ignore_selector"] = list(ignore_selector)
+            if price_selector:
+                config_kwargs["price_selector"] = price_selector
+                config_kwargs["price_change_threshold"] = max(0.0, float(price_change_threshold))
+            if keywords_appear:
+                config_kwargs["keywords_appear"] = list(keywords_appear)
+            if state_path:
+                config_kwargs["history_path"] = state_path
+
+            config = MonitorConfig(**config_kwargs)
+            monitor = WebMonitor(config=config)
+
+            # Notification targets resolved from URLs: the eight channels each need their
+            # own constructor, so a URL is the only shape a caller can assemble reliably.
+            notification_targets: list[str] = list(notify or [])
+            notification_errors: list[dict] = []
+            if notification_targets:
+                from .extras.alert_targets import build_channel
+
+                for target in notification_targets:
+                    try:
+                        monitor.add_alert_channel(build_channel(target))
+                    except Exception as exc:  # noqa: BLE001 - one bad target must not block
+                        notification_errors.append(
+                            {
+                                "target": target.split("://")[0] + "://...",
+                                "error": str(exc),
+                            }
+                        )
+
+            # Known before the check, to report whether this run was a baseline.
+            known_before = bool(monitor._last_content.get(url))
+
+            # check_url is synchronous and performs HTTP itself; running it inline would
+            # block the event loop for a full network round trip.
+            changes = await asyncio.to_thread(monitor.check_url, url)
+
+            out = {
+                "url": url,
+                "changes": [c.to_dict() for c in changes],
+                "change_count": len(changes),
+                "baseline_established": (not known_before) and not changes,
+                "state_path": config.history_path,
+                "notifications": {
+                    "targets": [t.split("://")[0] + "://..." for t in notification_targets],
+                    "errors": notification_errors,
+                    # Per-send outcome. Without this a failed channel is indistinguishable
+                    # from a delivered one, which is how the notification path stayed
+                    # broken while looking wired up.
+                    "delivery": getattr(monitor, "last_delivery", []) or [],
+                },
+                "notes": [
+                    "This tool checks once per call; scheduling is the caller's job.",
+                    "Uses the monitor's own fetcher: no browser escalation for this tool yet.",
+                    "Reported changes are stored, so a repeat call sees only new ones.",
+                ],
+            }
+            if not changes and not out["baseline_established"]:
+                out["notes"].append(
+                    "No change since the last check. If you expected one, widen "
+                    "min_change_size or check ignore_text/ignore_selector are not too broad."
+                )
+            return json.dumps(out, ensure_ascii=False, indent=2, default=str)
+        except Exception as exc:
+            log.error("web_monitor failed", extra={"url": url, "error": str(exc)})
+            return json.dumps(
+                {"error": f"Monitor check failed: {exc}", "url": url},
                 ensure_ascii=False,
             )
 

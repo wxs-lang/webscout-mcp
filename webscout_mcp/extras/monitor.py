@@ -79,6 +79,11 @@ class MonitorConfig:
         )
 
 
+# Reserved key inside the history file for the comparison baseline. Leading
+# underscores keep it from colliding with any URL.
+_BASELINE_KEY = "__baseline__"
+
+
 @dataclass
 class ChangeRecord:
     """Record of a detected change."""
@@ -299,6 +304,47 @@ class WeComAlert(AlertChannel):
             return False
 
 
+def _to_channel_message(change: ChangeRecord, source: AlertMessage):
+    """Convert this module's AlertMessage into the channel-side one.
+
+    Two dataclasses share the name `AlertMessage` but not their fields: the monitor's has
+    ``change_type`` and an ISO-format timestamp; :mod:`alert_channels`' has ``level`` and a
+    float timestamp, and its ``format_message`` reads ``level``. Handing the monitor's
+    object straight to a channel therefore fails at send time, which the per-channel
+    try/except hides.
+
+    Converting here keeps each module's own shape intact and puts the adapter in one
+    place instead of asking either module to know about the other.
+    """
+    from .alert_channels import AlertMessage as ChannelMessage
+
+    return ChannelMessage(
+        title=source.title,
+        content=source.content,
+        level="info",
+        url=source.url,
+        metadata={
+            **dict(source.metadata or {}),
+            "change_type": change.change_type,
+            "change_timestamp": change.timestamp,
+        },
+        timestamp=_epoch_from_isoformat(change.timestamp),
+    )
+
+
+def _epoch_from_isoformat(value) -> float:
+    """Epoch seconds from an isoformat string, falling back to now.
+
+    ``ChangeRecord.timestamp`` is an ISO string; the channel-side message wants a float.
+    """
+    if isinstance(value, (int, float)):
+        return float(value)
+    try:
+        return datetime.fromisoformat(str(value)).timestamp()
+    except (TypeError, ValueError):
+        return datetime.now().timestamp()
+
+
 class WebMonitor:
     """Web page monitor with change detection and alerting.
 
@@ -329,8 +375,14 @@ class WebMonitor:
         history_path = os.path.expanduser(self.config.history_path)
         if os.path.exists(history_path):
             try:
-                with open(history_path, "r") as f:
+                with open(history_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
+                # The baseline lives under a reserved key so files written before it
+                # existed still parse - they simply yield no baseline, which falls back to
+                # "first check establishes one" rather than raising.
+                baseline = data.pop(_BASELINE_KEY, None)
+                if isinstance(baseline, dict):
+                    self._last_content = baseline
                 for url, records in data.items():
                     self._history[url] = [ChangeRecord(**r) for r in records]
                 log.info("Monitor history loaded", extra={"path": history_path, "urls": len(self._history)})
@@ -347,7 +399,12 @@ class WebMonitor:
             data = {}
             for url, records in self._history.items():
                 data[url] = [r.to_dict() for r in records[-self.config.max_history :]]
-            with open(history_path, "w") as f:
+            # `_last_content` holds the hashes and prices the next check compares against.
+            # Without it every restart re-establishes a baseline and can never report a
+            # change, which is the whole point of the tool.
+            if self._last_content:
+                data[_BASELINE_KEY] = self._last_content
+            with open(history_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
         except Exception as exc:
             log.warning("Failed to save monitor history", extra={"error": str(exc)})
@@ -533,6 +590,9 @@ class WebMonitor:
             return changes
 
         timestamp = datetime.now().isoformat()
+        # Snapshot of what we are comparing against, so the save condition below can tell
+        # whether this run established or moved the baseline.
+        self._baseline_before_check = dict(self._last_content.get(url, {}))
 
         # Check text changes
         if self.config.monitor_text and text:
@@ -637,18 +697,31 @@ class WebMonitor:
             if new_price is not None:
                 last["price"] = new_price
 
-        # Record changes in history
-        if changes:
+        # Persist whenever the baseline moved, not only when something was reported.
+        #
+        # `_last_content` is what the next comparison is made against. Saving it only on
+        # a detected change means the first check for a URL - which by definition reports
+        # nothing - leaves no baseline on disk, so the next process starts empty and can
+        # never report a change at all. The tool exposed exactly that: three calls, three
+        # fresh baselines, no changes ever.
+        if changes or self._last_content.get(url) != self._baseline_before_check:
             self._history.setdefault(url, []).extend(changes)
             self._save_history()
-            self._send_alerts(changes)
+        self.last_delivery = self._send_alerts(changes) if changes else []
 
         return changes
 
-    def _send_alerts(self, changes: list[ChangeRecord]) -> None:
-        """Send alerts for detected changes."""
+    def _send_alerts(self, changes: list[ChangeRecord]) -> list[dict]:
+        """Send alerts for detected changes.
+
+        Returns one entry per attempted send. The result used to be discarded, so a
+        channel that failed - wrong URL, missing dependency, non-2xx - was indistinguishable
+        from one that delivered, and the caller had no way to notice.
+        """
         if not self._alert_channels:
-            return
+            return []
+
+        outcomes: list[dict] = []
 
         for change in changes:
             title = f"[网页监控] {change.change_type} - {change.url}"
@@ -660,6 +733,12 @@ class WebMonitor:
             if change.diff:
                 content_parts.append(f"差异:\n{change.diff}")
 
+            # `monitor.AlertMessage` and `alert_channels.AlertMessage` are two different
+            # dataclasses with different fields: this module's carries `change_type` and
+            # an ISO timestamp, the channel-side one carries `level` and a float timestamp.
+            # Channels call `message.level`, so passing this module's class raised
+            # AttributeError for every change - swallowed by the per-channel try/except and
+            # logged, which is why notifications looked wired up but never fired.
             message = AlertMessage(
                 title=title,
                 content="\n".join(content_parts),
@@ -669,11 +748,33 @@ class WebMonitor:
                 metadata=change.metadata,
             )
 
+            channel_message = _to_channel_message(change, message)
             for channel in self._alert_channels:
                 try:
-                    channel.send(message)
+                    result = channel.send(channel_message)
+                    outcomes.append(
+                        {
+                            "channel": getattr(result, "channel", type(channel).__name__),
+                            "success": bool(getattr(result, "success", False)),
+                            "message": getattr(result, "message", "") or "",
+                            "error": getattr(result, "error", None),
+                        }
+                    )
                 except Exception as exc:
-                    log.error("Failed to send alert", extra={"channel": type(channel).__name__, "error": str(exc)})
+                    log.error(
+                        "Failed to send alert",
+                        extra={"channel": type(channel).__name__, "error": str(exc)},
+                    )
+                    outcomes.append(
+                        {
+                            "channel": type(channel).__name__,
+                            "success": False,
+                            "message": "",
+                            "error": str(exc),
+                        }
+                    )
+
+        return outcomes
 
     def get_history(self, url: str, limit: int = 50) -> list[ChangeRecord]:
         """Get change history for a URL.

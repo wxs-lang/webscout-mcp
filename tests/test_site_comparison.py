@@ -156,7 +156,7 @@ def _call(args: dict) -> dict:
     return json.loads(getattr(block, "text", str(block)))
 
 
-def test_tool_is_registered_and_count_is_fourteen():
+def test_tool_is_registered_and_count_is_fifteen():
     async def go():
         server = create_server()
         return await server.list_tools()
@@ -164,7 +164,7 @@ def test_tool_is_registered_and_count_is_fourteen():
     tools = asyncio.run(go())
     names = {t.name for t in tools}
     assert "web_compare_sites" in names
-    assert len(names) == 14, f"tool count changed: {sorted(names)}"
+    assert len(names) == 15, f"tool count changed: {sorted(names)}"
 
 
 def test_empty_url_list_is_an_explicit_error():
