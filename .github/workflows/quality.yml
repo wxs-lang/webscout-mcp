@@ -44,7 +44,10 @@ jobs:
       - name: Check documentation is up-to-date
         run: |
           python scripts/generate_docs.py --check
-          git diff --exit-code MODULE_STATUS.md docs/tools.md
+          # RECOVERY_POLICY.md is generated from the policy table too; without it
+          # here the policy document can drift while this job stays green, which is
+          # exactly what happened when CHALLENGE was added.
+          git diff --exit-code MODULE_STATUS.md docs/tools.md docs/RECOVERY_POLICY.md
 
       - name: Upload ruff results
         if: always()

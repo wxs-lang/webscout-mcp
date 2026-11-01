@@ -27,6 +27,14 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+# The CI lint job installs ruff only, so the package is not importable there.
+# Running this file puts `scripts/` on sys.path, not the repository root, so the
+# recovery_policy import below would fail with ModuleNotFoundError. Anchor on
+# __file__ so the script works from any working directory and without an install.
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
 
 @dataclass
 class ToolParam:
