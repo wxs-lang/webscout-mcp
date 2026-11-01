@@ -414,6 +414,9 @@ def has_data() -> bool:
 
 # Guards against double registration of the exit hook.
 _exit_hook_registered = False
+# Kept so the handler can be unregistered; production arms it once and never
+# removes it, but tests must not inherit another test's arming.
+_exit_hook_handle: object | None = None
 
 
 def enable_snapshot_on_exit(path: str | Path) -> None:
@@ -447,8 +450,27 @@ def enable_snapshot_on_exit(path: str | Path) -> None:
         except Exception:  # pragma: no cover - never fail process exit
             log.debug("observability snapshot on exit failed", exc_info=True)
 
+    global _exit_hook_handle
+    _exit_hook_handle = _flush_at_exit
     atexit.register(_flush_at_exit)
     _exit_hook_registered = True
+
+
+def reset_snapshot_on_exit() -> None:
+    """Un-arm the exit hook.
+
+    Test support only. The server arms this once and wants it for the process
+    lifetime; the test suite needs isolation, because a test that arms the hook
+    leaves it pointing at the first caller's path for every test that runs after it.
+    """
+    global _exit_hook_registered, _exit_hook_handle
+    if _exit_hook_handle is not None:
+        try:
+            atexit.unregister(_exit_hook_handle)  # type: ignore[arg-type]
+        except Exception:  # pragma: no cover - defensive
+            pass
+    _exit_hook_handle = None
+    _exit_hook_registered = False
 
 
 def snapshot_on_exit_enabled() -> bool:
