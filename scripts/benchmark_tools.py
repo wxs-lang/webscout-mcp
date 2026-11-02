@@ -466,7 +466,12 @@ async def _run(port: int, report: Report) -> None:
         # instead, so the check is attempted rather than skipped outright.
         async def broken_links() -> str:
             checker = BrokenLinkChecker(timeout=10.0)
-            target = f"{base}/" if real_dns else "https://example.com/"
+            # A public target, never the loopback fixture: the checker's own SSRF guard
+            # rejects 127.0.0.1, which is the property that makes it trustworthy for
+            # arbitrary external links. The first version branched on real_dns
+            # backwards and passed the loopback URL precisely where DNS worked, so CI
+            # failed with "SSRF blocked: host 127.0.0.1 is not a public address".
+            target = "https://example.com/"
             html, final_url, error = await checker.fetch_page_html(target, max_chars=200000)
             assert not error, error
             assert html, "no page fetched"
