@@ -66,6 +66,13 @@ ai = [
 monitor = [
     "psutil>=5.9.0",
 ]
+# JSON selector support for web_monitor. `jsonpath` is pure Python and cheap; `jq`
+# needs a native build, which is why both are optional and absence yields an
+# actionable message rather than an ImportError.
+json = [
+    "jsonpath>=0.82",
+    "jq>=1.6",
+]
 jev = [
     "typesafe-sdk>=0.6.0,<0.7.0",
 ]
@@ -77,6 +84,8 @@ all = [
     "psutil>=5.9.0",
     "html2text>=2020.1.16",
     "typesafe-sdk>=0.6.0,<0.7.0",
+    "jsonpath>=0.82",
+    "jq>=1.6",
 ]
 
 [project.scripts]

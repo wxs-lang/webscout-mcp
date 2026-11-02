@@ -253,6 +253,7 @@ Check a URL for changes since the last check, and return what changed.
 - `keywords_appear` (array of strings, optional): report when these appear
 - `include_diff` (boolean, default `true`): include a unified diff
 - `state_path` (string, optional): where the snapshot lives; defaults to `~/.cache/webscout/monitor_history.json`
+- `json_path` (string, optional): watch one value inside a JSON response. `json:$.a.b` uses JSONPath, `jq:.a.b` uses jq. Requires the `[json]` extra
 
 **Returns:** JSON string with `changes`, `change_count`, `baseline_established`,
 `state_path` and `notes`.
@@ -264,6 +265,16 @@ Check a URL for changes since the last check, and return what changed.
   once and expects automatic tracking would reasonably conclude it is broken.
 - **the first call for a URL only records a baseline** and reports no changes, signalled
   by `baseline_established: true`.
+- **`json_path` reduces the response to one value before comparing.** That is the point:
+  a JSON API's neighbours and formatting churn while the watched field does not, so
+  watching `$.product.price` is stable where watching the body is not. `json:` needs the
+  `jsonpath` package and `jq:` needs `jq`; both come from the `[json]` extra, and a
+  selector for an uninstalled language fails with the install command rather than an
+  obscure error.
+- **a malformed JSONPath is rejected rather than silently watching everything.**
+  Measured: the `jsonpath` library degrades bad syntax like `$[[[` into a wildcard and
+  returns the whole document plus its nodes. The signature - the document appearing first
+  in a multi-match result - is detected and refused.
 
 State persists to disk between calls, because the comparison baseline is written
 alongside the change log. Without that the tool could never report a change - see the
