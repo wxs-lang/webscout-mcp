@@ -191,15 +191,15 @@ and vector/AI/browser extras are available separately."
 
 ---
 
-## 3. 当前进度快照（2026-11-02，v2.3.0）
+## 3. 当前进度快照（2026-11-02，v2.4.0）
 
 ### 3.1 发布状态
 
 | 项 | 值 |
 |---|---|
-| 最新版本 | **v2.3.0** |
+| 最新版本 | **v2.4.0** |
 | 发布时间 | 2026-11-01 (+08) |
-| `main` HEAD | v2.3.0 tag |
+| `main` HEAD | v2.4.0 tag |
 | Releases 总数 | 16 |
 | MCP 工具数 | **15**（v1.x 冻结时为 11，v2.0.0 起扩充，见 COMPATIBILITY.md）|
 | PyPI / Docker | 均已发布 |
@@ -213,10 +213,16 @@ Docker 的 Crawl4AI sidecar。现在 `pip install 'webscout-mcp[browser]'` +
 `playwright install chromium` 即可让 `web_fetch` 升级到真实浏览器，无需 sidecar。
 
 v1.12.0 在纯 HTTP 与浏览器之间加入 **TLS 指纹伪装**（`curl_cffi`）。这与成熟爬虫
-（Firecrawl / Scrapling）的次序一致：**先试握手伪装，再考虑渲染**。实测 reuters
+（Firecrawl / Scrapling）的次序一致：**先试握手伪装，再考虑渲染**。当时实测 reuters
 对 httpx 返回 401、对无头 Chromium 返回 403，而匹配 Safari 握手指纹后返回 200 与
 2901 字符正文，耗时 955ms（浏览器为 3-6 秒）。同时修复了两处真实故障：系统信任库
 损坏时整个抓取失败、以及 libcurl 无法读取非 ASCII 路径下的 CA 文件（curl error 77）。
+
+> **2026-11-02 更新：该结论已不成立。** reuters 已改挂 **DataDome**（JS 挑战 + cookie
+> 握手），实测返回 401 与 774 字符挑战页，`x-datadome: protected`、
+> `captcha-delivery.com` 脚本。**所有已试指纹返回同一页**（safari17_0 / chrome131 /
+> chrome124 / chrome120 / safari15_5），纯 curl 换任何 User-Agent 亦然——**变量不是指纹**。
+> 这是站点升级防护，**不是本项目退化**：v1.12.0 那次测量是真的，只是目标变硬了。
 
 v1.14.0 修的是**可解释性在最后一公里断掉**：挑战页返回 200、无错误、提取 okay，
 而 pipeline 已判定「CHALLENGE / 需要浏览器 / 没有后端」——这个结论只存在于
@@ -312,11 +318,18 @@ broken_links  FAIL  SSRF blocked: host 127.0.0.1 is not a public address
 > 该缺陷自初始提交（2026-08-28）即存在。**v1.12.0 及更早的可用率数字与 v1.13.0 不可比**：
 > 新数字更低，但它们是真实的。
 
-分难度层测得的结论（详见 `CHANGELOG.md` 的 Known gaps）：TLS 握手类拦截已由
-v1.12.0 覆盖（reuters 现可提取 2844 字符正文）；JS 渲染类由 v1.11.0 的浏览器能力
-覆盖；而 stackoverflow / zhihu / amazon / reddit 对**所有已试指纹**都返回 403/202——
-它们约束在**住宅 IP 与请求历史**，不是指纹能改的。可用 `BrowserConfig.proxy_server`
-缓解。**这一边界如实记录，不做夸大。**
+分难度层测得的结论（详见 `CHANGELOG.md` 的 Known gaps）：
+
+- **TLS 握手类拦截**由 v1.12.0 的指纹伪装覆盖。这一层仍然有效，但**它能解决的窗口在缩小**：
+  reuters 曾是它的成功案例，2026-11-02 复测已改用 DataDome（见上文），指纹伪装不再够用。
+- **JS 渲染类**由 v1.11.0 的浏览器能力覆盖。
+- **JS 挑战 + cookie 握手类**（DataDome / 类似厂商）目前**两层都不够**：需要真实执行
+  挑战脚本并持有 cookie，且往往同时看 IP 信誉。reuters、medium 属于此类。
+- stackoverflow / zhihu / amazon / reddit 对**所有已试指纹**返回 403/202——约束在
+  **住宅 IP 与请求历史**，不是指纹能改的。可用 `BrowserConfig.proxy_server` 缓解。
+
+`scripts/benchmark_tools.py --live` 是这一节的实测来源，可随时重跑核对当前状态。
+**这一边界如实记录，不做夸大；站点变化时更新本节而不是留着旧结论。**
 
 ### 3.2 阶段完成度
 

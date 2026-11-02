@@ -5,6 +5,113 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v2.4.0 (2026-11-02)
+
+Three changes that found each other: the live benchmark exposed a grading defect, and
+investigating that exposed a TLS defect. Told in order because the chain is the point.
+
+### Added
+
+- **`--live` mode for the benchmark.** Five real targets covering the three delivery paths
+  this project has built: plain HTTP (example.com, wikipedia, docs.python.org), TLS
+  impersonation (reuters), browser escalation (medium).
+
+  Verdicts are graded rather than binary:
+
+  | verdict | meaning | gates the run |
+  |---|---|---|
+  | `pass` | content arrived and is usable | - |
+  | `degraded` | answered, but needs a capability we have (challenge page, JS shell, 401) | no |
+  | `fail` | exception, or empty body with no recovery diagnosis | yes |
+
+  Counting an anti-bot wall as a product failure would make the number meaningless and
+  invite tuning it until it looked good.
+
+  Measured on the day of release:
+
+  ```
+  example.com      degraded  577 chars, grade=thin
+  wikipedia        pass      20000 chars, grade=usable
+  docs.python.org  pass      17884 chars, grade=usable
+  reuters          degraded  774 chars, user_action_required
+  medium           degraded  134 chars, browser_failed
+
+  2/5 pass, 3 degraded, 0 fail
+  ```
+
+### Fixed
+
+- **The grader called a 401 error page "usable".** Running the live scenarios surfaced it
+  immediately: reuters returns 401 with a JS challenge, and `assess()` graded it usable at
+  774 chars. Measured on five samples:
+
+  | sample | chars | `<` count | structural tags | old grade |
+  |---|---|---|---|---|
+  | real article | 1480 | 0 | 0 | usable |
+  | Reuters 401 page | 201 | 14 | 6 | usable - wrong |
+  | stylesheet-only body | 654 | 8 | 4 | usable - wrong |
+  | prose with literal `<` | 1230 | 30 | 0 | usable |
+  | ordinary HTML fragment | 1350 | 60 | 0 | usable |
+
+  The discriminator is **structural tags** (`<html>`, `<head>`, `<body>`, `<script>`,
+  `<style>`, ...), not angle-bracket density: the stylesheet-only body was 1.2% brackets,
+  below any threshold that leaves ordinary prose alone, while prose containing literal `<`
+  characters would trip a looser one. The check runs before the length shortcut, so a
+  6354-char page of pure markup is `thin` rather than `usable` on size.
+
+- **`fetch_impersonated` discarded the failure body.** It returned `(401, "", "")`, so a
+  caller could not tell an anti-bot challenge from a transport failure - different
+  situations needing different responses. The body of the failed attempt now comes back,
+  and an empty `profile` still marks it as a failure, so success and failure stay
+  distinguishable without parsing.
+
+- **The call site accepted a challenge page as content.** `fetcher.py` guarded with
+  `if imp_status and imp_body:` - a bare truthiness check. Once the body was preserved, a
+  401 DataDome page would have been returned as the article, with `content` set to
+  "Please enable JS" and `error` left empty. Both call sites now require
+  `200 <= imp_status < 300`.
+
+  This defect only became reachable because of the previous fix, which is why the two land
+  together.
+
+### Changed
+
+- **The live gate asks a different question.** `has_real_dns()` inspected system
+  resolution, which is the wrong question: measured here, `socket.getaddrinfo("example.com")`
+  returns `198.18.0.6` while the fetch pipeline still reaches the site at 577 chars. The
+  pipeline resolves through its own path, so the DNS check skipped live scenarios that work.
+  `can_reach_internet()` now asks the pipeline itself.
+
+### Corrected documentation
+
+Reuters is described in several places as reachable through TLS impersonation. That was
+measured at v1.12.0 and v1.13.0 and was true then. Re-measured today:
+
+```
+x-datadome: protected
+set-cookie: datadome=...
+body: "Please enable JS and disable any ad blocker" + captcha-delivery.com script
+```
+
+Every TLS profile returns it (safari17_0, chrome131, chrome124, chrome120, safari15_5), and
+plain curl does too with any User-Agent - so the fingerprint is not the variable. **The
+capability did not regress; the target hardened.**
+
+The historical entries in this file keep their original measurements with a dated note;
+`GOAL.md` corrects the present-tense claim and adds the JS-challenge class to the
+difficulty tiers.
+
+### Verified
+
+- 11 benchmark tests (live is opt-in, verdicts graded, `degraded` does not gate, the gate
+  probes reachability, the report carries a `degraded` bucket)
+- 4 grading tests (a page shell is not usable, long markup does not pass on length, prose
+  with literal `<` stays usable, an HTML fragment of real content stays usable)
+- 2 TLS tests (the challenge body is kept and the empty profile still marks failure; the
+  call site requires a 2xx rather than truthiness)
+- 373 passed across TLS, decompression, grading, benchmark, fetch service, provider, 403
+  recovery, recovery and explainability; CI 25 checks green
+
 ## v2.3.0 (2026-11-02)
 
 **No new product capability.** This release adds the instrument that catches a class of
@@ -491,6 +598,12 @@ usable_rate 70.0%
 reuters now yields 2844 characters of article text through TLS impersonation, which
 it could not do before this release.
 
+> **Re-measured 2026-11-02: no longer true.** Reuters now sits behind DataDome, which
+> returns a 401 with a JS challenge to every TLS profile tried (safari17_0, chrome131,
+> chrome124, chrome120, safari15_5) and to plain curl with any User-Agent. The v1.13.0
+> result was real; the target hardened. See the v2.4.0 entry for the current behaviour and
+> for the two defects the re-measurement exposed.
+
 ## v1.12.0 (2026-11-01)
 
 ### Added
@@ -503,8 +616,12 @@ it could not do before this release.
   failures; a 200 never triggers it.
 - **Profile rotation.** Which fingerprint works is target-dependent, measured
   rather than assumed: reddit returns 166KB to `chrome131` and 8KB to
-  `safari17_0`; reuters returns 1.3MB to `safari17_0` and 774 bytes to
+  `safari17_0`; reuters returned 1.3MB to `safari17_0` and 774 bytes to
   `chrome131`. Profiles are tried in order until one succeeds.
+
+  (2026-11-02: the reuters half of this no longer holds - every profile now gets the same
+  774-byte DataDome challenge. The reddit observation and the rotation mechanism are
+  unaffected.)
 
 ### Fixed
 
@@ -590,7 +707,7 @@ anti-bot walls, and they are not fixed by this release:
 | medium.com | 403 | residential IP, TLS fingerprint |
 | stackoverflow.com | 403 | residential IP |
 | zhihu.com | 403 | residential IP, login session |
-| reuters.com | 401 | login session |
+| reuters.com | 401 (DataDome) | script execution + challenge cookie; also weighs IP reputation |
 
 Client Hints are now consistent, which removes two red flags - but Cloudflare-grade
 walls weigh IP reputation, TLS fingerprint and request history, none of which a
