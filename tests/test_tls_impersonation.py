@@ -145,9 +145,43 @@ def test_fetch_impersonated_gives_up_cleanly_when_all_profiles_fail(monkeypatch)
     monkeypatch.setattr(ti, "_ascii_ca_bundle", lambda: "/tmp/ca.pem")
 
     status, body, profile = ti.fetch_impersonated("https://example.test/", profiles=("chrome131",))
-    assert body == ""
+    # The body of the failed attempt is kept so a caller can tell an anti-bot challenge
+    # from a transport problem: a DataDome 401 carries "Please enable JS" plus an
+    # `x-datome: protected` header, and discarding it left the caller unable to diagnose.
+    # The empty profile is what still distinguishes failure from success.
+    assert body == "blocked"
     assert profile == ""
     assert status == 403
+
+
+def test_fetch_impersonated_keeps_the_challenge_page_for_diagnosis(monkeypatch):
+    """A 401 from an anti-bot wall must arrive with its body, not as an empty string.
+
+    Measured on reuters: `x-datadome: protected` and a `captcha-delivery.com` script in
+    the body. Returning "" made "challenged" indistinguishable from "could not connect".
+    """
+    challenge = '<html><body><p id="cmsg">Please enable JS</p></body></html>'
+
+    class _Resp:
+        status_code = 401
+        text = challenge
+
+    class _FakeRequests:
+        @staticmethod
+        def get(url, impersonate=None, **_kwargs):  # noqa: ARG004
+            return _Resp()
+
+    import sys
+    import types
+
+    monkeypatch.setitem(sys.modules, "curl_cffi", types.SimpleNamespace(requests=_FakeRequests))
+    monkeypatch.setattr(ti, "is_available", lambda: True)
+    monkeypatch.setattr(ti, "_ascii_ca_bundle", lambda: "/tmp/ca.pem")
+
+    status, body, profile = ti.fetch_impersonated("https://example.test/", profiles=("safari17_0",))
+    assert status == 401
+    assert body == challenge, "the challenge page is the diagnosis"
+    assert profile == "", "an empty profile still marks this as a failure"
 
 
 def test_fetch_impersonated_returns_empty_when_unavailable(monkeypatch):
@@ -296,3 +330,19 @@ def test_successful_request_never_uses_impersonation(monkeypatch, tmp_path):
     result = asyncio.run(fetcher.fetch("https://ok.test/", extract=False, bypass_cache=True))
     assert result.status_code == 200
     assert called["n"] == 0, "a 200 must not pay for impersonation"
+
+
+def test_caller_rejects_a_challenge_page_as_content():
+    """The fetcher must not hand a "Please enable JS" page back as an article.
+
+    `fetch_impersonated` returns the failure body for diagnosis, so the call site has to
+    check the status: `if imp_status and imp_body` would accept a 401 challenge page as
+    content, which is what the body-preserving change made possible.
+    """
+    import pathlib
+
+    source = pathlib.Path("webscout_mcp/fetcher.py").read_text(encoding="utf-8")
+    assert "if imp_status and imp_body:" not in source, (
+        "a bare truthiness check accepts a 401 challenge page as content"
+    )
+    assert "if 200 <= imp_status < 300 and imp_body:" in source, "the caller must require a 2xx status"
