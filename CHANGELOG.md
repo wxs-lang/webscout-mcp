@@ -5,6 +5,81 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v2.3.0 (2026-11-02)
+
+**No new product capability.** This release adds the instrument that catches a class of
+defect which kept reaching users, and gates pull requests on it.
+
+### Added
+
+- **`scripts/benchmark_tools.py`** - drives 16 scenarios across the tool surface and
+  reports a pass rate. 14 run against a local fixture server with no network; `web_search`
+  and `broken_links` run when the environment has real DNS and are skipped with a measured
+  reason when it does not.
+
+  The reason this exists: three defects in the v2.1-v2.2 range had green unit tests and
+  still shipped.
+
+  | defect | what the unit tests saw |
+  |---|---|
+  | comparison baseline never persisted | they asserted on in-process state |
+  | `AlertMessage` exception swallowed per channel | the try/except *was* the thing under test |
+  | a cached body made monitoring report "no change" | no test fetched twice through the cache |
+
+  The units were right and the wiring was wrong. A check that drives the real tool surface
+  turns that into a number that moves.
+
+- **A `tool-benchmark` CI job** running with `--strict`, uploading the JSON report as an
+  artifact for 30 days. A pass rate that only lives in a log cannot be compared across
+  time.
+
+  One Python version, not the matrix: the job exercises behaviour, not compatibility, and
+  the unit matrix already covers the latter.
+
+### The check found a bug in itself on its first CI run
+
+The two skipped scenarios were written on a machine where every hostname resolves to a
+reserved address (`198.18.0.x`), so `broken_links` was skipped and its code path never
+executed. On CI, where DNS works, it ran and failed:
+
+```
+broken_links  FAIL  AssertionError: SSRF blocked: host 127.0.0.1 is not a public address
+```
+
+The target selection had its branch backwards - it passed the loopback fixture to a checker
+whose own SSRF guard rejects loopback, precisely in the environment where it could run. The
+bug lived entirely in the path that only exists when the environment is healthy, which is
+the argument for running this in CI instead of trusting a local pass.
+
+After the fix: **16/16 on CI**, 14/14 locally (the two differences being the scenarios that
+need real DNS).
+
+### Skips are conditional, not hardcoded
+
+`has_real_dns()` resolves `example.com` and inspects the address class. It lives in the
+script rather than an environment variable, because a variable is something a maintainer
+has to remember to set on each runner.
+
+Measured here: `(False, 'example.com resolves to a reserved address (198.18.0.154)')`. So
+the local skips name the address rather than asserting "fake-IP DNS" as a premise, and CI
+runs both scenarios instead of quietly shrinking coverage.
+
+### Verified
+
+- 7 tests in `tests/test_benchmark_tools.py`: the script runs and passes, every scenario
+  states what it proves, every skip carries a reason, the report shape is stable, and - the
+  load-bearing one - deliberately breaking `_save_history` makes the benchmark fail and name
+  `web_monitor`
+- CI: 19 checks green on `main`, `tool-benchmark` among them, at 16/16
+- the deliberate regression test is what distinguishes this from a benchmark that would
+  always report 100%
+
+### Known gaps
+
+- The scenarios use local fixtures, so they verify wiring rather than real-site behaviour.
+  Real sites need a runner with working DNS; the two conditional scenarios are the only
+  ones that touch the network today.
+
 ## v2.2.0 (2026-11-02)
 
 Both changes are about making what is watched stable, and the defects fixed along the way
