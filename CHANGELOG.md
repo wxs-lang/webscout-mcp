@@ -5,6 +5,103 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v2.2.0 (2026-11-02)
+
+Both changes are about making what is watched stable, and the defects fixed along the way
+share one shape: each made `web_monitor` report "no change" for a reason that had nothing
+to do with the page itself.
+
+### Added
+
+- **`json_path` on `web_monitor`** - watch one value inside a JSON response instead of the
+  whole body. Two selector languages, chosen by prefix on the expression:
+
+  ```
+  json:$.product.price      JSONPath
+  jq:.product.price         jq
+  $.product.price           bare form, treated as JSONPath
+  ```
+
+  The design follows changedetection.io: a prefix picks the language, and the selection is
+  reduced to a string so the ordinary diff applies. `jqraw:` was deliberately not adopted -
+  its purpose there is to suppress JSON quoting, which this project does not do, so it would
+  be a keyword with no behaviour behind it.
+
+  Reducing to one field is the point: neighbours and formatting churn while the watched
+  value does not. Measured on a local endpoint, a change to `name` and `stock` produced zero
+  changes when watching `$.product.price`, and the price move itself produced one.
+
+- **`[json]` extra** carrying `jsonpath` and `jq`, also included in `[all]`. Both optional
+  because `jq` needs a native build. Asking for a language that is not installed returns the
+  install command rather than an `ImportError`. Verified in two environments: a default
+  install (JSONPath works, `jq:` names the extra) and a venv with `[json]` installed.
+
+### Fixed
+
+- **`web_monitor` now routes through `fetch_service`.** It previously let the monitor do its
+  own HTTP, so it got no TLS impersonation, no browser escalation and no recovery
+  classification. The practical consequence: monitoring a page that needs either reported
+  "no change" forever, because the fetch itself never succeeded - indistinguishable from a
+  page that genuinely did not change. A new `monitor_adapter` bridges the async pipeline into
+  the monitor's synchronous fetcher protocol. Measured through the real pipeline:
+  `recovery_outcome="browser_success"`, i.e. escalation actually engaged.
+
+- **A cached body made monitoring useless.** Measured against a local endpoint that changed
+  between requests:
+
+  ```
+  call 1  set=100  got '{"price": 100}'   cached=False
+  call 2  set=900  got '{"price": 100}'   cached=True      WRONG
+  with bypass_cache=True: call 2 got '{"price": 900}'
+  ```
+
+  A monitor reading a cached body compares a page with its own cached copy and can never see
+  a change. Both the JSON probe and the adapter now bypass the cache.
+
+- **A malformed JSONPath silently watched the whole document.** The `jsonpath` library does
+  not raise on bad syntax; it degrades it into a wildcard:
+
+  ```
+  '$[['      -> 10 matches, first is the whole document
+  '$..*'     ->  9 matches, first is NOT the document   (legitimate)
+  '$.product'->  1 match                                (legitimate)
+  ```
+
+  A typo would have recorded a huge unstable string as the watched value. The measurable
+  signature - the document appearing first in a multi-match result - is now rejected with a
+  message naming the problem. An earlier attempt bounded matches by node count; that did not
+  fire, because 10 matches on a 20-node document is not out of range.
+
+- **The response never said what was watched.** `payload_selected` was computed and dropped,
+  so a wrong selector was indistinguishable from a page that never changes. The response now
+  echoes `json_path` and `selected_value`.
+
+- **`generate_docs.py` wrote CRLF**, so a one-line change to `docs/tools.md` appeared as a
+  917-line diff. All three writes now pin `newline="\n"`, with a `.gitattributes` as the
+  second half of that guarantee.
+
+### Compatibility
+
+**15 tools, unchanged in count and schema.** `json_path` is a new optional parameter that
+defaults to empty, so existing calls behave identically. `COMPATIBILITY.md` records it along
+with the two behaviours a caller must know: the `[json]` extra is needed for either
+selector language, and a malformed JSONPath is refused rather than silently widened.
+
+### Verified
+
+- 26 tests for the selector module on a default install, the same suite with `jq` present
+  (where the two jq tests run instead of skipping), and 87 across the selector, adapter,
+  persistence, change-detection and alert-target suites
+- end to end against a local JSON endpoint: baseline, price change detected, unrelated field
+  changes ignored, missing path reported, unavailable language named
+- ruff, format and generated docs clean
+
+### Known gaps
+
+- Scheduling remains the caller's responsibility; `web_monitor` checks once per call.
+- Change screenshots are still not implemented. They need a browser and are a separate cost
+  from detection.
+
 ## v2.1.0 (2026-11-02)
 
 ### Added
