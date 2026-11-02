@@ -54,7 +54,7 @@ browser = [
     # TLS fingerprint impersonation: gets past handshake-level blocks that reject
     # a plain httpx client, without launching a browser. Pinned below 0.17 - that
     # line failed with curl error 77 on paths the 0.15 line handles.
-    "curl_cffi>=0.15.0,<0.17.0",
+    "curl_cffi>=0.15.0,<0.18.0",
 ]
 vector = [
     "chromadb>=0.4.0",
@@ -74,7 +74,7 @@ json = [
     "jq>=1.6",
 ]
 jev = [
-    "typesafe-sdk>=0.6.0,<0.7.0",
+    "typesafe-sdk>=0.6.0,<0.8.0",
 ]
 all = [
     "playwright>=1.40.0",
@@ -83,7 +83,7 @@ all = [
     "openai>=1.0.0",
     "psutil>=5.9.0",
     "html2text>=2020.1.16",
-    "typesafe-sdk>=0.6.0,<0.7.0",
+    "typesafe-sdk>=0.6.0,<0.8.0",
     "jsonpath>=0.82",
     "jq>=1.6",
 ]
