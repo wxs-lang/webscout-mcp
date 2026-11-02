@@ -109,3 +109,42 @@ def test_report_shape_is_stable():
     assert set(report) == {"total", "passed", "failed", "pass_rate", "scenarios", "skipped"}
     for scenario in report["scenarios"]:
         assert set(scenario) == {"name", "passed", "proves", "detail", "error"}
+
+
+def test_dns_probe_reports_the_reason_it_failed():
+    """A skip must say what was measured, not merely that something was skipped.
+
+    The probe returns the resolved address so a reader can tell a fake-IP environment from
+    a genuinely unreachable one.
+    """
+    sys.path.insert(0, str(REPO / "scripts"))
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("bench", SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    # Register before executing: `@dataclass` resolves annotations through
+    # sys.modules[cls.__module__], which is null for an unregistered module and raises
+    # AttributeError on the first dataclass in the file.
+    sys.modules["bench"] = module
+    spec.loader.exec_module(module)
+
+    ok, reason = module.has_real_dns()
+    assert isinstance(ok, bool)
+    assert reason, "the probe must explain itself"
+    if not ok:
+        # Either an address from a reserved range, or a resolution failure.
+        assert "reserved" in reason or "cannot resolve" in reason, reason
+
+
+def test_network_scenarios_are_not_hardcoded_to_skip():
+    """On a machine with real DNS these must run, not be skipped by name.
+
+    Hardcoding the skip would quietly shrink coverage in CI, where DNS works - exactly
+    where the check is most valuable.
+    """
+    source = SCRIPT.read_text(encoding="utf-8")
+    assert "has_real_dns()" in source
+    assert "if real_dns:" in source, "the skip decision must be conditional"
+    assert 'report.skip(\n            "web_search",\n            f"needs a live search backend' in source or (
+        "web_search" in source and "if real_dns" in source
+    ), "web_search must be attempted when the environment allows it"

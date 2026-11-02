@@ -224,6 +224,40 @@ jobs:
   # ============================================================
   # Coverage - single Python, all tests except E2E
   # ============================================================
+  # End-to-end benchmark across the tool surface. This is the layer that catches wiring
+  # regressions the unit suite cannot see: three defects in v2.1-v2.2 had green unit tests
+  # and still reached users. Runs on one Python version because it exercises behaviour,
+  # not compatibility - the unit matrix already covers the latter.
+  tool-benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -e ".[all,dev,test]" || pip install -e .
+          pip install pytest pytest-asyncio anyio
+      - name: Run tool benchmark
+        run: |
+          python scripts/benchmark_tools.py --strict --json benchmark-report.json
+      - name: Upload benchmark report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tool-benchmark-report
+          path: benchmark-report.json
+          retention-days: 30
+
   coverage:
     name: Coverage Report
     runs-on: ubuntu-latest
