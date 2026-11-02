@@ -513,7 +513,11 @@ class Fetcher:
                     from .tls_impersonation import fetch_impersonated
 
                     imp_status, imp_body, imp_profile = fetch_impersonated(url, timeout=self.config.request_timeout)
-                    if imp_status and imp_body:
+                    # Only a 2xx is a success. `fetch_impersonated` returns the body of a
+                    # failed attempt so the caller can see why it failed, and a 401 from an
+                    # anti-bot wall carries a challenge page - accepting that as content would
+                    # hand back a "Please enable JS" page as an article.
+                    if 200 <= imp_status < 300 and imp_body:
                         imp_text = imp_body
                         return FetchResult(
                             url=url,
@@ -572,7 +576,11 @@ class Fetcher:
                     from .tls_impersonation import fetch_impersonated
 
                     imp_status, imp_body, imp_profile = fetch_impersonated(url, timeout=self.config.request_timeout)
-                    if imp_status and imp_body:
+                    # Only a 2xx is a success. `fetch_impersonated` returns the body of a
+                    # failed attempt so the caller can see why it failed, and a 401 from an
+                    # anti-bot wall carries a challenge page - accepting that as content would
+                    # hand back a "Please enable JS" page as an article.
+                    if 200 <= imp_status < 300 and imp_body:
                         return FetchResult(
                             url=url,
                             final_url=url,

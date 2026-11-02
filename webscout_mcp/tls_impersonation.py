@@ -121,7 +121,14 @@ def fetch_impersonated(
     Returns (status_code, html_text, profile_used). Tries each profile until one
     returns a non-error status, because the right fingerprint is target-dependent.
 
-    Returns (0, "", "") when impersonation is unavailable or every profile fails.
+    On failure the body of the **last** attempt is returned alongside its status rather
+    than an empty string. A 401 from an anti-bot wall carries a challenge page that names
+    the vendor (`x-datadome: protected`, `captcha-delivery.com`), and discarding it left
+    the caller unable to tell "challenged" from "could not connect" - which need different
+    responses. The third element is empty whenever no profile succeeded, so a caller can
+    still tell success from failure without parsing the body.
+
+    Returns (0, "", "") when impersonation is unavailable.
     """
     if not is_available():
         return 0, "", ""
@@ -130,6 +137,7 @@ def fetch_impersonated(
 
     ca = _ascii_ca_bundle()
     last_status = 0
+    last_body = ""
     for profile in profiles:
         try:
             resp = curl_requests.get(
@@ -147,9 +155,13 @@ def fetch_impersonated(
         if resp.status_code < 400 and body:
             return resp.status_code, body, profile
         last_status = resp.status_code
+        last_body = body
         log.debug("impersonation %s -> %s for %s", profile, resp.status_code, url)
 
-    return last_status, "", ""
+    # Keep the last failure's body: a challenge page identifies the vendor, and without it
+    # the caller cannot tell an anti-bot wall from a transport problem. The profile is left
+    # empty so success and failure stay distinguishable without inspecting the body.
+    return last_status, last_body, ""
 
 
 def describe() -> dict[str, Any]:
