@@ -153,16 +153,67 @@ def has_real_dns() -> tuple[bool, str]:
     return True, f"{host} resolves to a public address"
 
 
+async def can_reach_internet() -> tuple[bool, str]:
+    """Whether this process can actually fetch a public page.
+
+    `has_real_dns` inspects system resolution, which is the wrong question: measured here,
+    `socket.getaddrinfo("example.com")` returns a reserved address while the fetch pipeline
+    still reaches the site (577 chars, status 200). The pipeline resolves through its own
+    path, so a DNS check understates capability and would skip live scenarios that work.
+
+    This asks the pipeline itself, which is the thing the benchmark exercises.
+    """
+    from webscout_mcp.eval_services import aclose_services, configure_eval_run
+    from webscout_mcp.fetch_provider import FetchRequest
+
+    services = configure_eval_run("benchmark-reachability")
+    try:
+        svc = services["fetch_service"]
+        route = await asyncio.wait_for(
+            svc.fetch(
+                FetchRequest(
+                    url="https://example.com/",
+                    extract=True,
+                    output_format="text",
+                    max_chars=2000,
+                    bypass_cache=True,
+                )
+            ),
+            timeout=45,
+        )
+        resp = route.primary_response
+        body = resp.content or ""
+        if 200 <= resp.status_code < 300 and len(body) >= 100:
+            return True, f"reached example.com ({len(body)} chars)"
+        return False, f"example.com returned status {resp.status_code} with {len(body)} chars"
+    except Exception as exc:  # noqa: BLE001 - a probe records, never raises
+        return False, f"cannot reach the internet: {type(exc).__name__}: {exc}"[:160]
+    finally:
+        await aclose_services(services)
+
+
 # --- result model -----------------------------------------------------
 
 
 @dataclass
 class ScenarioResult:
+    """One scenario outcome.
+
+    `verdict` is graded for live scenarios and binary for local ones. A local fixture
+    either satisfies the assertion or the wiring is broken; a real site can answer with a
+    challenge page, which is information rather than a defect.
+    """
+
     name: str
     passed: bool
     proves: str = ""
     detail: str = ""
     error: str = ""
+    verdict: str = ""  # pass | degraded | fail (live only)
+
+    def __post_init__(self) -> None:
+        if not self.verdict:
+            self.verdict = "pass" if self.passed else "fail"
 
 
 @dataclass
@@ -199,6 +250,7 @@ class Report:
                 for r in self.results
             ],
             "skipped": [{"name": n, "reason": why} for n, why in self.skipped],
+            "degraded": [r.name for r in self.results if r.verdict == "degraded"],
         }
 
 
@@ -542,10 +594,140 @@ async def _run(port: int, report: Report) -> None:
         )
 
 
+# --- live scenarios ---------------------------------------------------
+# Real targets, chosen to cover the three delivery paths this project has built:
+# plain HTTP, TLS impersonation, and browser escalation. Each entry says what it
+# exercises so a `degraded` verdict can be read rather than guessed at.
+
+LIVE_TARGETS = [
+    {
+        "name": "example.com",
+        "url": "https://example.com/",
+        "expect": "plain HTTP path",
+        "min_chars": 100,
+    },
+    {
+        "name": "wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Web_scraping",
+        "expect": "plain HTTP with extraction",
+        "min_chars": 2000,
+    },
+    {
+        "name": "docs.python.org",
+        "url": "https://docs.python.org/3/tutorial/introduction.html",
+        "expect": "plain HTTP with extraction",
+        "min_chars": 2000,
+    },
+    {
+        "name": "reuters",
+        "url": "https://www.reuters.com/",
+        "expect": "TLS impersonation (401/403 without it)",
+        "min_chars": 500,
+    },
+    {
+        "name": "medium",
+        "url": "https://medium.com/",
+        "expect": "browser escalation (JS-rendered)",
+        "min_chars": 500,
+    },
+]
+
+
+async def _run_live(report: Report) -> None:
+    """Fetch real sites and grade each outcome.
+
+    A thin or blocked body is `degraded`, not `fail`: the site answered, and what it
+    answered with is a capability boundary the project already documents. `fail` is
+    reserved for a broken contract - an exception, or an empty body with no recovery
+    diagnosis attached.
+    """
+    from webscout_mcp.content_grading import assess
+    from webscout_mcp.eval_services import aclose_services, configure_eval_run
+    from webscout_mcp.fetch_provider import FetchRequest
+
+    services = configure_eval_run("benchmark-live")
+    try:
+        svc = services["fetch_service"]
+        for target in LIVE_TARGETS:
+            name = target["name"]
+            url = target["url"]
+            result: ScenarioResult
+            try:
+                route = await asyncio.wait_for(
+                    svc.fetch(
+                        FetchRequest(
+                            url=url,
+                            extract=True,
+                            output_format="text",
+                            max_chars=20000,
+                            bypass_cache=True,
+                        )
+                    ),
+                    timeout=90,
+                )
+                resp = route.primary_response
+                text = resp.content or ""
+                grade = assess(text).grade
+                outcome = route.recovery_outcome or ""
+                status = resp.status_code
+
+                # A non-2xx status with usable-looking text is an error page, not content.
+                # reuters returns 401 with a JS challenge; before the grader learned to
+                # detect structural tags it called that 774 chars of usable prose.
+                http_ok = 200 <= status < 300
+                if http_ok and len(text) >= target["min_chars"] and grade == "usable":
+                    result = ScenarioResult(
+                        name=f"live: {name}",
+                        passed=True,
+                        verdict="pass",
+                        proves=target["expect"],
+                        detail=f"{len(text)} chars, grade={grade}, status={status}",
+                    )
+                elif text and grade != "garbled":
+                    # Answered with something real but insufficient - a challenge page,
+                    # a paywall, a JS shell. Informative, not broken.
+                    result = ScenarioResult(
+                        name=f"live: {name}",
+                        passed=True,
+                        verdict="degraded",
+                        proves=target["expect"],
+                        detail=f"{len(text)} chars, grade={grade}, outcome={outcome or 'n/a'}",
+                    )
+                else:
+                    # Nothing usable AND the pipeline has no explanation for it. That is
+                    # a contract break: every fetch is supposed to classify its outcome.
+                    result = ScenarioResult(
+                        name=f"live: {name}",
+                        passed=False,
+                        verdict="fail",
+                        proves=target["expect"],
+                        error=(
+                            f"no usable content and no diagnosis: {len(text)} chars, "
+                            f"grade={grade}, outcome={outcome or 'none'}, status={status}"
+                        ),
+                    )
+            except Exception as exc:  # noqa: BLE001 - a live run records failures
+                result = ScenarioResult(
+                    name=f"live: {name}",
+                    passed=False,
+                    verdict="fail",
+                    proves=target["expect"],
+                    error=f"{type(exc).__name__}: {exc}"[:200],
+                )
+            report.add(result)
+    finally:
+        await aclose_services(services)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Benchmark the MCP tool surface")
     ap.add_argument("--json", type=pathlib.Path, default=None, help="write the report here")
     ap.add_argument("--strict", action="store_true", help="exit 1 if any local scenario fails")
+    ap.add_argument(
+        "--live",
+        action="store_true",
+        help="also fetch real sites; degraded results are reported but do not fail the run",
+    )
     args = ap.parse_args()
 
     httpd = http.server.HTTPServer(("127.0.0.1", 0), _FixtureHandler)
@@ -580,6 +762,44 @@ def main() -> int:
         print("failures:")
         for r in report.failed:
             print(f"  - {r.name}: {r.error}")
+
+    if args.live:
+        reachable, reach_reason = asyncio.run(can_reach_internet())
+        print()
+        if not reachable:
+            print(f"SKIP  live scenarios: {reach_reason}")
+        else:
+            print(f"live probe: {reach_reason}")
+            live_report = Report()
+            asyncio.run(_run_live(live_report))
+            width2 = max((len(r.name) for r in live_report.results), default=20)
+            print(f"{'live scenario':<{width2}}  verdict   detail")
+            print("-" * (width2 + 64))
+            for r in live_report.results:
+                note = r.detail if r.verdict != "fail" else r.error
+                print(f"{r.name:<{width2}}  {r.verdict:<9} {note[:92]}")
+            counts = {
+                "pass": sum(1 for r in live_report.results if r.verdict == "pass"),
+                "degraded": sum(1 for r in live_report.results if r.verdict == "degraded"),
+                "fail": sum(1 for r in live_report.results if r.verdict == "fail"),
+            }
+            total = len(live_report.results)
+            print()
+            print(f"live: {counts['pass']}/{total} pass, {counts['degraded']} degraded, {counts['fail']} fail")
+            data["live"] = {
+                "counts": counts,
+                "total": total,
+                "scenarios": [
+                    {"name": r.name, "verdict": r.verdict, "detail": r.detail, "error": r.error}
+                    for r in live_report.results
+                ],
+            }
+            # Only a contract break blocks. A site declining to serve us is a capability
+            # boundary this project documents, not a regression.
+            if args.strict and counts["fail"]:
+                if args.json:
+                    args.json.write_text(json.dumps(data, indent=2), encoding="utf-8")
+                return 1
 
     if args.json:
         args.json.write_text(json.dumps(data, indent=2), encoding="utf-8")

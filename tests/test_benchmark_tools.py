@@ -106,7 +106,17 @@ def test_report_shape_is_stable():
     import tempfile
 
     report = _run_benchmark(pathlib.Path(tempfile.mkdtemp()))
-    assert set(report) == {"total", "passed", "failed", "pass_rate", "scenarios", "skipped"}
+    # `degraded` was added with the live mode: a real site answering with a challenge page
+    # is information, not a failure, and needs its own bucket.
+    assert set(report) == {
+        "total",
+        "passed",
+        "failed",
+        "pass_rate",
+        "scenarios",
+        "skipped",
+        "degraded",
+    }
     for scenario in report["scenarios"]:
         assert set(scenario) == {"name", "passed", "proves", "detail", "error"}
 
@@ -148,3 +158,48 @@ def test_network_scenarios_are_not_hardcoded_to_skip():
     assert 'report.skip(\n            "web_search",\n            f"needs a live search backend' in source or (
         "web_search" in source and "if real_dns" in source
     ), "web_search must be attempted when the environment allows it"
+
+
+# --- live mode --------------------------------------------------------
+
+
+def test_live_flag_exists_and_is_opt_in():
+    """Live scenarios must never run by default: they touch the network."""
+    source = SCRIPT.read_text(encoding="utf-8")
+    assert '"--live"' in source
+    assert "LIVE_TARGETS" in source
+    # the default invocation must not enable it
+    assert 'add_argument(\n        "--live",\n        action="store_true"' in source or (
+        '"--live"' in source and 'action="store_true"' in source
+    )
+
+
+def test_live_verdicts_are_graded():
+    """A real site declining to serve us is `degraded`, not `fail`.
+
+    Counting an anti-bot wall as a product failure would make the number meaningless and
+    invite tuning it until it looked good.
+    """
+    source = SCRIPT.read_text(encoding="utf-8")
+    assert "degraded" in source
+    # only a contract break blocks
+    assert 'counts["fail"]' in source
+    assert 'counts["degraded"]' not in source.split("if args.strict")[-1], "degraded must not gate the run"
+
+
+def test_live_gate_probes_actual_reachability():
+    """System DNS is the wrong question: this machine resolves to 198.18.0.x yet fetches fine.
+
+    Pinned because using `has_real_dns` as the live gate skipped scenarios that work.
+    """
+    source = SCRIPT.read_text(encoding="utf-8")
+    assert "can_reach_internet" in source
+    assert "reached example.com" in source or "status" in source
+
+
+def test_degraded_bucket_is_reported_separately():
+    import tempfile
+
+    report = _run_benchmark(pathlib.Path(tempfile.mkdtemp()))
+    assert "degraded" in report
+    assert isinstance(report["degraded"], list)

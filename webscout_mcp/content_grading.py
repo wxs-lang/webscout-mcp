@@ -109,6 +109,28 @@ class ContentAssessment:
         }
 
 
+# Markup that was never stripped still reads as "long text" to a character count: a 401
+# error page carrying a <style> block and a JS challenge was graded usable at 201 chars.
+#
+# The discriminator is structural tags, not angle-bracket density. Measured on five
+# samples: a real article, a paragraph of prose containing literal "<" characters, and a
+# fragment of ordinary HTML content all scored 0 structural tags; the 401 page scored 6 and
+# a stylesheet-only body scored 4. Density alone misfired - the stylesheet body was 1.2%
+# angle brackets, below any threshold that leaves ordinary prose alone.
+_STRUCTURAL_TAG_RE = re.compile(r"<(html|head|body|script|style|title|meta|link|noscript)\b", re.IGNORECASE)
+
+
+def _looks_like_markup(text: str) -> bool:
+    """Whether the text is an unextracted page shell rather than content.
+
+    Requires at least two structural tags: one stray `<title>` in prose should not flip the
+    verdict, while every real page shell carries several.
+    """
+    if not text:
+        return False
+    return len(_STRUCTURAL_TAG_RE.findall(text)) >= 2
+
+
 def readable_ratio(text: str) -> float:
     """Fraction of characters that belong in readable prose.
 
@@ -177,6 +199,22 @@ def assess(text: str | None) -> ContentAssessment:
                 f"only {ratio * 100:.0f}% of {n} chars are readable "
                 f"(floor {MIN_READABLE_RATIO * 100:.0f}%) - likely a decode or "
                 f"compression fault upstream"
+            ),
+        )
+
+    if _looks_like_markup(body):
+        # A page that failed to extract arrives as markup. Length and sentence shape then
+        # describe the HTML, not the content, so any verdict computed from them is wrong -
+        # and wrong in the dangerous direction: it reports usable content where the caller
+        # has none.
+        return ContentAssessment(
+            grade="thin",
+            chars=n,
+            sentences=0,
+            avg_sentence_chars=0.0,
+            reason=(
+                f"body contains {len(_STRUCTURAL_TAG_RE.findall(body))} structural HTML tags "
+                "- extraction did not run, so this is a page shell rather than content"
             ),
         )
 

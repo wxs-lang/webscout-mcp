@@ -224,3 +224,40 @@ def test_summarise_counts_garbled_separately():
     assert summary["grades"]["garbled"] == 1
     assert summary["grades"]["usable"] == 1
     assert summary["garbled_rate"] == 50.0
+
+
+# --- unextracted markup must not read as content ----------------------
+# A Reuters 401 page carrying a <style> block and a JS challenge was graded usable at 201
+# chars before this check existed. The discriminator is structural tags, measured on five
+# samples: real prose, prose containing literal "<", and ordinary HTML content all scored
+# zero; the 401 page scored six and a stylesheet-only body scored four.
+
+
+def test_page_shell_is_not_usable_content():
+    shell = (
+        "<html><head><title>reuters.com</title>"
+        "<style>#cmsg{animation:A 1.5s;}</style></head>"
+        '<body><p id="cmsg">Please enable JS and disable any ad blocker</p>'
+        "<script>var dd={}</script></body></html>"
+    )
+    assert assess(shell).grade != "usable"
+
+
+def test_long_markup_does_not_pass_on_length_alone():
+    """The length shortcut must not override the markup check."""
+    body = "<html><head><style>" + "a{color:red;margin:0}" * 300 + "</style></head><body></body></html>"
+    result = assess(body)
+    assert len(body) > LONG_BODY_CHARS
+    assert result.grade == "thin"
+    assert "structural HTML tags" in result.reason
+
+
+def test_prose_with_angle_brackets_is_still_usable():
+    """Density thresholds misfire here; structural tags do not."""
+    text = "The comparison a < b holds for integers and sets alike. " * 30
+    assert assess(text).grade == "usable"
+
+
+def test_html_fragment_of_real_content_is_usable():
+    text = "<p>Real article text with substance behind it.</p>" * 30
+    assert assess(text).grade == "usable"
