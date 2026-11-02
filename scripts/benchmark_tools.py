@@ -122,6 +122,37 @@ class _FixtureHandler(http.server.BaseHTTPRequestHandler):
         pass
 
 
+def has_real_dns() -> tuple[bool, str]:
+    """Whether this machine resolves public hosts to public addresses.
+
+    Some environments (corporate proxies, certain local DNS shims) answer every lookup
+    with an address from a reserved range. Scenarios that need a real endpoint cannot run
+    there, and pretending otherwise would make the benchmark report a product failure for
+    an environment property.
+
+    Checked by resolving a host that must exist and inspecting the address, rather than by
+    an environment variable that someone has to remember to set.
+    """
+    import ipaddress
+    import socket
+
+    host = "example.com"
+    try:
+        infos = socket.getaddrinfo(host, 443)
+    except OSError as exc:
+        return False, f"cannot resolve {host}: {exc}"
+
+    for info in infos:
+        try:
+            addr = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            continue
+        if addr.is_private or addr.is_reserved or addr.is_loopback:
+            return False, f"{host} resolves to a reserved address ({addr})"
+
+    return True, f"{host} resolves to a public address"
+
+
 # --- result model -----------------------------------------------------
 
 
@@ -214,6 +245,7 @@ async def _run(port: int, report: Report) -> None:
     server = create_server()
     base = f"http://127.0.0.1:{port}"
     workdir = pathlib.Path(tempfile.mkdtemp())
+    real_dns, dns_reason = has_real_dns()
 
     # ---- pure computation, driven through the MCP surface ----
 
@@ -273,6 +305,7 @@ async def _run(port: int, report: Report) -> None:
     # fetch_service the tool builds, minus that hook.
 
     from webscout_mcp.eval_services import aclose_services, configure_eval_run
+    from webscout_mcp.extras.broken_link_checker import BrokenLinkChecker
     from webscout_mcp.fetch_provider import FetchRequest
     from webscout_mcp.json_select import extract as json_extract
     from webscout_mcp.monitor_adapter import FetchServiceAdapter, MonitorFetchResult
@@ -429,14 +462,32 @@ async def _run(port: int, report: Report) -> None:
 
         # BrokenLinkChecker installs its own SSRF guard unconditionally - correct for a
         # tool whose job is fetching arbitrary external links - so it cannot be pointed at
-        # a loopback fixture. Measured rather than assumed: the call returns
-        # "SSRF blocked: host 127.0.0.1 is not a public address". Reporting it as a
-        # failure would blame the product for enforcing its own safety property.
-        report.skip(
-            "broken_links",
-            "its SSRF guard rejects loopback by design; needs a public target, "
-            "which this machine's fake-IP DNS cannot provide",
-        )
+        # a loopback fixture. Where real DNS exists it can be pointed at a public host
+        # instead, so the check is attempted rather than skipped outright.
+        async def broken_links() -> str:
+            checker = BrokenLinkChecker(timeout=10.0)
+            # A public target, never the loopback fixture: the checker's own SSRF guard
+            # rejects 127.0.0.1, which is the property that makes it trustworthy for
+            # arbitrary external links. The first version branched on real_dns
+            # backwards and passed the loopback URL precisely where DNS worked, so CI
+            # failed with "SSRF blocked: host 127.0.0.1 is not a public address".
+            target = "https://example.com/"
+            html, final_url, error = await checker.fetch_page_html(target, max_chars=200000)
+            assert not error, error
+            assert html, "no page fetched"
+            report_obj = checker.check_page(html, base_url=final_url or target)
+            data = report_obj.to_dict() if hasattr(report_obj, "to_dict") else vars(report_obj)
+            assert data, data
+            return f"scanned {target}"
+
+        if real_dns:
+            report.add(await _check_async("broken_links", "scans a page for dead links", broken_links))
+        else:
+            report.skip(
+                "broken_links",
+                "its SSRF guard rejects loopback by design and needs a public target; "
+                f"unavailable here because {dns_reason}",
+            )
 
         async def content_quality_scenario() -> str:
             route = await svc.fetch(FetchRequest(url=f"{base}/", extract=True, output_format="text", max_chars=20000))
@@ -474,11 +525,21 @@ async def _run(port: int, report: Report) -> None:
     finally:
         await aclose_services(services)
 
-    # web_search is the one tool that genuinely needs the internet.
-    report.skip(
-        "web_search",
-        "needs a live search backend; this machine's DNS returns a fake-IP range",
-    )
+    # web_search genuinely needs the internet. Run it when the environment has real DNS
+    # rather than assuming it does not.
+    async def web_search() -> str:
+        out = _payload(await server.call_tool("web_search", {"query": "python programming language", "max_results": 3}))
+        results = out.get("results") or []
+        assert len(results) >= 1, out
+        return f"{len(results)} results"
+
+    if real_dns:
+        report.add(await _check_async("web_search", "returns structured results", web_search))
+    else:
+        report.skip(
+            "web_search",
+            f"needs a live search backend; unavailable here because {dns_reason}",
+        )
 
 
 def main() -> int:
