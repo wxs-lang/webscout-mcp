@@ -466,14 +466,14 @@ def main() -> int:
     # Generate MODULE_STATUS.md
     module_status_path = args.output_dir / "MODULE_STATUS.md"
     module_status_content = generate_module_status(tools)
-    module_status_path.write_text(module_status_content)
+    module_status_path.write_text(module_status_content, encoding="utf-8", newline="\n")
     print(f"  ✅ Generated {module_status_path}")
 
     # Generate docs/tools.md
     tools_doc_path = args.output_dir / "docs" / "tools.md"
     tools_doc_path.parent.mkdir(parents=True, exist_ok=True)
     tools_doc_content = generate_tools_doc(tools)
-    tools_doc_path.write_text(tools_doc_content)
+    tools_doc_path.write_text(tools_doc_content, encoding="utf-8", newline="\n")
     print(f"  ✅ Generated {tools_doc_path}")
 
     # Generate docs/RECOVERY_POLICY.md from the policy table.

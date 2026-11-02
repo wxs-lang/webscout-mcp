@@ -929,6 +929,7 @@ def create_server(config: Config | None = None) -> MCPServer:
         include_diff: bool = True,
         state_path: str = "",
         notify: list[str] = None,
+        json_path: str = "",
     ) -> str:
         """Check a URL for changes since the last check, and return what changed.
 
@@ -950,6 +951,12 @@ def create_server(config: Config | None = None) -> MCPServer:
         $100.00 to $900.00 is exactly what a text threshold would swallow, so it is
         compared as a percentage when `price_selector` is set.
 
+        `json_path` watches one value inside a JSON response instead of the whole body:
+        `json:$.product.price` uses JSONPath, `jq:.product.price` uses jq (needs the
+        `[json]` extra; JSONPath needs it too). Reducing an API response to one field is
+        what makes it stable enough to monitor - markup and prose churn, a price field
+        does not. Without `json_path` the whole body is compared as before.
+
         `notify` takes target URLs such as `webhook://example.com/hook`,
         `dingtalk://oapi.dingtalk.com/robot/send?access_token=X`, `telegram://TOKEN@CHAT`
         or `smtp://user:pass@host:587?to=a@b.c`. When a change is found it is pushed to
@@ -961,6 +968,7 @@ def create_server(config: Config | None = None) -> MCPServer:
 
         try:
             from .extras.monitor import MonitorConfig, WebMonitor
+            from .fetch_provider import FetchRequest
 
             config_kwargs: dict = {
                 "monitor_text": True,
@@ -980,14 +988,86 @@ def create_server(config: Config | None = None) -> MCPServer:
             if state_path:
                 config_kwargs["history_path"] = state_path
 
-            config = MonitorConfig(**config_kwargs)
-            # Route through fetch_service so monitoring inherits TLS impersonation,
-            # browser escalation and recovery classification. Without this the monitor
-            # does its own HTTP and a page that needs either of those returns "no change"
-            # forever, because the fetch itself never succeeds.
-            from .monitor_adapter import FetchServiceAdapter
+            # Set only on the JSON path; initialised here so the response block below can
+            # ask whether a selector was used without a NameError on the other branch.
+            payload_selected = None
 
-            monitor = WebMonitor(config=config, fetcher=FetchServiceAdapter(fetch_service))
+            # JSON selection: fetch once, reduce the body to the selected value, and hand
+            # the monitor that text instead of the raw response. Doing it here rather
+            # than inside the monitor keeps extraction and comparison separate, which is
+            # how changedetection.io structures the same problem.
+            if json_path:
+                from .json_select import SelectError, available_languages, extract
+
+                langs = available_languages()
+                if not langs["jsonpath"] and not langs["jq"]:
+                    return json.dumps(
+                        {
+                            "error": (
+                                "json_path needs the [json] extra. Install it with: pip install 'webscout-mcp[json]'"
+                            ),
+                            "url": url,
+                        },
+                        ensure_ascii=False,
+                    )
+
+                probe = await fetch_service.fetch(
+                    FetchRequest(
+                        url=url,
+                        extract=False,
+                        output_format="text",
+                        max_chars=2_000_000,
+                        # A monitor that reads a cached body reports "no change" forever.
+                        # Measured: the server returned 900 while the cache still yielded
+                        # 100, so the comparison saw the old value every time.
+                        bypass_cache=True,
+                    )
+                )
+                body = probe.primary_response.content or ""
+                if not body:
+                    return json.dumps(
+                        {
+                            "error": "Failed to fetch page content",
+                            "url": url,
+                            "recovery_reason": (
+                                probe.recovery_decision.reason.value if probe.recovery_decision is not None else None
+                            ),
+                            "recovery_outcome": probe.recovery_outcome,
+                        },
+                        ensure_ascii=False,
+                    )
+                try:
+                    selected = extract(body, json_path)
+                except SelectError as exc:
+                    return json.dumps(
+                        {
+                            "error": str(exc),
+                            "url": url,
+                            "selector": json_path,
+                            "available_languages": langs,
+                        },
+                        ensure_ascii=False,
+                    )
+
+                class _SelectedFetcher:
+                    """Serve the already-selected value; the monitor never hits the network."""
+
+                    def fetch(self, _url, **_kwargs):
+                        from .monitor_adapter import MonitorFetchResult
+
+                        return MonitorFetchResult(content=selected, html=selected)
+
+                config = MonitorConfig(**config_kwargs)
+                monitor = WebMonitor(config=config, fetcher=_SelectedFetcher())
+            else:
+                # Route through fetch_service so monitoring inherits TLS impersonation,
+                # browser escalation and recovery classification. Without this the
+                # monitor does its own HTTP and a page needing either of those returns
+                # "no change" forever, because the fetch itself never succeeds.
+                from .monitor_adapter import FetchServiceAdapter
+
+                config = MonitorConfig(**config_kwargs)
+                monitor = WebMonitor(config=config, fetcher=FetchServiceAdapter(fetch_service))
 
             # Notification targets resolved from URLs: the eight channels each need their
             # own constructor, so a URL is the only shape a caller can assemble reliably.
@@ -1037,6 +1117,13 @@ def create_server(config: Config | None = None) -> MCPServer:
                     "Reported changes are stored, so a repeat call sees only new ones.",
                 ],
             }
+            if payload_selected is not None:
+                # Echo what was actually watched. Without it a caller cannot tell whether
+                # the selector matched the field they meant, and a wrong path looks the
+                # same as a page that never changes.
+                out["json_path"] = json_path
+                out["selected_value"] = payload_selected
+
             if not changes and not out["baseline_established"]:
                 out["notes"].append(
                     "No change since the last check. If you expected one, widen "

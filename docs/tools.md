@@ -442,6 +442,7 @@ Check a URL for changes since the last check, and return what changed.
 | `include_diff` | bool | No | True | |
 | `state_path` | str | No | '' | |
 | `notify` | list[str] | No | None | |
+| `json_path` | str | No | '' | |
 
 **Example:**
 

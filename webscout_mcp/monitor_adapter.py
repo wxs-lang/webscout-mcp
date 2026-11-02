@@ -58,6 +58,9 @@ class FetchServiceAdapter:
             extract=False,
             output_format="html",
             max_chars=self._max_chars,
+            # Monitoring must see the current body. With the cache enabled a changed page
+            # keeps comparing equal to its own cached copy, so no change is ever reported.
+            bypass_cache=True,
         )
         try:
             try:
