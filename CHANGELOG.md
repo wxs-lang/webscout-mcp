@@ -5,6 +5,117 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v2.5.0 (2026-11-05)
+
+Two product fixes, and the benchmark changes that found both. The fixes are small diffs with
+user-visible consequences; the benchmark work is a large diff whose entire value is that it
+surfaced them.
+
+### Fixed
+
+- **A 202 bot challenge was reported as a completed fetch.** `classify_recovery` had no
+  branch for 202, so it fell through to `COMPLETE_CONTENT`. Measured on amazon.com:
+
+  ```
+  status=202  chars=157  outcome=accepted  error=None
+  body: "JavaScript is disabled. In order to continue, we need to verify that you're not
+         a robot. This requires JavaScript."
+  ```
+
+  A caller asking "did this fetch work" got yes. v1.14.0 fixed exactly this shape for a 200
+  carrying a challenge; the check was a status range (`status < 400`), so 202 went past it.
+
+  Now judged by content rather than by status, since 202 is also a legitimate "still
+  building your response" code: a usable body is still a success, anything else routes to
+  BROWSER with `content_grade` recorded. amazon now returns 7295 characters of real content
+  instead of a 157-character challenge declared as success.
+
+- **A login wall behind a 200 was graded as usable content, and then escalated.** Required
+  three defects to line up, and fixing any one alone changed nothing observable:
+
+  | defect | measured |
+  |---|---|
+  | `_looks_like_login_wall` scanned only the first 8 KB | zhihu's 45 KB page puts every marker at offset 12540-18568 |
+  | markers knew login *demands*, not login *forms* | `验证码登录`, `忘记密码`, `登录/注册` matched none |
+  | the check ran only inside the 403 branch | a 200 carrying a wall was never examined |
+
+  zhihu therefore reported `outcome=browser_success` - **a browser launch spent on a page no
+  browser can get past**, because rendering does not supply credentials. Now
+  `AUTH_REQUIRED` / `REQUIRE_AUTH` / `user_action_required`, with no escalation attempted.
+
+  The scan window is 48 KB, still bounded since this runs on every response.
+
+- **The live verdict trusted a fixed character count over the grader.** CI caught this as a
+  false regression:
+
+  ```
+  live: mozilla.org  degraded  860 chars, grade=usable
+  REGRESSION  live: mozilla.org: pass -> degraded
+  ```
+
+  `min_chars=1000` refused an 860-char page the grader called usable, and mozilla.org's
+  homepage legitimately varies with locale and which sections render. That is the same
+  mistake the surrounding work exists to remove - a constant standing in for a capability
+  judgement - so `min_chars` is now a floor that rejects a body too small to be a page at
+  all, and the grader decides above it.
+
+- **The benchmark read the wrong response field.** `_run_live` read `route.primary_response`
+  (the fast HTTP result) and ignored `route.final_response` (what the caller receives after
+  escalation). On amazon.com primary was a 202 challenge at 157 chars while final was 200 at
+  7295 usable chars, so a line read `degraded 157 chars, outcome=browser_success` - claiming
+  escalation worked and describing the pre-escalation body. **Every scenario where recovery
+  succeeded was under-reported.** The tool was correct; the benchmark was not.
+
+### Added
+
+- **Live result history.** One JSONL line per run, appended, compared with the previous run.
+  Appending rather than rewriting a JSON array, because a crash mid-write would otherwise
+  lose every earlier run - and a benchmark's value is its past.
+
+  Only `pass` -> worse is a regression. `skip` is coverage, never scored: ranking it worst
+  made `pass` -> `skip` read as a regression whenever the benchmark ran on a machine with
+  different network access.
+
+  ```
+  REGRESSION  live: example.com: pass -> degraded
+  CONTRACT    live: medium: degraded -> fail
+  unverified  live: broken_links: pass -> skip (coverage, not quality)
+  ```
+
+- **Live coverage extended to the documented difficulty ladder.** Twelve targets instead of
+  five, so the per-site claims in this file are checked rather than remembered. Current
+  state:
+
+  ```
+  pass     example.com, wikipedia, docs.python.org, iana.org,
+           mozilla.org, hackernews, amazon
+  degraded reuters (DataDome), medium (JS shell), reddit (JS shell),
+           stackoverflow (IP block), zhihu (IP block)
+  skip     broken_links (bare-IP TLS refused on this network)
+  ```
+
+- **CI runs `--live` and persists history across runs.** The job ran `--strict` alone, which
+  left `broken_links` covered by no gate at all. `actions/cache/restore` and `save` carry the
+  history file between runs, or a fresh runner reports "first recorded run" forever.
+  `[browser]` is installed alongside `[all]` because `[all]` omits `curl_cffi`, without which
+  the TLS-impersonation path is absent and `reuters` could only ever be `degraded`.
+
+### Verified
+
+- amazon: `browser_success` at 7295 chars, previously `accepted` for a 157-char challenge
+- zhihu: `user_action_required` at `AUTH_REQUIRED`, no escalation attempted
+- example / wikipedia / github unchanged, so the 6x wider login scan created no false
+  positives
+- 71 passed in the login-wall, policy, 202 and recovery suites; CI 25 checks green
+- live `7/12 pass, 5 degraded, 0 fail, 1 skipped`, every row internally consistent
+
+### Known gaps
+
+- The history file is unbounded and has no query interface. Deliberate: a few dozen real
+  runs are needed before the shape of the query is knowable.
+- Live verdicts still differ by network; `--history-context` makes that visible per machine
+  rather than invisible.
+
 ## v2.4.0 (2026-11-02)
 
 Three changes that found each other: the live benchmark exposed a grading defect, and
