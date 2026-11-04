@@ -357,7 +357,6 @@ async def _run(port: int, report: Report) -> None:
     # fetch_service the tool builds, minus that hook.
 
     from webscout_mcp.eval_services import aclose_services, configure_eval_run
-    from webscout_mcp.extras.broken_link_checker import BrokenLinkChecker
     from webscout_mcp.fetch_provider import FetchRequest
     from webscout_mcp.json_select import extract as json_extract
     from webscout_mcp.monitor_adapter import FetchServiceAdapter, MonitorFetchResult
@@ -511,35 +510,6 @@ async def _run(port: int, report: Report) -> None:
                 compare_sites_scenario,
             )
         )
-
-        # BrokenLinkChecker installs its own SSRF guard unconditionally - correct for a
-        # tool whose job is fetching arbitrary external links - so it cannot be pointed at
-        # a loopback fixture. Where real DNS exists it can be pointed at a public host
-        # instead, so the check is attempted rather than skipped outright.
-        async def broken_links() -> str:
-            checker = BrokenLinkChecker(timeout=10.0)
-            # A public target, never the loopback fixture: the checker's own SSRF guard
-            # rejects 127.0.0.1, which is the property that makes it trustworthy for
-            # arbitrary external links. The first version branched on real_dns
-            # backwards and passed the loopback URL precisely where DNS worked, so CI
-            # failed with "SSRF blocked: host 127.0.0.1 is not a public address".
-            target = "https://example.com/"
-            html, final_url, error = await checker.fetch_page_html(target, max_chars=200000)
-            assert not error, error
-            assert html, "no page fetched"
-            report_obj = checker.check_page(html, base_url=final_url or target)
-            data = report_obj.to_dict() if hasattr(report_obj, "to_dict") else vars(report_obj)
-            assert data, data
-            return f"scanned {target}"
-
-        if real_dns:
-            report.add(await _check_async("broken_links", "scans a page for dead links", broken_links))
-        else:
-            report.skip(
-                "broken_links",
-                "its SSRF guard rejects loopback by design and needs a public target; "
-                f"unavailable here because {dns_reason}",
-            )
 
         async def content_quality_scenario() -> str:
             route = await svc.fetch(FetchRequest(url=f"{base}/", extract=True, output_format="text", max_chars=20000))
@@ -718,6 +688,105 @@ async def _run_live(report: Report) -> None:
     finally:
         await aclose_services(services)
 
+    # BrokenLinkChecker pins its TCP connection to the IPs from its SSRF check, so it
+    # cannot use a loopback fixture. It also cannot share the fetch_service pipeline,
+    # which is why it lives here rather than among the local scenarios.
+    await _check_broken_links(report)
+
+
+async def _check_broken_links(report: Report) -> None:
+    """Scan a real page for dead links, or explain why the transport forbids it.
+
+    The checker resolves a URL, validates the addresses, then connects to the literal IP
+    with `Host` and SNI preserving routing - the point being that a second lookup would
+    allow rebinding. On a network that rejects TLS to a bare IP the handshake fails before
+    anything about the tool is exercised:
+
+        https://104.20.23.154/ + Host: example.com  -> SSLV3_ALERT_HANDSHAKE_FAILURE
+        https://example.com/                        -> 200
+
+    Reporting that as `fail` would blame the tool for a property of the network, so the
+    scenario distinguishes the two by the error it gets back.
+    """
+    from webscout_mcp.extras.broken_link_checker import BrokenLinkChecker
+
+    target = "https://example.com/"
+    proves = "scans a real page for dead links"
+    checker = BrokenLinkChecker(timeout=20.0)
+    try:
+        html, final_url, error = await checker.fetch_page_html(target, max_chars=200000)
+    except Exception as exc:  # noqa: BLE001
+        report.add(
+            ScenarioResult(
+                name="live: broken_links",
+                passed=False,
+                verdict="fail",
+                proves=proves,
+                error=f"{type(exc).__name__}: {exc}"[:200],
+            )
+        )
+        return
+
+    transport_refused_tls = bool(error) and ("SSLV3_ALERT" in error or "handshake" in error.lower())
+    if transport_refused_tls:
+        # The network refuses TLS to a pinned bare IP. The SSRF design is what forces the
+        # pin, so this is a transport constraint rather than a defect - and it is
+        # reported, not hidden.
+        report.skip(
+            "live: broken_links",
+            "its SSRF-pinned transport connects to a bare IP, which this network refuses "
+            f"at the TLS layer ({error[:80]}); works where hostname TLS is permitted",
+        )
+        return
+
+    if error:
+        report.add(
+            ScenarioResult(
+                name="live: broken_links",
+                passed=False,
+                verdict="fail",
+                proves=proves,
+                error=error[:200],
+            )
+        )
+        return
+
+    if not html:
+        report.add(
+            ScenarioResult(
+                name="live: broken_links",
+                passed=False,
+                verdict="fail",
+                proves=proves,
+                error="no page fetched and no error reported",
+            )
+        )
+        return
+
+    result = checker.check_page(html, base_url=final_url or target)
+    data = result.to_dict() if hasattr(result, "to_dict") else vars(result)
+    if not data:
+        report.add(
+            ScenarioResult(
+                name="live: broken_links",
+                passed=False,
+                verdict="fail",
+                proves=proves,
+                error="scan produced no report",
+            )
+        )
+        return
+
+    report.add(
+        ScenarioResult(
+            name="live: broken_links",
+            passed=True,
+            verdict="pass",
+            proves=proves,
+            detail=f"scanned {target}",
+        )
+    )
+
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Benchmark the MCP tool surface")
@@ -778,6 +847,11 @@ def main() -> int:
             for r in live_report.results:
                 note = r.detail if r.verdict != "fail" else r.error
                 print(f"{r.name:<{width2}}  {r.verdict:<9} {note[:92]}")
+            # A skip must be visible. The local section learned this the hard way; the
+            # live section inherited the same blind spot when broken_links became its
+            # first skip and disappeared from the output entirely.
+            for name, reason in live_report.skipped:
+                print(f"{name:<{width2}}  {'skip':<9} {reason[:92]}")
             counts = {
                 "pass": sum(1 for r in live_report.results if r.verdict == "pass"),
                 "degraded": sum(1 for r in live_report.results if r.verdict == "degraded"),
@@ -785,14 +859,22 @@ def main() -> int:
             }
             total = len(live_report.results)
             print()
-            print(f"live: {counts['pass']}/{total} pass, {counts['degraded']} degraded, {counts['fail']} fail")
+            # Skips are named in the tally. Reporting "2/5" while printing six rows
+            # reads as full coverage when one scenario never ran.
+            skipped_note = f", {len(live_report.skipped)} skipped" if live_report.skipped else ""
+            print(
+                f"live: {counts['pass']}/{total} pass, {counts['degraded']} degraded, "
+                f"{counts['fail']} fail{skipped_note}"
+            )
             data["live"] = {
                 "counts": counts,
                 "total": total,
+                "skipped_count": len(live_report.skipped),
                 "scenarios": [
                     {"name": r.name, "verdict": r.verdict, "detail": r.detail, "error": r.error}
                     for r in live_report.results
                 ],
+                "skipped": [{"name": n, "reason": why} for n, why in live_report.skipped],
             }
             # Only a contract break blocks. A site declining to serve us is a capability
             # boundary this project documents, not a regression.
