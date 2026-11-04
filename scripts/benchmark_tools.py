@@ -788,6 +788,170 @@ async def _check_broken_links(report: Report) -> None:
     )
 
 
+# --- history ----------------------------------------------------------
+# One JSONL line per run. Appended rather than rewritten: a whole-file rewrite loses every
+# previous run if it crashes partway, and a benchmark's value is precisely its past.
+
+HISTORY_DEFAULT = pathlib.Path("live-test-results") / "benchmark-history.jsonl"
+
+# Verdict severity, worst last. Used to decide whether a transition is a regression.
+#
+# `skip` is deliberately absent: it means "this environment could not verify", not "worse".
+# Ranking it worst made `pass` -> `skip` read as a regression, so running the benchmark on
+# two machines - one where a scenario works and one where its transport is blocked - would
+# report a regression on every alternation. Transitions involving skip are reported under
+# their own headings instead of being scored.
+_VERDICT_RANK = {"pass": 0, "degraded": 1, "fail": 2}
+
+
+def _record_run(path: pathlib.Path, data: dict, context: dict) -> dict:
+    """Append this run to the history file and return the previous entry, if any."""
+    entry = {
+        "recorded_at": context.get("recorded_at"),
+        "context": context,
+        "local": {
+            "total": data.get("total"),
+            "passed": data.get("passed"),
+            "failed": data.get("failed"),
+            "pass_rate": data.get("pass_rate"),
+        },
+        "live": data.get("live"),
+    }
+
+    previous = None
+    if path.exists():
+        lines = path.read_text(encoding="utf-8").splitlines()
+        for line in reversed(lines):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                previous = json.loads(line)
+            except json.JSONDecodeError:
+                # A truncated final line is what a killed process leaves behind. Skipping
+                # it loses one run, not the history.
+                continue
+            break
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # A killed process leaves a final line with no trailing newline; appending straight
+    # onto it would splice two records into one unparseable line and lose both. Detected
+    # rather than assumed, since the file may not exist yet.
+    needs_newline = False
+    if path.exists() and path.stat().st_size > 0:
+        with path.open("rb") as probe:
+            probe.seek(-1, 2)
+            needs_newline = probe.read(1) != b"\n"
+
+    with path.open("a", encoding="utf-8", newline="\n") as handle:
+        if needs_newline:
+            handle.write("\n")
+        handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+    return previous or {}
+
+
+def _verdict_map(entry: dict) -> dict[str, str]:
+    """Scenario name -> verdict, for whatever section the entry carries."""
+    out: dict[str, str] = {}
+    live = entry.get("live") or {}
+    for scenario in live.get("scenarios") or []:
+        out[scenario["name"]] = scenario.get("verdict", "fail")
+    for scenario in live.get("skipped") or []:
+        out[scenario["name"]] = "skip"
+    return out
+
+
+def _diff_verdicts(previous: dict, current: dict) -> dict[str, list]:
+    """Compare two runs.
+
+    A regression is a `pass` that got worse - the operator's chosen bar, because a site
+    adding a challenge page is not our defect and would otherwise swamp the signal.
+    `degraded` -> `fail` is surfaced separately: a contract break is more serious than a
+    capability boundary, even though a site can cause both.
+    """
+    before = _verdict_map(previous)
+    after = _verdict_map(current)
+    regressions: list[dict] = []
+    recoveries: list[dict] = []
+    contract_breaks: list[dict] = []
+    newly_skipped: list[dict] = []
+    unskipped: list[dict] = []
+
+    for name, verdict in sorted(after.items()):
+        old = before.get(name)
+        if old is None:
+            continue
+        if old == verdict:
+            continue
+        # Skip is a coverage fact, not a quality one. A scenario that stopped being
+        # verifiable (or started being verifiable) is reported, never scored.
+        if old == "skip" or verdict == "skip":
+            if old == "skip" and verdict != "skip":
+                unskipped.append({"name": name, "from": old, "to": verdict})
+            elif verdict == "skip" and old != "skip":
+                newly_skipped.append({"name": name, "from": old, "to": verdict})
+            continue
+
+        old_rank = _VERDICT_RANK.get(old, 2)
+        new_rank = _VERDICT_RANK.get(verdict, 2)
+        if old == "pass" and new_rank > old_rank:
+            regressions.append({"name": name, "from": old, "to": verdict})
+        elif old == "degraded" and verdict == "fail":
+            contract_breaks.append({"name": name, "from": old, "to": verdict})
+        elif new_rank < old_rank:
+            recoveries.append({"name": name, "from": old, "to": verdict})
+
+    return {
+        "regressions": regressions,
+        "contract_breaks": contract_breaks,
+        "recoveries": recoveries,
+        "newly_skipped": newly_skipped,
+        "unskipped": unskipped,
+        "appeared": sorted(set(after) - set(before)),
+        "disappeared": sorted(set(before) - set(after)),
+    }
+
+
+def _print_history(diff: dict, previous: dict, current_label: str) -> None:
+    when = previous.get("recorded_at") or "unknown time"
+    print()
+    print(f"compared with the previous run ({when}):")
+    scored = ("regressions", "contract_breaks", "recoveries", "appeared", "disappeared")
+    coverage = ("newly_skipped", "unskipped")
+    if not any(diff[key] for key in scored + coverage):
+        print("  no change in any verdict")
+        return
+
+    for item in diff["regressions"]:
+        print(f"  REGRESSION  {item['name']}: {item['from']} -> {item['to']}")
+    for item in diff["contract_breaks"]:
+        print(f"  CONTRACT    {item['name']}: {item['from']} -> {item['to']}")
+    for item in diff["recoveries"]:
+        print(f"  recovered   {item['name']}: {item['from']} -> {item['to']}")
+    # Coverage changes are printed but never scored: a scenario that stopped being
+    # verifiable here is a fact about the environment, not a capability drop.
+    for item in diff["newly_skipped"]:
+        print(f"  unverified  {item['name']}: {item['from']} -> {item['to']} (coverage, not quality)")
+    for item in diff["unskipped"]:
+        print(f"  verified    {item['name']}: {item['from']} -> {item['to']}")
+    for name in diff["appeared"]:
+        print(f"  new         {name}")
+    for name in diff["disappeared"]:
+        print(f"  gone        {name}")
+
+
+def _utc_now() -> str:
+    """UTC with an explicit offset.
+
+    Local time would make runs from different machines incomparable, and a naive timestamp
+    would silently compare as if it were UTC.
+    """
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Benchmark the MCP tool surface")
     ap.add_argument("--json", type=pathlib.Path, default=None, help="write the report here")
@@ -796,6 +960,22 @@ def main() -> int:
         "--live",
         action="store_true",
         help="also fetch real sites; degraded results are reported but do not fail the run",
+    )
+    ap.add_argument(
+        "--history",
+        type=pathlib.Path,
+        nargs="?",
+        const=HISTORY_DEFAULT,
+        default=None,
+        help=(
+            "append this run to a JSONL history and compare with the previous one "
+            f"(default path when the flag is given bare: {HISTORY_DEFAULT})"
+        ),
+    )
+    ap.add_argument(
+        "--history-context",
+        default="",
+        help="free-form label stored with the run, e.g. a commit sha or runner name",
     )
     args = ap.parse_args()
 
@@ -883,9 +1063,37 @@ def main() -> int:
                     args.json.write_text(json.dumps(data, indent=2), encoding="utf-8")
                 return 1
 
+    history_diff = None
+    if args.history is not None:
+        context = {
+            "recorded_at": _utc_now(),
+            "label": args.history_context,
+            "live": bool(args.live),
+            "python": sys.version.split()[0],
+            "platform": sys.platform,
+        }
+        previous = _record_run(args.history, data, context)
+        if previous:
+            history_diff = _diff_verdicts(previous, data)
+            _print_history(history_diff, previous, args.history_context)
+        else:
+            print()
+            print(f"history: first recorded run ({args.history})")
+        data["history"] = {
+            "path": str(args.history),
+            "compared_with": previous.get("recorded_at") if previous else None,
+            "diff": history_diff,
+        }
+
     if args.json:
-        args.json.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        args.json.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
         print(f"report written to {args.json}")
+
+    # A regression is only actionable when there is something to compare against, so it
+    # can only fail the run when a history was read.
+    if args.strict and history_diff:
+        if history_diff["regressions"] or history_diff["contract_breaks"]:
+            return 1
 
     if args.strict and data["failed"]:
         return 1
