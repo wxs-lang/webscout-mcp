@@ -5,6 +5,109 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v2.5.0 (2026-11-04)
+
+One product fix and four changes that let the benchmark find it. The product fix is the
+smaller diff and the more important line.
+
+### Fixed
+
+- **A 202 bot challenge was reported as a completed fetch.** `classify_recovery` had no
+  branch for 202, so it fell through to `COMPLETE_CONTENT`. Measured on amazon.com:
+
+  ```
+  status=202  chars=157  outcome=accepted  error=None
+  body: "JavaScript is disabled. In order to continue, we need to verify that you're not
+         a robot. This requires JavaScript."
+  ```
+
+  A caller asking "did this fetch work" got yes. v1.14.0 fixed exactly this shape for a
+  200 carrying a challenge; the range check `status < 400` let 202 past it.
+
+  Now judged by content rather than by status, since 202 is also a legitimate "still
+  building your response" code: a usable body is still a success, anything else routes to
+  BROWSER with `content_grade` recorded. Removing the branch makes 3 of its 6 tests fail.
+
+- **The benchmark was reading the wrong response field.** `_run_live` read
+  `route.primary_response` - the fast HTTP result - and ignored `route.final_response`,
+  what the caller actually receives after browser escalation. Measured on amazon.com:
+
+  ```
+  primary: status=202  chars=157   provider=http           -> graded empty
+  final  : status=200  chars=7295  provider=local-browser  -> graded usable
+  ```
+
+  So a line read `degraded 157 chars, outcome=browser_success`: it claimed escalation
+  worked and then described the pre-escalation body. **Every scenario where recovery
+  succeeded was under-reported.** The tool was correct throughout; the benchmark was not.
+
+- **A network property was reported as a broken tool.** `broken_links` sat in the local
+  section gated by a DNS probe, so when this machine's DNS started resolving public
+  addresses the scenario ran against `https://example.com/` and failed on
+  `SSLV3_ALERT_HANDSHAKE_FAILURE`. Its SSRF-pinned transport connects to a bare IP, which
+  this network refuses at the TLS layer - by design, since the pin is what prevents
+  rebinding. It is now a live scenario that degrades with the measured reason instead of
+  failing.
+
+### Added
+
+- **Live result history.** One JSONL line per run, appended, compared with the previous
+  run. Appending rather than rewriting a JSON array: a crash mid-write would otherwise
+  lose every earlier run, and a benchmark's value is its past.
+
+  Only `pass` -> worse is a regression. `skip` is coverage, never scored - ranking it worst
+  made `pass` -> `skip` read as a regression whenever the benchmark ran on a machine with
+  different network access, which is a self-inflicted false alarm rather than a signal.
+
+  ```
+  REGRESSION  live: example.com: pass -> degraded
+  CONTRACT    live: medium: degraded -> fail
+  unverified  live: broken_links: pass -> skip (coverage, not quality)
+  recovered   live: reuters: degraded -> pass
+  ```
+
+- **Live coverage extended to the documented difficulty ladder.** `CHANGELOG.md` names
+  sites by tier; the benchmark now checks twelve of them instead of five. Current state:
+
+  ```
+  pass     example.com, wikipedia, docs.python.org, iana.org,
+           mozilla.org, hackernews, amazon
+  degraded reuters (DataDome), medium (JS shell), reddit (JS shell),
+           stackoverflow (IP block), zhihu (IP block)
+  skip     broken_links (bare-IP TLS refused here)
+  ```
+
+  That matches the tiers this file documents, so the claim is now checked rather than
+  remembered.
+
+- **CI runs `--live` and persists the history across runs.** The job previously ran
+  `--strict` alone, which left `broken_links` covered by no gate at all - a fix that
+  removes a scenario from every gate is not a fix. `actions/cache/restore` and `save` carry
+  the history file between runs, or a fresh runner would report "first recorded run"
+  forever and no series would form.
+
+  `[browser]` is installed alongside `[all]` because `[all]` does not include `curl_cffi`;
+  without it the TLS-impersonation path is absent and `reuters` could only ever be
+  `degraded`, leaving CI covering two of the three delivery paths it claims.
+
+### Verified
+
+- amazon: `browser_success` at 7295 chars where it previously reported `accepted` for a
+  157-char challenge
+- local 15/15, live `7/12 pass, 5 degraded, 0 fail, 1 skipped` - every row internally
+  consistent
+- 36 tests across the 202, benchmark and history suites
+- `reddit` returns a JS shell and is correctly graded `thin` by the markup check added in
+  v2.4.0 - the first real-world confirmation that check works
+
+### Known gaps
+
+- The history file is unbounded and has no query interface. Deliberate: a few dozen real
+  runs are needed before the shape of the query is knowable, and indexing a guess wastes
+  the work.
+- Live verdicts still differ by network. The history makes that visible per machine via
+  `--history-context`, not invisible.
+
 ## v2.4.0 (2026-11-02)
 
 Three changes that found each other: the live benchmark exposed a grading defect, and
