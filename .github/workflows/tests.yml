@@ -257,16 +257,41 @@ jobs:
       # Only a `fail` verdict exits non-zero. A `degraded` verdict means the site answered
       # with something we lack the capability for - a challenge page, a JS shell - and
       # gating on that would turn a target's mood into a red build.
+      # A fresh runner has no history file, so without this the time series never forms and
+      # every run reports "first recorded run". The cache key is fixed rather than
+      # per-sha on purpose: the point is one evolving series, so a run must read whatever
+      # the previous run wrote. History is append-only, so a stale restore is still useful.
+      - name: Restore benchmark history
+        uses: actions/cache/restore@v4
+        with:
+          path: live-test-results/benchmark-history.jsonl
+          key: benchmark-history-${{ github.run_id }}
+          restore-keys: |
+            benchmark-history-
+
       - name: Run tool benchmark
         run: |
-          python scripts/benchmark_tools.py --strict --live --json benchmark-report.json
+          python scripts/benchmark_tools.py --strict --live \
+            --history live-test-results/benchmark-history.jsonl \
+            --history-context "ci:${{ github.sha }}" \
+            --json benchmark-report.json
+      - name: Save benchmark history
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: live-test-results/benchmark-history.jsonl
+          key: benchmark-history-${{ github.run_id }}
+
       - name: Upload benchmark report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: tool-benchmark-report
-          path: benchmark-report.json
+          path: |
+            benchmark-report.json
+            live-test-results/benchmark-history.jsonl
           retention-days: 30
+          if-no-files-found: warn
 
   coverage:
     name: Coverage Report
