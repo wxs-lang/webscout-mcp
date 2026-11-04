@@ -600,6 +600,51 @@ LIVE_TARGETS = [
         "expect": "browser escalation (JS-rendered)",
         "min_chars": 500,
     },
+    # The rest of the difficulty ladder documented in CHANGELOG.md, so the claim is checked
+    # rather than remembered. Each `expect` says what the tier predicts, which is what makes
+    # a `degraded` verdict readable instead of ambiguous.
+    {
+        "name": "iana.org",
+        "url": "https://www.iana.org/",
+        "expect": "plain HTTP; small but complete page",
+        "min_chars": 200,
+    },
+    {
+        "name": "mozilla.org",
+        "url": "https://www.mozilla.org/",
+        "expect": "plain HTTP with extraction",
+        "min_chars": 1000,
+    },
+    {
+        "name": "hackernews",
+        "url": "https://news.ycombinator.com/",
+        "expect": "plain HTTP; link-dense markup that trips sentence heuristics",
+        "min_chars": 1000,
+    },
+    {
+        "name": "amazon",
+        "url": "https://www.amazon.com/",
+        "expect": "202 bot challenge; needs browser escalation (fixed in 2.4.x)",
+        "min_chars": 500,
+    },
+    {
+        "name": "reddit",
+        "url": "https://www.reddit.com/",
+        "expect": "JS shell only; no article content without client-side rendering",
+        "min_chars": 500,
+    },
+    {
+        "name": "stackoverflow",
+        "url": "https://stackoverflow.com/questions",
+        "expect": "IP-reputation block (403); documented as out of reach",
+        "min_chars": 1000,
+    },
+    {
+        "name": "zhihu",
+        "url": "https://www.zhihu.com/",
+        "expect": "IP-reputation block; documented as out of reach",
+        "min_chars": 500,
+    },
 ]
 
 
@@ -635,7 +680,13 @@ async def _run_live(report: Report) -> None:
                     ),
                     timeout=90,
                 )
-                resp = route.primary_response
+                # Read what the caller receives, not what the network returned first.
+                # `primary_response` is the fast-HTTP result; after browser escalation or a
+                # provider fallback the served body is `final_response`. Measured on
+                # amazon.com: primary was a 202 challenge at 157 chars while final was 200
+                # at 7295 chars - so reading primary reported `degraded` with
+                # `outcome=browser_success` in the same line.
+                resp = route.final_response or route.primary_response
                 text = resp.content or ""
                 grade = assess(text).grade
                 outcome = route.recovery_outcome or ""
