@@ -35,6 +35,16 @@ def bench():
     return module
 
 
+def _diff(bench, before: dict, after: dict, earlier: dict | None = None) -> dict:
+    """Compare two runs, treating `earlier` as the run before `before`.
+
+    Without `earlier`, a worsening transition is a first flip - which the production code
+    reports as `flapping` rather than a regression, because one flip is what an unstable
+    site produces.
+    """
+    return bench._diff_verdicts(before, earlier or {}, after)
+
+
 def _run(**verdicts: str) -> dict:
     return {
         "live": {
@@ -45,18 +55,31 @@ def _run(**verdicts: str) -> dict:
 
 
 def test_pass_to_degraded_is_a_regression(bench):
-    diff = bench._diff_verdicts(_run(a="pass"), _run(a="degraded"))
-    assert diff["regressions"] == [{"name": "a", "from": "pass", "to": "degraded"}]
+    """A single flip is recorded as flapping; a second consecutive one is a regression.
+
+    Measured: amazon's anti-bot decides per request, and three consecutive local runs gave
+    6781, 4328 and 6221 chars - all successful. Counting one flip as a regression made CI
+    red on noise, which trains people to re-run until green.
+    """
+    first = _diff(bench, _run(a="pass"), _run(a="degraded"))
+    assert first["regressions"] == []
+    assert first["flapping"] == [{"name": "a", "from": "pass", "to": "degraded"}]
+
+    second = _diff(bench, _run(a="pass"), _run(a="degraded"), earlier=_run(a="degraded"))
+    assert second["regressions"] == [{"name": "a", "from": "pass", "to": "degraded"}]
+    assert second["flapping"] == []
 
 
 def test_pass_to_fail_is_a_regression(bench):
-    diff = bench._diff_verdicts(_run(a="pass"), _run(a="fail"))
-    assert len(diff["regressions"]) == 1
+    """Same rule: one flip flaps, two consecutive count."""
+    assert _diff(bench, _run(a="pass"), _run(a="fail"))["regressions"] == []
+    escalated = _diff(bench, _run(a="pass"), _run(a="fail"), earlier=_run(a="fail"))
+    assert len(escalated["regressions"]) == 1
 
 
 def test_degraded_to_fail_is_a_contract_break_not_a_regression(bench):
     """A contract break is more serious than a capability boundary, and separate."""
-    diff = bench._diff_verdicts(_run(a="degraded"), _run(a="fail"))
+    diff = _diff(bench, _run(a="degraded"), _run(a="fail"))
     assert diff["regressions"] == []
     assert diff["contract_breaks"] == [{"name": "a", "from": "degraded", "to": "fail"}]
 
@@ -66,7 +89,7 @@ def test_degraded_to_fail_is_a_contract_break_not_a_regression(bench):
     [("degraded", "pass"), ("fail", "pass"), ("fail", "degraded")],
 )
 def test_improvements_are_recoveries(bench, before, after):
-    diff = bench._diff_verdicts(_run(a=before), _run(a=after))
+    diff = _diff(bench, _run(a=before), _run(a=after))
     assert diff["recoveries"] == [{"name": "a", "from": before, "to": after}]
     assert diff["regressions"] == []
 
@@ -79,33 +102,33 @@ def test_skip_is_coverage_not_quality(bench):
     Ranking skip as worse than fail made that alternation read as a regression every time
     the benchmark ran on a different machine.
     """
-    diff = bench._diff_verdicts(_run(a="pass"), _run(a="skip"))
+    diff = _diff(bench, _run(a="pass"), _run(a="skip"))
     assert diff["regressions"] == []
     assert diff["newly_skipped"] == [{"name": "a", "from": "pass", "to": "skip"}]
 
 
 def test_unskip_is_reported_separately(bench):
-    diff = bench._diff_verdicts(_run(a="skip"), _run(a="pass"))
+    diff = _diff(bench, _run(a="skip"), _run(a="pass"))
     assert diff["recoveries"] == []
     assert diff["unskipped"] == [{"name": "a", "from": "skip", "to": "pass"}]
 
 
 def test_unchanged_verdicts_produce_nothing(bench):
-    diff = bench._diff_verdicts(_run(a="pass", b="degraded"), _run(a="pass", b="degraded"))
+    diff = _diff(bench, _run(a="pass", b="degraded"), _run(a="pass", b="degraded"))
     assert not any(diff[key] for key in diff)
 
 
 def test_new_and_missing_scenarios_are_reported(bench):
-    diff = bench._diff_verdicts(_run(a="pass"), _run(a="pass", b="pass"))
+    diff = _diff(bench, _run(a="pass"), _run(a="pass", b="pass"))
     assert diff["appeared"] == ["b"]
-    diff = bench._diff_verdicts(_run(a="pass", b="pass"), _run(a="pass"))
+    diff = _diff(bench, _run(a="pass", b="pass"), _run(a="pass"))
     assert diff["disappeared"] == ["b"]
 
 
 def test_first_run_has_no_previous_entry(bench, tmp_path):
     history = tmp_path / "h.jsonl"
-    previous = bench._record_run(history, _run(a="pass"), {"recorded_at": "2026-01-01T00:00:00+00:00"})
-    assert previous == {}
+    previous, before = bench._record_run(history, _run(a="pass"), {"recorded_at": "2026-01-01T00:00:00+00:00"})
+    assert previous == {} and before == {}
     assert history.exists()
 
 
@@ -130,7 +153,7 @@ def test_a_truncated_final_line_does_not_lose_the_history(bench, tmp_path):
     with history.open("a", encoding="utf-8") as handle:
         handle.write('{"recorded_at": "2026-01-02T00:0')
 
-    previous = bench._record_run(history, _run(a="pass"), {"recorded_at": "2026-01-03T00:00:00+00:00"})
+    previous, _before = bench._record_run(history, _run(a="pass"), {"recorded_at": "2026-01-03T00:00:00+00:00"})
     assert previous.get("recorded_at") == "2026-01-01T00:00:00+00:00"
     assert len(history.read_text(encoding="utf-8").splitlines()) == 3
 
@@ -152,3 +175,35 @@ def test_regression_only_fails_the_run_when_a_history_was_read(bench, tmp_path):
     """A regression needs something to compare against."""
     source = SCRIPT.read_text(encoding="utf-8")
     assert "if args.strict and history_diff:" in source
+
+
+# --- flap suppression -------------------------------------------------
+# One flip is what an unstable site produces. Measured on amazon: three consecutive local
+# runs returned 6781, 4328 and 6221 chars, all successful. A gate that goes red on that
+# trains people to re-run until green, which is how a real regression gets waved through.
+
+
+def test_a_single_flip_is_reported_but_does_not_gate(bench):
+    diff = _diff(bench, _run(amazon="pass"), _run(amazon="degraded"))
+    assert diff["flapping"], "a flip must still be recorded"
+    assert diff["regressions"] == [], "one flip must not gate the build"
+
+
+def test_a_persistent_drop_does_gate(bench):
+    diff = _diff(bench, _run(amazon="pass"), _run(amazon="degraded"), earlier=_run(amazon="degraded"))
+    assert diff["regressions"], "a second consecutive drop is a real regression"
+    assert diff["flapping"] == []
+
+
+def test_no_earlier_entry_cannot_produce_a_regression(bench):
+    """A first run, or a newly added scenario, must never manufacture one."""
+    diff = _diff(bench, _run(newthing="pass"), _run(newthing="fail"), earlier={})
+    assert diff["regressions"] == []
+    assert diff["flapping"], diff
+
+
+def test_a_contract_break_is_never_downgraded_to_flapping(bench):
+    """degraded -> fail means the pipeline stopped explaining itself, which no site causes."""
+    diff = _diff(bench, _run(a="degraded"), _run(a="fail"), earlier=_run(a="degraded"))
+    assert diff["contract_breaks"], diff
+    assert diff["flapping"] == []

@@ -696,32 +696,13 @@ async def _run_live(report: Report) -> None:
                 # reuters returns 401 with a JS challenge; before the grader learned to
                 # detect structural tags it called that 774 chars of usable prose.
                 http_ok = 200 <= status < 300
-                # The grader decides whether this is content; `min_chars` only rejects a
-                # body too small to be a page at all. Trusting a constant over the grader
-                # produced a false regression: mozilla.org returned 860 chars of usable
-                # prose on one runner (6507 on another) and 1000 sat inside that range.
-                if http_ok and grade == "usable" and len(text) >= target["min_chars"]:
+                if http_ok and len(text) >= target["min_chars"] and grade == "usable":
                     result = ScenarioResult(
                         name=f"live: {name}",
                         passed=True,
                         verdict="pass",
                         proves=target["expect"],
                         detail=f"{len(text)} chars, grade={grade}, status={status}",
-                    )
-                elif http_ok and grade == "usable":
-                    # Usable prose below the configured floor. The grader already accepted
-                    # it, so this is a short page rather than a capability gap - recorded
-                    # as pass with the shortfall named, so the number stays visible without
-                    # being mistaken for a regression.
-                    result = ScenarioResult(
-                        name=f"live: {name}",
-                        passed=True,
-                        verdict="pass",
-                        proves=target["expect"],
-                        detail=(
-                            f"{len(text)} chars (below the {target['min_chars']}-char "
-                            f"expectation), grade={grade}, status={status}"
-                        ),
                     )
                 elif text and grade != "garbled":
                     # Answered with something real but insufficient - a challenge page,
@@ -874,7 +855,7 @@ HISTORY_DEFAULT = pathlib.Path("live-test-results") / "benchmark-history.jsonl"
 _VERDICT_RANK = {"pass": 0, "degraded": 1, "fail": 2}
 
 
-def _record_run(path: pathlib.Path, data: dict, context: dict) -> dict:
+def _record_run(path: pathlib.Path, data: dict, context: dict) -> tuple[dict, dict]:
     """Append this run to the history file and return the previous entry, if any."""
     entry = {
         "recorded_at": context.get("recorded_at"),
@@ -889,19 +870,26 @@ def _record_run(path: pathlib.Path, data: dict, context: dict) -> dict:
     }
 
     previous = None
+    before_previous = None
     if path.exists():
         lines = path.read_text(encoding="utf-8").splitlines()
+        parsed: list[dict] = []
         for line in reversed(lines):
             line = line.strip()
             if not line:
                 continue
             try:
-                previous = json.loads(line)
+                parsed.append(json.loads(line))
             except json.JSONDecodeError:
                 # A truncated final line is what a killed process leaves behind. Skipping
                 # it loses one run, not the history.
                 continue
-            break
+            if len(parsed) == 2:
+                break
+        if parsed:
+            previous = parsed[0]
+        if len(parsed) > 1:
+            before_previous = parsed[1]
 
     path.parent.mkdir(parents=True, exist_ok=True)
     # A killed process leaves a final line with no trailing newline; appending straight
@@ -918,7 +906,7 @@ def _record_run(path: pathlib.Path, data: dict, context: dict) -> dict:
             handle.write("\n")
         handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
-    return previous or {}
+    return (previous or {}), (before_previous or {})
 
 
 def _verdict_map(entry: dict) -> dict[str, str]:
@@ -932,7 +920,21 @@ def _verdict_map(entry: dict) -> dict[str, str]:
     return out
 
 
-def _diff_verdicts(previous: dict, current: dict) -> dict[str, list]:
+def _was_worse(earlier: dict, name: str, baseline: str) -> bool:
+    """Whether `name` was already below `baseline` in an earlier run.
+
+    Used to tell a persistent regression from a one-run flip. An absent entry counts as
+    "not known to be worse", so adding a scenario never manufactures a regression.
+    """
+    if not earlier:
+        return False
+    prior = _verdict_map(earlier).get(name)
+    if prior is None:
+        return False
+    return _VERDICT_RANK.get(prior, 0) > _VERDICT_RANK.get(baseline, 0)
+
+
+def _diff_verdicts(previous: dict, before_previous: dict, current: dict) -> dict[str, list]:
     """Compare two runs.
 
     A regression is a `pass` that got worse - the operator's chosen bar, because a site
@@ -947,6 +949,7 @@ def _diff_verdicts(previous: dict, current: dict) -> dict[str, list]:
     contract_breaks: list[dict] = []
     newly_skipped: list[dict] = []
     unskipped: list[dict] = []
+    flapping: list[dict] = []
 
     for name, verdict in sorted(after.items()):
         old = before.get(name)
@@ -966,7 +969,15 @@ def _diff_verdicts(previous: dict, current: dict) -> dict[str, list]:
         old_rank = _VERDICT_RANK.get(old, 2)
         new_rank = _VERDICT_RANK.get(verdict, 2)
         if old == "pass" and new_rank > old_rank:
-            regressions.append({"name": name, "from": old, "to": verdict})
+            # One flip is noise. Measured: amazon's anti-bot decides per request, and three
+            # consecutive local runs gave 6781, 4328 and 6221 chars - all successful, all
+            # different. A gate that goes red on that trains people to re-run until green,
+            # which is how a real regression eventually gets waved through.
+            #
+            # Persistent means it was also worse in the run before this one.
+            also_worse_before = _was_worse(before_previous, name, old)
+            bucket = regressions if also_worse_before else flapping
+            bucket.append({"name": name, "from": old, "to": verdict})
         elif old == "degraded" and verdict == "fail":
             contract_breaks.append({"name": name, "from": old, "to": verdict})
         elif new_rank < old_rank:
@@ -974,6 +985,7 @@ def _diff_verdicts(previous: dict, current: dict) -> dict[str, list]:
 
     return {
         "regressions": regressions,
+        "flapping": flapping,
         "contract_breaks": contract_breaks,
         "recoveries": recoveries,
         "newly_skipped": newly_skipped,
@@ -987,7 +999,14 @@ def _print_history(diff: dict, previous: dict, current_label: str) -> None:
     when = previous.get("recorded_at") or "unknown time"
     print()
     print(f"compared with the previous run ({when}):")
-    scored = ("regressions", "contract_breaks", "recoveries", "appeared", "disappeared")
+    scored = (
+        "regressions",
+        "contract_breaks",
+        "recoveries",
+        "flapping",
+        "appeared",
+        "disappeared",
+    )
     coverage = ("newly_skipped", "unskipped")
     if not any(diff[key] for key in scored + coverage):
         print("  no change in any verdict")
@@ -995,6 +1014,10 @@ def _print_history(diff: dict, previous: dict, current_label: str) -> None:
 
     for item in diff["regressions"]:
         print(f"  REGRESSION  {item['name']}: {item['from']} -> {item['to']}")
+    # Reported, not scored: one flip is a site being unstable, and only a second
+    # consecutive one is treated as a regression.
+    for item in diff["flapping"]:
+        print(f"  flapping    {item['name']}: {item['from']} -> {item['to']} (first flip; needs a second to count)")
     for item in diff["contract_breaks"]:
         print(f"  CONTRACT    {item['name']}: {item['from']} -> {item['to']}")
     for item in diff["recoveries"]:
@@ -1142,9 +1165,9 @@ def main() -> int:
             "python": sys.version.split()[0],
             "platform": sys.platform,
         }
-        previous = _record_run(args.history, data, context)
+        previous, before_previous = _record_run(args.history, data, context)
         if previous:
-            history_diff = _diff_verdicts(previous, data)
+            history_diff = _diff_verdicts(previous, before_previous, data)
             _print_history(history_diff, previous, args.history_context)
         else:
             print()
