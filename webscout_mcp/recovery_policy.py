@@ -234,6 +234,17 @@ MARKER_SETS: tuple[MarkerSet, ...] = (
             "登录后查看",
             "登录后才能",
             "请先登录",
+            # Login *forms* rather than login *demands*. zhihu.com served a 200 login
+            # page whose controls ("验证码登录", "忘记密码", "登录/注册") matched none of the
+            # markers above, so the wall was missed and a browser escalation was spent on it.
+            "验证码登录",
+            "登录/注册",
+            "忘记密码",
+            "获取短信验证码",
+            "自动登录",
+            "login / register",
+            "forgot password",
+            "send code",
         ),
         purpose=(
             "Detect a genuine authentication requirement. A browser cannot bypass a real login, "

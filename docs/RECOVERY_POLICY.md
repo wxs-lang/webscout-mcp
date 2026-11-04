@@ -66,7 +66,7 @@
 |---|---|---|
 | `CHALLENGE_MARKERS` | 11 | Detect an interstitial challenge page where a browser could plausibly pass. |
 | `JS_PLACEHOLDER_MARKERS` | 5 | Detect a page that renders nothing without client-side JS. |
-| `LOGIN_WALL_MARKERS` | 13 | Detect a genuine authentication requirement. A browser cannot bypass a real login, so this must NOT escalate - escalating here wastes a browser call and still fails. Includes Chinese markers because the target sites are not all English. |
+| `LOGIN_WALL_MARKERS` | 21 | Detect a genuine authentication requirement. A browser cannot bypass a real login, so this must NOT escalate - escalating here wastes a browser call and still fails. Includes Chinese markers because the target sites are not all English. |
 | `NON_HTML_PREFIXES` | 6 | Content types that dedicated parsers handle. Escalating to a browser for these would be wrong. NOTE: this tuple is currently defined twice - once in recovery and once in fetch_escalation. |
 
 ## Structural findings

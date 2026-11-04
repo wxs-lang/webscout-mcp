@@ -68,6 +68,17 @@ _MIN_403_HTML_BYTES = 256
 # Strong login-wall markers. A 403 page that explicitly demands
 # authentication is NOT a browser-recoverable soft block: a browser cannot
 # bypass a real login requirement, so we must not escalate into it.
+# How much of a document to search for login vocabulary.
+#
+# 48 KB, not the 8 KB this used to use. Measured on zhihu.com: every login marker sits at
+# offset 12.5-18.5 KB in a 45 KB document, because inline CSS and the script bootstrap push
+# the real UI markup well past 8 KB. An 8 KB slice therefore returned False for an
+# unambiguous wall, and the page went on to be graded `usable` and escalated to a browser.
+#
+# Bounded rather than whole-document: this runs on every response, and a page that has
+# rendered its UI has done so within this slice.
+LOGIN_WALL_SCAN_CHARS = 48_000
+
 _LOGIN_WALL_MARKERS = (
     "please log in",
     "please sign in",
@@ -82,6 +93,17 @@ _LOGIN_WALL_MARKERS = (
     "登录后查看",
     "登录后才能",
     "请先登录",
+    # Login *forms* rather than login *demands*. The markers above catch a page telling you
+    # to sign in; these catch one showing you the controls. Measured: zhihu.com serves a
+    # login page using this vocabulary and matched none of the markers above.
+    "验证码登录",
+    "登录/注册",
+    "忘记密码",
+    "获取短信验证码",
+    "自动登录",
+    "login / register",
+    "forgot password",
+    "send code",
 )
 
 
@@ -185,7 +207,7 @@ def _looks_like_login_wall(html: str) -> bool:
     Only strong phrases are matched to avoid false positives on pages that
     merely link to a login page in their navigation.
     """
-    head = (html or "")[:8192].lower()
+    head = (html or "")[:LOGIN_WALL_SCAN_CHARS].lower()
     return any(m in head for m in _LOGIN_WALL_MARKERS)
 
 
@@ -335,6 +357,20 @@ def classify_recovery(response: FetchResponse) -> RecoveryDecision:
             omitted_chars=meta.get("omitted_chars"),
         )
         return _d(RecoveryReason.OUTPUT_TRUNCATED, RecoveryAction.CONTINUE_CONTENT, 0.95, **details)
+
+    # ---- 5b. login wall on any successful status -------------------------
+    # A login wall is not browser-recoverable: rendition cannot supply credentials. This
+    # was checked only inside the 403 branch, which encoded "a login wall is a 403" as an
+    # assumption. Measured on zhihu.com: a 200 carrying a login page skipped the check
+    # entirely, was graded `usable` because the UI text reads as prose, and then spent a
+    # browser launch on a page no browser can get past.
+    #
+    # Before the browser-signal step so it pre-empts escalation rather than competing.
+    if status < 400:
+        raw_body = getattr(response, "raw_html", "") or response.content or ""
+        if _looks_like_login_wall(raw_body):
+            details.update(escalation="LOGIN_WALL")
+            return _d(RecoveryReason.AUTH_REQUIRED, RecoveryAction.REQUIRE_AUTH, 0.85, **details)
 
     # ---- 6. browser-related signals (reuse escalation, no duplication) ---
     esc = should_escalate_to_browser(response)
