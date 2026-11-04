@@ -215,6 +215,31 @@ def classify_recovery(response: FetchResponse) -> RecoveryDecision:
     if status == 429 or error_code == StandardErrorCode.FETCH_RATE_LIMITED:
         return _d(RecoveryReason.RATE_LIMITED, RecoveryAction.RETRY_LATER, 0.9, **details)
 
+    # 202 means "accepted for processing, not completed", so it cannot be COMPLETE_CONTENT
+    # by default. Measured on amazon.com: a 202 carried "JavaScript is disabled ... verify
+    # that you're not a robot" and fell through to COMPLETE_CONTENT, reporting
+    # `error=None, outcome=accepted` for a bot challenge. v1.14.0 fixed that shape for a
+    # 200; 202 had no branch and slipped past the same way.
+    #
+    # Judged by content rather than by status: a site that genuinely answers 202 with real
+    # content is still a success. Anything else is not usable, so a browser escalation is
+    # the appropriate next step - same action a soft block gets.
+    if status == 202:
+        body = response.content or ""
+        try:
+            from .content_grading import assess
+
+            grade = assess(body).grade
+        except Exception:  # pragma: no cover - grading must never break classification
+            # No logger in this module, and a grading failure must not change the decision:
+            # falling back to "usable" preserves the pre-fix behaviour for that case only.
+            grade = "usable"
+        details["content_grade"] = grade
+        if grade == "usable":
+            return _d(RecoveryReason.COMPLETE_CONTENT, RecoveryAction.ACCEPT, 0.8, **details)
+        details.update(escalation=EscalationReason.SOFT_BLOCK.value)
+        return _d(RecoveryReason.SOFT_BLOCK, RecoveryAction.BROWSER, 0.85, **details)
+
     # ---- 2. transport / server failures ----------------------------------
     if error_code == StandardErrorCode.FETCH_TIMEOUT or "timeout" in error_text or status in (408, 504):
         return _d(RecoveryReason.TIMEOUT, RecoveryAction.RETRY, 0.85, **details)
