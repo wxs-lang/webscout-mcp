@@ -203,3 +203,44 @@ def test_degraded_bucket_is_reported_separately():
     report = _run_benchmark(pathlib.Path(tempfile.mkdtemp()))
     assert "degraded" in report
     assert isinstance(report["degraded"], list)
+
+
+# --- section membership ----------------------------------------------
+
+
+def test_broken_links_is_a_live_scenario_not_a_local_one():
+    """It cannot be a local scenario, and pretending otherwise broke the local rate.
+
+    `BrokenLinkChecker` pins its TCP connection to the IPs from its SSRF check, so it can
+    never use a loopback fixture, and it does not share the fetch_service pipeline. When it
+    sat in the local section gated by a DNS probe, the probe opened on a machine whose DNS
+    had started resolving public addresses and the local rate read 15/16 - an environment
+    property dressed up as a product regression.
+    """
+    source = SCRIPT.read_text(encoding="utf-8")
+    local, _, live = source.partition("async def _run_live")
+    assert "broken_links" not in local, "it must not be a local-section scenario"
+    assert "broken_links" in live, "it belongs to the live section"
+    assert "_check_broken_links" in live
+
+
+def test_broken_links_skips_on_a_tls_refusal_not_fails():
+    """A network that rejects TLS to a bare IP is not a defect in the tool.
+
+    Measured here: `https://104.20.23.154/` with `Host: example.com` gives
+    SSLV3_ALERT_HANDSHAKE_FAILURE while `https://example.com/` returns 200. The pin exists
+    to prevent DNS rebinding, so the constraint is the network's, not the code's.
+    """
+    source = SCRIPT.read_text(encoding="utf-8")
+    assert "transport_refused_tls" in source
+    assert "SSLV3_ALERT" in source
+    # the skip must name the reason rather than swallow it
+    assert "SSRF-pinned transport connects to a bare IP" in source
+
+
+def test_live_skips_are_visible_in_output_and_json():
+    """A live skip that vanishes from the report is coverage shrinking unseen."""
+    source = SCRIPT.read_text(encoding="utf-8")
+    assert "for name, reason in live_report.skipped" in source
+    assert '"skipped": [{"name": n, "reason": why} for n, why in live_report.skipped]' in source
+    assert "skipped_count" in source
