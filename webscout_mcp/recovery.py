@@ -92,6 +92,7 @@ _LOGIN_WALL_MARKERS = (
     "请登录",
     "登录后查看",
     "登录后才能",
+    "请先登录",
     # Login *forms* rather than login *demands*. The markers above catch a page telling you
     # to sign in; these catch one showing you the controls. Measured: zhihu.com serves a
     # login page using this vocabulary and matched none of the markers above.
@@ -103,7 +104,6 @@ _LOGIN_WALL_MARKERS = (
     "login / register",
     "forgot password",
     "send code",
-    "请先登录",
 )
 
 
