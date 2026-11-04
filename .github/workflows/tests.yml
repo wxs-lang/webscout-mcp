@@ -245,11 +245,21 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip setuptools wheel
-          pip install -e ".[all,dev,test]" || pip install -e .
+          # `[browser]` carries curl_cffi, which `[all]` does not include. Without it the
+          # TLS-impersonation path is absent and the reuters scenario can only ever be
+          # degraded - covering two of the three delivery paths instead of three.
+          pip install -e ".[all,browser,dev,test]" || pip install -e ".[browser]" || pip install -e .
           pip install pytest pytest-asyncio anyio
+      # --live is included so the scenarios that need a public target actually run here:
+      # `broken_links` uses its own SSRF-pinned transport and can never use a loopback
+      # fixture, so without --live it would be covered nowhere.
+      #
+      # Only a `fail` verdict exits non-zero. A `degraded` verdict means the site answered
+      # with something we lack the capability for - a challenge page, a JS shell - and
+      # gating on that would turn a target's mood into a red build.
       - name: Run tool benchmark
         run: |
-          python scripts/benchmark_tools.py --strict --json benchmark-report.json
+          python scripts/benchmark_tools.py --strict --live --json benchmark-report.json
       - name: Upload benchmark report
         if: always()
         uses: actions/upload-artifact@v4
