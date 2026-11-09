@@ -29,8 +29,17 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      - name: Install ruff
-        run: pip install ruff
+      - name: Install ruff and the project
+        # The doc check imports webscout_mcp.recovery_policy. Its real chain is
+        # longer than it looks - recovery_policy -> fetch_escalation -> fetch_provider
+        # -> search -> search_health -> serpapi_backend - and pulls httpx and bs4
+        # along the way. Adding packages one CI failure at a time is guesswork, so
+        # install the project and let pyproject declare its own dependencies.
+        #
+        # --no-deps is NOT used: the point is to resolve them.
+        run: |
+          pip install ruff
+          python -m pip install -e .
 
       - name: Run ruff lint
         run: |
@@ -44,7 +53,10 @@ jobs:
       - name: Check documentation is up-to-date
         run: |
           python scripts/generate_docs.py --check
-          git diff --exit-code MODULE_STATUS.md docs/tools.md
+          # RECOVERY_POLICY.md is generated from the policy table too; without it
+          # here the policy document can drift while this job stays green, which is
+          # exactly what happened when CHALLENGE was added.
+          git diff --exit-code MODULE_STATUS.md docs/tools.md docs/RECOVERY_POLICY.md
 
       - name: Upload ruff results
         if: always()

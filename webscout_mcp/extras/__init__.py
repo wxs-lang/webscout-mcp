@@ -17,5 +17,9 @@ Or import directly from the main package (compatibility shims are provided):
 from __future__ import annotations
 
 __all__ = [
-    # Experimental modules will be listed here as they are moved
+    # Website-analysis helpers, moved out of Core (REFACTOR_PLAN.md: they are
+    # not part of the web-research path). The MCP tools of the same name stay
+    # frozen and keep working; only the implementation import path moved.
+    "content_quality",
+    "broken_link_checker",
 ]

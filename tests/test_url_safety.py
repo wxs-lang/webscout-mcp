@@ -44,6 +44,8 @@ def test_public_ipv6_allowed():
         "192.168.255.255",
         "169.254.169.254",  # cloud metadata
         "169.254.169.253",
+        "100.64.0.1",  # RFC 6598 carrier-grade NAT shared address space
+        "100.127.255.254",  # End of the RFC 6598 shared address range
         "::1",
         "0.0.0.0",
         "224.0.0.1",
@@ -97,6 +99,14 @@ def test_dns_resolution_to_public_allowed():
     assert r.safe
 
 
+def test_dns_resolution_with_cgnat_address_is_blocked():
+    """A hostname returning any non-global address must be rejected as a whole."""
+    with patch("webscout_mcp.url_safety._resolve_host", return_value=["93.184.216.34", "100.64.0.1"]):
+        r = check_url_safe("http://mixed-addresses.example/")
+    assert not r.safe
+    assert "100.64.0.1" in (r.resolved_ips or [])
+
+
 def test_dns_failure_blocks():
     with patch("webscout_mcp.url_safety._resolve_host", return_value=[]):
         r = check_url_safe("http://nonexistent.invalid/")
@@ -115,7 +125,13 @@ def test_allow_private_skips_checks():
 
 
 def test_real_public_domain_passes():
-    r = check_url_safe("https://example.com/")
+    # Sandbox/CI DNS may hijack example.com into a reserved range
+    # (observed: 198.18.0.79, which is RFC 2544 benchmarking space and is
+    # correctly treated as non-public by the guard). Pin the resolver to
+    # example.com's real public IP so this test is deterministic and does
+    # not depend on ambient DNS.
+    with patch("webscout_mcp.url_safety._resolve_host", return_value=["93.184.216.34"]):
+        r = check_url_safe("https://example.com/")
     assert r.safe, r.reason
     assert r.resolved_ips
 

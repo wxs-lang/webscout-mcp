@@ -15,6 +15,18 @@ concurrency:
   group: live-tests
   cancel-in-progress: false
 
+# The repository default is read-only, so pushing the slo-history branch needs
+# this declared explicitly. Without contents:write the "Append this run to
+# slo-history" step fails with 403 and the rolling window silently never
+# accumulates - the exact failure this workflow change exists to prevent.
+permissions:
+  contents: write
+
+env:
+  # Passed explicitly to the one step that pushes. Keeping the credential out of
+  # the environment of every other step limits what an unrelated failure can leak.
+  SLO_HISTORY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 jobs:
   live-tests:
     name: Live Network Tests
@@ -64,6 +76,78 @@ jobs:
             echo "No report generated (tests may have failed)" >> $GITHUB_STEP_SUMMARY
           fi
 
+      - name: Check the live report carries quality data
+        if: always()
+        run: |
+          # This used to run `metrics snapshot` here, which was wrong on two
+          # counts. The counters live in the pytest process's memory, so a fresh
+          # process always wrote zeros; and because this step ran after pytest,
+          # it OVERWROTE the report the tests had just written, which did have
+          # data. The result was a report with content_quality.fetches=0 and
+          # every other counter empty, while the aggregator downstream read it as
+          # a real measurement.
+          #
+          # pytest now writes the report itself (test_save_live_report), so this
+          # step only verifies that data actually arrived. Failing here is
+          # correct: an all-zeroes report that looks measured is worse than none.
+          mkdir -p live-test-results
+          REPORT=live-test-results/live_report.json
+          if [ ! -f "$REPORT" ]; then
+            echo "::error::live_report.json was not written by the test run"
+            exit 1
+          fi
+          python - <<'PY'
+          import json, os, sys
+          path = "live-test-results/live_report.json"
+          data = json.load(open(path, encoding="utf-8"))
+          cq = data.get("content_quality") or {}
+          fetches = int(cq.get("fetches") or 0)
+          usable = int(cq.get("usable") or 0)
+          by_backend = cq.get("by_backend") or {}
+          print(f"content_quality: fetches={fetches} usable={usable} by_backend={by_backend}")
+          if fetches == 0:
+              print("::error::live_report.json has fetches=0 - the counters were not recorded")
+              sys.exit(1)
+          PY
+
+      - name: A/B evaluation (pipeline vs bare baseline)
+        if: always()
+        continue-on-error: true
+        run: |
+          # Measures whether the pipeline actually returns more usable content
+          # than a plain HTTP GET. This is the check whose 2026-10-23 result
+          # (-7.3pp) drove the whole quality-metrics effort, and whose harness
+          # was never committed, so it could not be repeated.
+          #
+          # continue-on-error: live-network variance must not turn the pipeline
+          # red, but the verdict and the raw observations are uploaded below so
+          # a FAIL is still visible and still re-scorable offline.
+          mkdir -p ab-report
+          python scripts/ab_evaluate.py \
+            --limit 40 \
+            --timeout 30 \
+            --run-id "ab-${GITHUB_RUN_ID:-local}" \
+            --out ab-report || true
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## A/B Evaluation (pipeline vs baseline)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f ab-report/report.md ]; then
+            cat ab-report/report.md >> $GITHUB_STEP_SUMMARY
+          else
+            echo "No A/B report generated." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload A/B evaluation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ab-evaluation
+          path: |
+            ab-report/
+          retention-days: 90
+          if-no-files-found: warn
+
       - name: Upload live test results
         if: always()
         uses: actions/upload-artifact@v7
@@ -72,6 +156,29 @@ jobs:
           path: |
             live-test-results/
           retention-days: 90
+
+      - name: Restore historical live reports
+        if: always()
+        # Each CI job starts from a fresh checkout, so without this the
+        # aggregator only ever sees the current run and its "7d/30d windows" are
+        # windows over a single sample - a rolling baseline can never
+        # accumulate.
+        #
+        # Artifacts cannot be used here: actions/download-artifact@v4 fetches
+        # artifacts from the *current* run only. Durable history lives on the
+        # `slo-history` branch instead, one JSON file per run.
+        continue-on-error: true
+        run: |
+          mkdir -p live-test-results/history
+          if git ls-remote --exit-code --heads origin slo-history >/dev/null 2>&1; then
+            git fetch --depth=1 origin slo-history
+            # The branch stores runs/<id>/live_report.json, which is exactly the
+            # shape the aggregator's **/live_report.json glob expects.
+            git archive FETCH_HEAD | tar -x -C live-test-results/history
+            echo "Restored history: $(find live-test-results/history -name live_report.json | wc -l) report(s)"
+          else
+            echo "No slo-history branch yet; this run starts the baseline."
+          fi
 
       - name: Generate SLO report (7d/30d metrics)
         if: always()
@@ -82,13 +189,48 @@ jobs:
           # "no data yet" / warning states, and exits 1 for SLO violations or
           # code/data errors. A parse failure must turn this job red so we
           # never get a green CI with a silently broken monitoring pipeline.
+          # The aggregator uses exit code 1 for "SLO violating", which is a
+          # verdict, not a crash - and during the baseline accrual period it is
+          # the expected verdict. Distinguish the two: 0 = healthy, 1 = verdict
+          # (surface it, do not fail the job), anything else = real error.
+          set +e
           python scripts/slo_aggregator.py
+          rc=$?
+          set -e
+          if [ "$rc" -ne 0 ] && [ "$rc" -ne 1 ]; then
+            echo "::error::SLO aggregation failed with exit code $rc (not a verdict)"
+            exit "$rc"
+          fi
+          if [ "$rc" -eq 1 ]; then
+            echo "::warning::SLO status is violating (see the dashboard below)"
+          fi
           echo ""
           echo "## SLO Dashboard" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           # Summary is generated by a real script (not an inline python -c
           # block) so YAML indentation can never break it again.
           python scripts/slo_dashboard_summary.py >> $GITHUB_STEP_SUMMARY
+
+      - name: Check F4 promotion evidence
+        # MODULE_STATUS.md declares nine tools Stable; REFACTOR_PLAN.md requires
+        # 30 days of live tests for Beta -> Stable. The claim has run ahead of
+        # the evidence since the tools shipped first, so this reports the gap
+        # instead of failing - an unmeasured claim is the problem, not the
+        # promotion having happened. Pass --require once the bar is reached to
+        # make it a hard gate.
+        if: always()
+        run: |
+          set -o pipefail
+          python scripts/check_promotion_evidence.py \
+            --history-root live-test-results/history \
+            2>&1 | tee promotion_evidence.txt
+          # exit 0 by design: see the comment above. A real read failure still
+          # surfaces as exit 2, which fails the step.
+          rc=${PIPESTATUS[0]}
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::promotion evidence check failed to read its inputs (rc=$rc)"
+            exit 1
+          fi
 
       - name: Upload SLO report
         if: always()
@@ -99,10 +241,79 @@ jobs:
             slo-reports/
           retention-days: 90
 
+      - name: Append this run to slo-history
+        if: always()
+        # The rolling window needs durable history, and artifacts expire and are
+        # per-run. A dedicated orphan branch keeps one small JSON per run:
+        # committed by CI, never merged, so it does not pollute main.
+        #
+        # Deliberately NOT continue-on-error. A failed push means the baseline
+        # never accumulates, and swallowing that leaves a green job over dead
+        # monitoring - which is precisely what defect 5 in GOAL_REVIEW.md is
+        # about. A permission problem must turn the job red.
+        run: |
+          set -euo pipefail
+          REPORT=live-test-results/live_report.json
+          if [ ! -f "$REPORT" ]; then
+            echo "No live_report.json produced; nothing to record."
+            exit 0
+          fi
 
-      # Note: Live test reports are stored as artifacts (90 days retention)
-      # and summarized in the GitHub Actions run summary.
-      # We do NOT push reports directly to main because:
+          STAMP=$(date -u '+%Y%m%dT%H%M%SZ')
+          RUNKEY="${GITHUB_RUN_ID:-local}-${STAMP}"
+
+          WORK=$(mktemp -d)
+          git config --global user.name  "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global url."https://x-access-token:${SLO_HISTORY_TOKEN}@github.com/".insteadOf "https://github.com/"
+
+          if git ls-remote --exit-code --heads origin slo-history >/dev/null 2>&1; then
+            git clone --depth=1 --branch slo-history "https://github.com/${GITHUB_REPOSITORY}.git" "$WORK"
+          else
+            # Orphan branch: no shared history with main, so it can hold data
+            # without ever being merged.
+            git init "$WORK"
+            cd "$WORK"
+            git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+            git checkout --orphan slo-history
+            git rm -rf . >/dev/null 2>&1 || true
+          fi
+
+          cd "$WORK"
+          # Layout matters: the aggregator globs for files literally named
+          # live_report.json, so each run lives in its own directory. A flat
+          # runs/<id>.json would be invisible to it.
+          mkdir -p "runs/${RUNKEY}"
+          cp "$GITHUB_WORKSPACE/$REPORT" "runs/${RUNKEY}/live_report.json"
+          git add runs
+          if git diff --cached --quiet; then
+            echo "Nothing new to commit."
+            exit 0
+          fi
+          git commit -m "slo-history: ${RUNKEY}"
+
+          # The push is the one part that can fail for permission reasons, and a
+          # silently swallowed 403 is the worst outcome: the job stays green
+          # while the rolling window never accumulates. Report it loudly.
+          # (It did exactly this on run 40167391860: commit succeeded, push got
+          # 403, step still showed success.)
+          set +e
+          git push origin slo-history 2>&1 | tee /tmp/push.log
+          push_rc=${PIPESTATUS[0]}
+          set -e
+          if [ "$push_rc" -ne 0 ]; then
+            echo "::error::Failed to push slo-history (exit $push_rc). The rolling SLO window will not accumulate."
+            if grep -q "403" /tmp/push.log; then
+              echo "::error::403 denied - the workflow needs 'permissions: contents: write'."
+            fi
+            exit "$push_rc"
+          fi
+          echo "Recorded runs/${RUNKEY}/live_report.json ($(ls -1d runs/*/ | wc -l) run(s) total)"
+
+      # Note: per-run reports are also uploaded as artifacts (90 days), but the
+      # SLO rolling window reads the `slo-history` branch because artifacts are
+      # per-run and expire.
+      # We do NOT push reports to main because:
       # 1. main is a protected branch
-      # 2. main should only contain code and reviewed config, not daily monitoring data
-      # 3. Historical data can be analyzed from artifacts or a dedicated dashboard
+      # 2. main should hold code and reviewed config, not daily monitoring data
+      # 3. an orphan branch keeps the data without ever being merged
