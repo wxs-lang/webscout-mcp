@@ -265,9 +265,14 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: live-test-results/benchmark-history.jsonl
-          key: benchmark-history-${{ github.run_id }}
+          key: benchmark-history-${{ github.ref_name }}-${{ github.run_id }}
+          # 前缀按分支隔离。之前共用 `benchmark-history-`，PR 会命中 main 最近的缓存
+          # 并继承它的历史，于是「amazon 在 main 上连续恶化」被算进 PR 的对比里，
+          # 把别人的退化记到这个 PR 头上。
+          #
+          # 同一分支内仍然取最新的一条，这正是要的：同一分支的连续运行构成一条序列。
           restore-keys: |
-            benchmark-history-
+            benchmark-history-${{ github.ref_name }}-
 
       - name: Run tool benchmark
         run: |
@@ -280,7 +285,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: live-test-results/benchmark-history.jsonl
-          key: benchmark-history-${{ github.run_id }}
+          key: benchmark-history-${{ github.ref_name }}-${{ github.run_id }}
 
       - name: Upload benchmark report
         if: always()
