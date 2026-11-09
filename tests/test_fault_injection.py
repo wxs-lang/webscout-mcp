@@ -122,9 +122,18 @@ class TestBackendHealthCircuitBreaker:
         assert health.consecutive_failures > 0
 
     def test_health_score_decreases_with_failures(self):
-        """Health score should decrease with failures."""
+        """Health score should decrease with failures.
+
+        v1.9.0: initial unobserved score is None, so we first record a
+        success to establish an observed baseline before comparing.
+        """
         health = BackendHealth(name="test-backend")
+        # Unobserved: score is None (not 1.0)
+        assert health.get_health_score() is None
+        # Record a success to establish observed baseline
+        health.record_success()
         initial_score = health.get_health_score()
+        assert initial_score is not None
 
         health.record_failure("timeout")
         health.record_failure("429")
@@ -473,16 +482,29 @@ class TestSystemResilience:
         assert "serpapi" in available
 
     def test_health_report_accurate(self):
-        """Health report should accurately reflect backend states."""
+        """Health report should accurately reflect backend states.
+
+        v1.9.0: unobserved backends report status="unobserved", not "healthy".
+        We record successes first to establish observed state.
+        """
         manager = SearchHealthManager(
             backend_names=["bing", "duckduckgo"],
             failure_threshold=2,
         )
 
-        # Initial state: all healthy
+        # Initial state: all unobserved (not healthy)
+        report = manager.get_health_report()
+        assert report["unobserved_backends"] == 2
+        assert report["healthy_backends"] == 0
+        assert report["open_circuits"] == 0
+        assert report["overall_health_score"] is None
+
+        # Record successes to establish observed healthy state
+        manager.record_success("bing")
+        manager.record_success("duckduckgo")
         report = manager.get_health_report()
         assert report["healthy_backends"] == 2
-        assert report["open_circuits"] == 0
+        assert report["observed_backends"] == 2
 
         # Take down Bing
         manager.record_failure("bing", "timeout")

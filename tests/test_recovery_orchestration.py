@@ -360,11 +360,14 @@ async def test_fallback_unavailable_keeps_primary():
 async def test_browser_unavailable_keeps_primary():
     html = "<html><body>Please enable JavaScript to continue.<noscript></noscript></body></html>"
     http = _Fake("http", {ProviderCapability.FETCH}, _resp(content="Please enable JavaScript.", raw_html=html))
-    svc, _, _ = _service([http])  # no BROWSER provider
+    svc, _, _ = _service([http])  # no BROWSER provider, no alternate FETCH provider
     route = await svc.fetch(FetchRequest(url="https://example.com"))
     assert route.browser_attempted is False
-    assert route.recovery_outcome == "browser_unavailable"
+    # Browser backend missing -> one bounded alternate-FETCH attempt, which
+    # finds no second FETCH provider -> terminal "browser_unavailable".
+    assert route.recovery_outcome == "browser_unavailable:fallback_unavailable"
     assert route.final_response.provider == "http"
+    assert not route.fallback_used
     assert route.escalation_decision is not None  # derived from recovery
 
 
@@ -480,5 +483,7 @@ async def test_observability_continue_and_deferred():
 def test_mcp_tool_count_unchanged():
     from pathlib import Path
 
-    server = Path(fs_mod.__file__).with_name("server.py").read_text()
-    assert server.count("@mcp.tool()") == 11
+    # Explicit encoding: read_text() defaults to the locale codec (cp936 on
+    # Windows) and cannot decode this UTF-8 source there.
+    server = Path(fs_mod.__file__).with_name("server.py").read_text(encoding="utf-8")
+    assert server.count("@mcp.tool()") == 15  # 15 since web_monitor; see COMPATIBILITY.md

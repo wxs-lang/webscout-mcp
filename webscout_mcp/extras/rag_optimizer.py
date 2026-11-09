@@ -24,6 +24,139 @@ from ..logging_config import get_logger
 log = get_logger(__name__)
 
 
+# Function words that carry no retrieval signal. Deliberately small and English-only:
+# this module has no tokeniser dependency, and a short list captures most of the damage
+# (the probe query "how long does browser rendering take" lost four of six tokens to
+# these). Words are compared lowercased.
+_STOP_WORDS = frozenset(
+    {
+        "a",
+        "an",
+        "and",
+        "are",
+        "as",
+        "at",
+        "be",
+        "been",
+        "but",
+        "by",
+        "can",
+        "could",
+        "did",
+        "do",
+        "does",
+        "for",
+        "from",
+        "had",
+        "has",
+        "have",
+        "how",
+        "if",
+        "in",
+        "into",
+        "is",
+        "it",
+        "its",
+        "may",
+        "me",
+        "might",
+        "must",
+        "my",
+        "of",
+        "on",
+        "or",
+        "our",
+        "shall",
+        "should",
+        "so",
+        "than",
+        "that",
+        "the",
+        "their",
+        "them",
+        "then",
+        "there",
+        "these",
+        "they",
+        "this",
+        "those",
+        "to",
+        "was",
+        "we",
+        "were",
+        "what",
+        "when",
+        "where",
+        "which",
+        "while",
+        "who",
+        "why",
+        "will",
+        "with",
+        "would",
+        "you",
+        "your",
+        "long",
+        "much",
+        "many",
+        "take",
+        "takes",
+        "get",
+        "got",
+        "make",
+        "makes",
+        "way",
+        "ways",
+        "use",
+        "used",
+        "using",
+        "one",
+        "two",
+    }
+)
+
+
+def _content_terms(text: str) -> set[str]:
+    """Lowercased, punctuation-trimmed tokens with stop words removed."""
+    terms = set()
+    for raw in text.lower().split():
+        token = raw.strip(".,;:!?()[]{}<>\"'`*_#-$%^&+=|~")
+        if len(token) >= 2 and token not in _STOP_WORDS:
+            terms.add(token)
+    return terms
+
+
+def _query_terms(query: str) -> set[str]:
+    """Query terms, falling back to the raw tokens when the query is all stop words."""
+    terms = _content_terms(query)
+    return terms or {w.strip(".,;:!?") for w in query.lower().split() if w.strip(".,;:!?")}
+
+
+def _idf_weights(term_sets: list[set[str]], query_terms: set[str]) -> dict[str, float]:
+    """Inverse document frequency for the query terms across candidate passages.
+
+    A term present in every passage cannot discriminate between them, so it should not
+    dominate the ranking. Smoothed so a term absent everywhere still gets a small weight
+    rather than a division by zero.
+    """
+    total = max(1, len(term_sets))
+    weights: dict[str, float] = {}
+    for term in query_terms:
+        containing = sum(1 for terms in term_sets if term in terms)
+        weights[term] = __import__("math").log((total + 1) / (containing + 1)) + 1.0
+    return weights
+
+
+def _relevance_score(passage: str, query_terms: set[str], weights: dict[str, float]) -> float:
+    """IDF-weighted share of the query's content terms present in the passage."""
+    if not query_terms:
+        return 0.0
+    passage_terms = _content_terms(passage)
+    total_weight = sum(weights.values()) or 1.0
+    matched_weight = sum(weights.get(term, 0.0) for term in query_terms & passage_terms)
+    return matched_weight / total_weight
+
+
 @dataclass
 class Chunk:
     """Text chunk for RAG."""
@@ -165,6 +298,36 @@ class SemanticChunker:
 
         return paragraphs
 
+    def _split_long_paragraph(self, text: str) -> list[str]:
+        """Break an over-long paragraph at sentence boundaries.
+
+        Without this, `_group_paragraphs` only cuts between paragraphs, so one long
+        paragraph either becomes an oversized chunk or gets truncated by a downstream
+        consumer mid-sentence. Sentence boundaries keep each chunk readable, and
+        measurement showed sentence-aligned units retrieve the answering passage where
+        word-truncated ones do not.
+        """
+        sentences = re.split(r"(?<=[.!?\u3002\uff01\uff1f])\s+", text.strip())
+        sentences = [s.strip() for s in sentences if s.strip()]
+        if len(sentences) <= 1:
+            return [text]
+
+        pieces: list[str] = []
+        current: list[str] = []
+        current_words = 0
+        for sentence in sentences:
+            words = len(sentence.split())
+            if current and current_words + words > self.max_chunk_size:
+                pieces.append(" ".join(current))
+                current = [sentence]
+                current_words = words
+            else:
+                current.append(sentence)
+                current_words += words
+        if current:
+            pieces.append(" ".join(current))
+        return pieces or [text]
+
     def _group_paragraphs(
         self,
         paragraphs: list[tuple[str, int, int]],
@@ -186,6 +349,22 @@ class SemanticChunker:
         current_chunk_start = 0
         chunk_index = 0
 
+        # Flatten over-long paragraphs into sentence-aligned pieces first, so the
+        # accumulator below never has to split a sentence to respect max_chunk_size.
+        expanded: list[tuple[str, int, int]] = []
+        for para_text, start, end in paragraphs:
+            if len(para_text.split()) > self.max_chunk_size:
+                offset = start
+                for piece in self._split_long_paragraph(para_text):
+                    found = full_text.find(piece, offset)
+                    piece_start = found if found != -1 else offset
+                    piece_end = piece_start + len(piece)
+                    expanded.append((piece, piece_start, piece_end))
+                    offset = piece_end
+            else:
+                expanded.append((para_text, start, end))
+        paragraphs = expanded
+
         for para_text, start, end in paragraphs:
             para_word_count = len(para_text.split())
 
@@ -201,11 +380,29 @@ class SemanticChunker:
                 chunks.append(chunk)
                 chunk_index += 1
 
-                # Start new chunk with overlap
+                # Start the new chunk with sentence-aligned overlap.
+                #
+                # Taking the last `overlap` *words* prepended a fragment, so every chunk
+                # after the first began mid-sentence ("JavaScript, because the initial
+                # HTML..."). A retriever then returns that fragment as a passage. Taking
+                # whole trailing sentences costs a few words more and keeps the chunk
+                # readable from its first character.
                 if self.overlap > 0 and chunks:
                     prev_text = chunks[-1].text
-                    overlap_words = prev_text.split()[-self.overlap :]
-                    current_chunk_text = " ".join(overlap_words) + " " + para_text
+                    prev_sentences = [
+                        s.strip() for s in re.split(r"(?<=[.!?\u3002\uff01\uff1f])\s+", prev_text.strip()) if s.strip()
+                    ]
+                    tail: list[str] = []
+                    word_budget = 0
+                    for sentence in reversed(prev_sentences):
+                        words = len(sentence.split())
+                        if tail and word_budget + words > self.overlap:
+                            break
+                        tail.insert(0, sentence)
+                        word_budget += words
+                        if word_budget >= self.overlap:
+                            break
+                    current_chunk_text = (" ".join(tail) + " " + para_text).strip() if tail else para_text
                 else:
                     current_chunk_text = para_text
                 current_chunk_start = start
@@ -300,13 +497,27 @@ class ContextCompressor:
             else:
                 break
 
-        # Extract key sentences from selected chunks
+        # Extract key sentences from selected chunks.
+        #
+        # Chunks overlap on purpose (so a passage spanning a boundary stays retrievable)
+        # and the overlap is sentence-aligned, so a whole sentence can appear in two
+        # chunks. Extracting per chunk and concatenating then repeats it, which spends
+        # the context budget on duplicate text - the opposite of compression. Dedupe by
+        # normalised sentence, keeping first-seen order so the result stays in document
+        # order.
         if self.enable_key_sentence_extraction:
             compressed_parts = []
+            seen_sentences: set[str] = set()
             for chunk in selected_chunks:
                 key_sentences = self._extract_key_sentences(chunk.text, query)
-                if key_sentences:
-                    compressed_parts.append(" ".join(key_sentences))
+                unique: list[str] = []
+                for sentence in key_sentences:
+                    key = " ".join(sentence.split()).lower()
+                    if key and key not in seen_sentences:
+                        seen_sentences.add(key)
+                        unique.append(sentence)
+                if unique:
+                    compressed_parts.append(" ".join(unique))
             compressed_context = "\n\n".join(compressed_parts)
         else:
             compressed_context = "\n\n".join(chunk.text for chunk in selected_chunks)
@@ -318,12 +529,14 @@ class ContextCompressor:
         if not query:
             return chunks
 
-        query_words = set(query.lower().split())
+        query_terms = _query_terms(query)
+        term_sets = [_content_terms(c.text) for c in chunks]
+        weights = _idf_weights(term_sets, query_terms)
+        total_weight = sum(weights.values()) or 1.0
 
-        for chunk in chunks:
-            chunk_words = set(chunk.text.lower().split())
-            overlap = len(query_words & chunk_words)
-            chunk.score = overlap / max(1, len(query_words))
+        for chunk, terms in zip(chunks, term_sets):
+            matched = query_terms & terms
+            chunk.score = round(sum(weights.get(term, 0.0) for term in matched) / total_weight, 4)
 
         return sorted(chunks, key=lambda c: c.score, reverse=True)
 
@@ -339,13 +552,17 @@ class ContextCompressor:
         if not query:
             return sentences[:max_sentences]
 
-        # Score sentences by query overlap
-        query_words = set(query.lower().split())
+        # Score sentences the same way chunks are scored - content terms only, IDF
+        # weighted across the sentences being compared. One formula for the whole
+        # module so its ranking cannot disagree with itself.
+        query_terms = _query_terms(query)
+        term_sets = [_content_terms(s) for s in sentences]
+        weights = _idf_weights(term_sets, query_terms)
+        total_weight = sum(weights.values()) or 1.0
         scored = []
-        for sent in sentences:
-            sent_words = set(sent.lower().split())
-            overlap = len(query_words & sent_words)
-            score = overlap / max(1, len(query_words))
+        for sent, terms in zip(sentences, term_sets):
+            matched = query_terms & terms
+            score = sum(weights.get(term, 0.0) for term in matched) / total_weight
             scored.append((score, sent))
 
         # Sort by score and take top N
@@ -493,13 +710,21 @@ class RAGOptimizer:
                 response.rewritten_query = rewritten
                 query = rewritten
 
-        # Simple retrieval (score by word overlap)
-        query_words = set(query.lower().split())
+        # Score by content terms, IDF-weighted across the candidates.
+        #
+        # The previous formula was overlap / len(query_words) with no stop-word
+        # filtering, so a query like "how long does browser rendering take" spent four
+        # of its six tokens on function words and a passage of unrelated prose could
+        # outrank the one stating the cost. Measured before the change: the
+        # "two to six seconds" passage never ranked first for that query.
+        query_terms = _query_terms(query)
+        term_sets = [_content_terms(c.text) for c in chunks]
+        weights = _idf_weights(term_sets, query_terms)
         scored_chunks = []
-        for chunk in chunks:
-            chunk_words = set(chunk.text.lower().split())
-            overlap = len(query_words & chunk_words)
-            chunk.score = overlap / max(1, len(query_words))
+        for chunk, terms in zip(chunks, term_sets):
+            matched = query_terms & terms
+            total_weight = sum(weights.values()) or 1.0
+            chunk.score = round(sum(weights.get(term, 0.0) for term in matched) / total_weight, 4)
             scored_chunks.append(chunk)
 
         scored_chunks.sort(key=lambda c: c.score, reverse=True)

@@ -224,6 +224,75 @@ jobs:
   # ============================================================
   # Coverage - single Python, all tests except E2E
   # ============================================================
+  # End-to-end benchmark across the tool surface. This is the layer that catches wiring
+  # regressions the unit suite cannot see: three defects in v2.1-v2.2 had green unit tests
+  # and still reached users. Runs on one Python version because it exercises behaviour,
+  # not compatibility - the unit matrix already covers the latter.
+  tool-benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          # `[browser]` carries curl_cffi, which `[all]` does not include. Without it the
+          # TLS-impersonation path is absent and the reuters scenario can only ever be
+          # degraded - covering two of the three delivery paths instead of three.
+          pip install -e ".[all,browser,dev,test]" || pip install -e ".[browser]" || pip install -e .
+          pip install pytest pytest-asyncio anyio
+      # --live is included so the scenarios that need a public target actually run here:
+      # `broken_links` uses its own SSRF-pinned transport and can never use a loopback
+      # fixture, so without --live it would be covered nowhere.
+      #
+      # Only a `fail` verdict exits non-zero. A `degraded` verdict means the site answered
+      # with something we lack the capability for - a challenge page, a JS shell - and
+      # gating on that would turn a target's mood into a red build.
+      # A fresh runner has no history file, so without this the time series never forms and
+      # every run reports "first recorded run". The cache key is fixed rather than
+      # per-sha on purpose: the point is one evolving series, so a run must read whatever
+      # the previous run wrote. History is append-only, so a stale restore is still useful.
+      - name: Restore benchmark history
+        uses: actions/cache/restore@v4
+        with:
+          path: live-test-results/benchmark-history.jsonl
+          key: benchmark-history-${{ github.run_id }}
+          restore-keys: |
+            benchmark-history-
+
+      - name: Run tool benchmark
+        run: |
+          python scripts/benchmark_tools.py --strict --live \
+            --history live-test-results/benchmark-history.jsonl \
+            --history-context "ci:${{ github.sha }}" \
+            --json benchmark-report.json
+      - name: Save benchmark history
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: live-test-results/benchmark-history.jsonl
+          key: benchmark-history-${{ github.run_id }}
+
+      - name: Upload benchmark report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tool-benchmark-report
+          path: |
+            benchmark-report.json
+            live-test-results/benchmark-history.jsonl
+          retention-days: 30
+          if-no-files-found: warn
+
   coverage:
     name: Coverage Report
     runs-on: ubuntu-latest
@@ -332,3 +401,90 @@ jobs:
             htmlcov/
             coverage_output.txt
           retention-days: 14
+
+  install-smoke:
+    # GOAL.md E2: after `pip install webscout-mcp` the CLI must start. Nothing
+    # tested this - no test file covered it, verify_installation.py never
+    # checked the entry point, and CI ran neither this script nor `pip install .`
+    # A broken entry point or a package missing from the wheel would have
+    # reached PyPI before anyone noticed.
+    name: Install Smoke (wheel + clean venv)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build wheel
+        run: |
+          set -o pipefail
+          python -m pip install --upgrade pip build
+          # Isolated build: `build` creates a temporary environment and installs
+          # what pyproject's [build-system] requires, which includes
+          # setuptools-scm. Isolation hides Python packages, not the filesystem,
+          # so setuptools_scm can still read .git from the working directory -
+          # disabling isolation (my first attempt) only meant the declared build
+          # requirement was never installed.
+          python -m build --wheel
+
+      - name: Install into a clean virtualenv
+        run: |
+          set -euo pipefail
+          python -m venv /tmp/smoke
+          # A fresh venv proves the wheel carries its own dependencies rather
+          # than borrowing them from the runner's site-packages.
+          /tmp/smoke/bin/python -m pip install --upgrade pip
+          /tmp/smoke/bin/python -m pip install dist/*.whl
+          echo "installed: $(/tmp/smoke/bin/python -m pip show webscout-mcp | grep -i ^Version: || echo unknown)"
+
+      - name: CLI must start
+        run: |
+          set -euo pipefail
+          echo "--- webscout-mcp --version ---"
+          /tmp/smoke/bin/webscout-mcp --version
+          echo "--- webscout-mcp --help (first 5 lines) ---"
+          /tmp/smoke/bin/webscout-mcp --help | head -5
+
+      - name: Version must match the git tag
+        run: |
+          set -euo pipefail
+          # Guards the stale-_version.py failure mode: an installed package
+          # reporting an old version is a packaging bug that no other check
+          # catches.
+          installed=$(/tmp/smoke/bin/webscout-mcp --version | awk '{print $2}')
+          expected=$(git describe --tags --abbrev=0 | sed 's/^v//')
+          echo "installed=$installed expected-tag=$expected"
+          case "$installed" in
+            "$expected"*) echo "OK: installed version matches tag $expected" ;;
+            *) echo "::error::installed version $installed does not start with tag $expected"; exit 1 ;;
+          esac
+
+      - name: verify_installation.py against the wheel
+        run: |
+          set -o pipefail
+          /tmp/smoke/bin/python -m pip install pytest
+          # The venv's bin must be on PATH: verify_installation locates the
+          # command with shutil.which(), and that is also the state a user is in
+          # after activating the venv. Calling the venv python by absolute path
+          # alone leaves PATH untouched, which is not a real deployment.
+          export PATH="/tmp/smoke/bin:$PATH"
+          PYTHONPATH="" /tmp/smoke/bin/python scripts/verify_installation.py \
+            2>&1 | tee install_smoke_output.txt
+          exit ${PIPESTATUS[0]}
+
+      - name: Upload smoke output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: install-smoke
+          path: install_smoke_output.txt
+          retention-days: 14
+          if-no-files-found: warn

@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-from .errors import StandardErrorCode
+from .core.errors import StandardErrorCode
 from .search import SearchResult
 
 
@@ -166,7 +166,7 @@ class SearchResponse:
 
         # Auto-detect retryable from error type
         if self.error_type and not self.retryable:
-            from .errors import RETRYABLE_ERROR_CODES
+            from .core.errors import RETRYABLE_ERROR_CODES
 
             if self.error_type in RETRYABLE_ERROR_CODES:
                 self.retryable = True

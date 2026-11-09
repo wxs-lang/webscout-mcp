@@ -14,9 +14,13 @@ Privacy rules (enforced by the helpers below, not by caller discipline):
 
 from __future__ import annotations
 
+import atexit
+import json
+import os
 import threading
 from collections import defaultdict
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
@@ -53,8 +57,21 @@ _RECOVERY_ACTIONS: dict[str, int] = defaultdict(int)
 _RECOVERY_EXECUTION: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
 # progressive content delivery counters (Phase 2.7C)
 _CONTINUATION: dict[str, int] = defaultdict(int)
+# Crawl lifecycle counters (Stable hardening Phase 1). Scalars only.
+_CRAWL: dict[str, int] = defaultdict(int)
+_CRAWL_BLOCKED: dict[str, int] = defaultdict(int)  # robots | ssrf
+# Content-usability counters (GOAL G1/G4). Scalars only — never content.
+_CONTENT_QUALITY: dict[str, int] = defaultdict(int)
+_CONTENT_RETURNED_CHARS: list[int] = []
 
 _MAX_LATENCIES = 500  # ring buffer per backend
+_MAX_CONTENT_SAMPLES = 500  # ring buffer for returned-content sizes
+
+# A fetched page returning fewer than this many characters is not usable as
+# evidence for an agent. 200 is deliberately low: it counts navigation-only
+# or captcha-only bodies as thin, while keeping short legitimate snippets
+# (a one-line answer, a stock quote) out of the thin bucket.
+THIN_CONTENT_CHARS = 200
 
 
 def safe_host(url: str) -> str:
@@ -152,6 +169,111 @@ def record_continuation(kind: str, chars: int = 0) -> None:
             _CONTINUATION["chars_served"] += int(chars)
 
 
+def record_crawl_lifecycle(
+    status: str,
+    *,
+    seed: str = "",
+    pages: int = 0,
+    duration_ms: float = 0.0,
+) -> None:
+    """Count a crawl lifecycle event.
+
+    status is one of: started, success, partial, failure. Only the seed
+    HOST (scheme://host, no path/query) is logged — never credentials.
+    """
+    with _LOCK:
+        key = f"crawl_{status}"
+        _CRAWL[key] += 1
+        if pages:
+            _CRAWL["crawl_pages_total"] += int(pages)
+    log.info(
+        "crawl_lifecycle",
+        extra={"status": status, "seed": seed, "pages": pages, "duration_ms": round(duration_ms, 2)},
+    )
+
+
+def record_crawl_blocked(kind: str) -> None:
+    """Count a per-page block. kind is 'robots' or 'ssrf'."""
+    with _LOCK:
+        _CRAWL_BLOCKED[kind] += 1
+    log.info("crawl_blocked", extra={"kind": kind})
+
+
+def record_content_quality(
+    *,
+    returned_chars: int,
+    pre_limit_chars: int | None = None,
+    truncated: bool = False,
+    omitted_chars: int = 0,
+    backend: str = "",
+    status: str = "",
+    content_grade: str = "",
+) -> None:
+    """Record the usability of one served fetch result (GOAL G1/G4).
+
+    This is the instrument that makes "did we actually get usable content?"
+    observable. Before it existed, the counters in this module could only say
+    "the request did not error" — a 200 response whose body was a captcha or a
+    navigation shell counted as a success. The v1.9.0 A/B run measured a
+    7.3pp content-usability gap against a bare baseline while every success
+    metric stayed green; this counter is what would have caught it.
+
+    Every argument is a scalar. Content, URLs, headers and credentials are
+    never accepted here, so they can never leak through this path.
+    """
+    chars = max(0, int(returned_chars or 0))
+    with _LOCK:
+        _CONTENT_QUALITY["fetches"] += 1
+        if status:
+            _CONTENT_QUALITY[f"status_{status}"] += 1
+        if backend:
+            _CONTENT_QUALITY[f"backend_{backend}"] += 1
+
+        # A caller-supplied grade wins: it was computed where the text already
+        # existed, so content never passes through this sink. Without one, fall
+        # back to the length rule so existing callers behave as before.
+        if content_grade in {"usable", "thin", "garbled", "empty"}:
+            _CONTENT_QUALITY[content_grade] += 1
+            _CONTENT_QUALITY["graded_by_shape"] += 1
+        elif chars == 0:
+            _CONTENT_QUALITY["empty"] += 1
+        elif chars < THIN_CONTENT_CHARS:
+            _CONTENT_QUALITY["thin"] += 1
+        else:
+            _CONTENT_QUALITY["usable"] += 1
+
+        if truncated:
+            _CONTENT_QUALITY["truncated_by_output_limit"] += 1
+        _CONTENT_QUALITY["chars_returned_total"] += chars
+        if pre_limit_chars is not None:
+            _CONTENT_QUALITY["pre_limit_chars_total"] += max(0, int(pre_limit_chars))
+        if omitted_chars:
+            _CONTENT_QUALITY["chars_omitted_total"] += max(0, int(omitted_chars))
+
+        _CONTENT_RETURNED_CHARS.append(chars)
+        if len(_CONTENT_RETURNED_CHARS) > _MAX_CONTENT_SAMPLES:
+            del _CONTENT_RETURNED_CHARS[:-_MAX_CONTENT_SAMPLES]
+
+    log.info(
+        "content_quality",
+        extra={
+            "returned_chars": chars,
+            "pre_limit_chars": pre_limit_chars,
+            "truncated_by_output_limit": bool(truncated),
+            "omitted_chars": omitted_chars,
+            "backend": backend,
+            "status": status,
+        },
+    )
+
+
+def _rate(numerator: int, denominator: int) -> float:
+    """Ratio in [0,1]; 0.0 when there is nothing to divide by."""
+    if denominator <= 0:
+        return 0.0
+    return round(numerator / denominator, 4)
+
+
 def _pct(values: list[float], p: float) -> float:
     if not values:
         return 0.0
@@ -176,7 +298,35 @@ def get_observability_summary() -> dict[str, Any]:
                 "p95_ms": round(_pct(lat, 0.95), 2),
                 "samples": len(lat),
             }
+        cq = dict(_CONTENT_QUALITY)
+        fetches = cq.get("fetches", 0)
+        returned = list(_CONTENT_RETURNED_CHARS)
+        content_quality = {
+            "fetches": fetches,
+            "usable": cq.get("usable", 0),
+            "thin": cq.get("thin", 0),
+            "empty": cq.get("empty", 0),
+            "usable_rate": _rate(cq.get("usable", 0), fetches),
+            "thin_rate": _rate(cq.get("thin", 0), fetches),
+            "empty_rate": _rate(cq.get("empty", 0), fetches),
+            "truncated_by_output_limit": cq.get("truncated_by_output_limit", 0),
+            "truncation_rate": _rate(cq.get("truncated_by_output_limit", 0), fetches),
+            "thin_threshold_chars": THIN_CONTENT_CHARS,
+            "chars_returned_total": cq.get("chars_returned_total", 0),
+            "chars_omitted_total": cq.get("chars_omitted_total", 0),
+            "returned_p50": int(_pct([float(x) for x in returned], 0.50)),
+            "returned_p95": int(_pct([float(x) for x in returned], 0.95)),
+            "samples": len(returned),
+            "by_status": {k[len("status_") :]: v for k, v in cq.items() if k.startswith("status_")},
+            "by_backend": {k[len("backend_") :]: v for k, v in cq.items() if k.startswith("backend_")},
+        }
         return {
+            # timestamp is what the SLO aggregator filters on to build the 7d/30d
+            # rolling windows. Without it every snapshot lands in the legacy
+            # bucket and is counted in every window forever, so the windows are
+            # not windows at all. Mirrors LiveTestReport.timestamp (epoch
+            # seconds), which the aggregator already parses.
+            "timestamp": datetime.now(timezone.utc).timestamp(),
             "started_at": _STARTED_AT,
             "backends": backends,
             "escalations": dict(_ESCALATION_REASONS),
@@ -185,6 +335,9 @@ def get_observability_summary() -> dict[str, Any]:
             "recovery_actions": dict(_RECOVERY_ACTIONS),
             "recovery_execution": {a: dict(o) for a, o in _RECOVERY_EXECUTION.items()},
             "continuation": dict(_CONTINUATION),
+            "crawl": dict(_CRAWL),
+            "crawl_blocked": dict(_CRAWL_BLOCKED),
+            "content_quality": content_quality,
         }
 
 
@@ -199,4 +352,127 @@ def reset_for_tests() -> None:
         _RECOVERY_ACTIONS.clear()
         _RECOVERY_EXECUTION.clear()
         _CONTINUATION.clear()
+        _CRAWL.clear()
+        _CRAWL_BLOCKED.clear()
+        _CONTENT_QUALITY.clear()
+        _CONTENT_RETURNED_CHARS.clear()
         _STARTED_AT = datetime.now(timezone.utc).isoformat()
+
+
+def write_snapshot(path: str | Path) -> dict[str, Any]:
+    """Persist the current counters to ``path`` as JSON and return the snapshot.
+
+    Counters live in process memory, so without this they vanish on exit and
+    nothing outside the process can read them. The SLO aggregator reads
+    ``live_report.json`` files from disk, so a run has to leave one behind for
+    its numbers to reach a report at all.
+
+    The write is atomic (temp file + replace) so a crash mid-write cannot leave
+    a truncated JSON file for the aggregator to choke on. Telemetry must never
+    break the caller: failures are logged at debug level and swallowed.
+    """
+    snapshot = get_observability_summary()
+    try:
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        tmp = target.with_suffix(target.suffix + ".tmp")
+        tmp.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(tmp, target)
+    except Exception:  # pragma: no cover - disk problems must never break a run
+        log.debug("observability snapshot write failed", exc_info=True)
+    return snapshot
+
+
+def read_snapshot(path: str | Path) -> dict[str, Any] | None:
+    """Load a snapshot previously written by :func:`write_snapshot`.
+
+    Returns None when the file is absent or unreadable/corrupt, so a damaged
+    snapshot degrades to "no data" instead of raising in a reporting path.
+    """
+    try:
+        target = Path(path)
+        if not target.exists():
+            return None
+        data = json.loads(target.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else None
+    except Exception:  # pragma: no cover - reporting must tolerate bad input
+        log.debug("observability snapshot read failed", exc_info=True)
+        return None
+
+
+def has_data() -> bool:
+    """True when at least one counter has recorded something worth persisting."""
+    with _LOCK:
+        if _CONTENT_QUALITY.get("fetches", 0) > 0:
+            return True
+        if any(b["calls"] for b in _BACKEND_BUCKETS.values()):
+            return True
+        if _ESCALATION_REASONS or _SSRF_BLOCKS or _RECOVERY_REASONS or _CRAWL:
+            return True
+        return bool(_CONTINUATION)
+
+
+# Guards against double registration of the exit hook.
+_exit_hook_registered = False
+# Kept so the handler can be unregistered; production arms it once and never
+# removes it, but tests must not inherit another test's arming.
+_exit_hook_handle: object | None = None
+
+
+def enable_snapshot_on_exit(path: str | Path) -> None:
+    """Persist a snapshot when the process exits.
+
+    Opt-in on purpose. Library use and the test suite must not litter the
+    filesystem with a snapshot for every short-lived process, so nothing is
+    written unless this was called explicitly — the MCP server does, and CI
+    calls it directly.
+
+    Runs that recorded nothing are skipped entirely: a process that served no
+    requests produces no file, rather than an all-zeroes snapshot that the
+    aggregator would read as "measured, 0% usable content".
+
+    Registration is idempotent; the first path wins. The write is wrapped so a
+    read-only or full disk can never turn a clean process exit into a failure.
+    """
+    global _exit_hook_registered
+
+    if _exit_hook_registered:
+        return
+
+    target = Path(path)
+
+    def _flush_at_exit() -> None:
+        try:
+            if not has_data():
+                log.debug("observability snapshot skipped: no data recorded")
+                return
+            write_snapshot(target)
+        except Exception:  # pragma: no cover - never fail process exit
+            log.debug("observability snapshot on exit failed", exc_info=True)
+
+    global _exit_hook_handle
+    _exit_hook_handle = _flush_at_exit
+    atexit.register(_flush_at_exit)
+    _exit_hook_registered = True
+
+
+def reset_snapshot_on_exit() -> None:
+    """Un-arm the exit hook.
+
+    Test support only. The server arms this once and wants it for the process
+    lifetime; the test suite needs isolation, because a test that arms the hook
+    leaves it pointing at the first caller's path for every test that runs after it.
+    """
+    global _exit_hook_registered, _exit_hook_handle
+    if _exit_hook_handle is not None:
+        try:
+            atexit.unregister(_exit_hook_handle)  # type: ignore[arg-type]
+        except Exception:  # pragma: no cover - defensive
+            pass
+    _exit_hook_handle = None
+    _exit_hook_registered = False
+
+
+def snapshot_on_exit_enabled() -> bool:
+    """True when :func:`enable_snapshot_on_exit` has been called."""
+    return _exit_hook_registered
