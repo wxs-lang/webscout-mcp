@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-from .errors import StandardErrorCode
+from .core.errors import StandardErrorCode
 from .logging_config import get_logger
 from .search_provider import ProviderHealth, ProviderHealthStatus
 
@@ -45,6 +45,7 @@ class FetchRequest:
     output_format: str | None = None
     max_chars: int | None = None
     bypass_cache: bool = False
+    start_char: int = 0
     timeout: float | None = None
     extra: dict[str, Any] = field(default_factory=dict)
 
@@ -74,7 +75,11 @@ class FetchResponse:
     latency_ms: float = 0.0
     error_code: StandardErrorCode | None = None
     retryable: bool = False
+    extraction_status: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    # Internal-only: raw decoded HTML used by escalation heuristics.
+    # Never serialized to to_dict(), metadata, WebResult, logs, or SQLite.
+    raw_html: str = ""
 
     @property
     def is_success(self) -> bool:
@@ -112,7 +117,9 @@ class FetchResponse:
             latency_ms=latency_ms,
             error_code=error_code,
             retryable=retryable,
+            extraction_status=getattr(result, "extraction_status", None),
             metadata=dict(getattr(result, "metadata", {}) or {}),
+            raw_html=getattr(result, "raw_html", "") or "",
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -135,6 +142,11 @@ class FetchResponse:
 
 def _map_fetch_error(status_code: int, error: str | None) -> tuple[StandardErrorCode | None, bool]:
     """Map HTTP status / exception text to a standard error code."""
+    if status_code == 404:
+        # FETCH_NOT_FOUND exists and recovery.py even branches on it, but this
+        # mapping never returned it - so 404 fell through to the generic
+        # FETCH_FAILED and that recovery branch was dead code.
+        return StandardErrorCode.FETCH_NOT_FOUND, False
     if status_code == 403:
         return StandardErrorCode.FETCH_FORBIDDEN, False
     if status_code == 429:
@@ -246,6 +258,12 @@ class HTTPFetchProvider(FetchProvider):
                 output_format=request.output_format,
                 max_chars=request.max_chars,
                 bypass_cache=request.bypass_cache,
+                start_char=request.start_char,
+                # FetchService records what the caller finally receives, after
+                # browser/fallback recovery. Recording here as well counted one
+                # fetch twice (by_backend showed both 'fetcher' and 'fast-http')
+                # and inflated the denominator, skewing the usable rate.
+                record_quality=False,
             )
             latency_ms = self._measure_latency(start)
             response = FetchResponse.from_fetch_result(result, provider=self.name, latency_ms=latency_ms)

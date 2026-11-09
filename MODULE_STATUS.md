@@ -14,7 +14,7 @@ This document provides transparency about the stability and integration status o
 
 ## MCP Tool Integration Status
 
-### ✅ Currently Exposed as MCP Tools (11 tools)
+### ✅ Currently Exposed as MCP Tools (15 tools)
 
 | Tool | Category | Stability | Description |
 |------|----------|-----------|-------------|
@@ -22,12 +22,16 @@ This document provides transparency about the stability and integration status o
 | `cache_stats` | Cache | ✅ Stable | Return cache statistics: entry count, total size, TTL, and limits. |
 | `broken_links` | Content Analysis | 🧪 Experimental | Check for broken links on a web page. |
 | `content_quality` | Content Analysis | 🧪 Experimental | Analyze content quality of a web page. |
-| `metadata_extract` | Content Analysis | 🔶 Beta | Extract metadata from a web page. |
-| `rss_parse` | Content Analysis | 🔶 Beta | Parse an RSS or Atom feed and return its entries. |
-| `web_crawl` | Crawl & Extract | 🔶 Beta | Crawl a website starting from a seed URL, respecting depth and page limits. |
+| `metadata_extract` | Content Analysis | ✅ Stable | Extract metadata from a web page. |
+| `rss_parse` | Content Analysis | ✅ Stable | Parse an RSS or Atom feed and return its entries. |
+| `web_crawl` | Crawl & Extract | ✅ Stable | Crawl a website starting from a seed URL, respecting depth and page limits. |
 | `web_extract` | Crawl & Extract | ✅ Stable | Extract structured data from a web page using CSS selectors. |
-| `web_fetch` | Fetch | ✅ Stable | Fetch a URL and return its content, optionally extracting the main article. |
-| `search_health` | Health | 🔶 Beta | Get health report for all search backends. |
+| `web_fetch` | Fetch | ✅ Stable | Fetch a URL and return one window of its extracted main content. |
+| `search_health` | Health | ✅ Stable | Get health report for all search backends. |
+| `web_compare_sites` | Other | 🧪 Experimental | Compare several websites side by side on SEO, performance, content and links. |
+| `web_knowledge_graph` | Other | 🧪 Experimental | Build a knowledge graph of entities and relationships from a page or text. |
+| `web_monitor` | Other | 🧪 Experimental | Check a URL for changes since the last check, and return what changed. |
+| `web_rag_context` | Other | 🧪 Experimental | Retrieve the passages of a page most relevant to a query, compressed to fit a co... |
 | `web_search` | Search | ✅ Stable | Search the web and return structured results. |
 
 ---
@@ -63,9 +67,9 @@ This document provides transparency about the stability and integration status o
 
 | Level | Count | Tools |
 |-------|-------|-------|
-| ✅ Stable | 5 | `web_search`, `web_fetch`, `web_extract`, `cache_stats`, `cache_clear` |
-| 🔶 Beta | 4 | `web_crawl`, `search_health`, `metadata_extract`, `rss_parse` |
-| 🧪 Experimental | 2 | `content_quality`, `broken_links` |
+| ✅ Stable | 9 | `web_search`, `web_fetch`, `web_crawl`, `web_extract`, `cache_stats`, `cache_clear`, `search_health`, `metadata_extract`, `rss_parse` |
+| 🔶 Beta | 0 |  |
+| 🧪 Experimental | 6 | `content_quality`, `broken_links`, `web_knowledge_graph`, `web_rag_context`, `web_compare_sites`, `web_monitor` |
 
 ---
 
@@ -95,17 +99,19 @@ These modules are the foundation of webscout-mcp. They are well-tested, used in 
 |--------|-------------|----------------|
 | `metadata_extractor.py` | Page metadata extraction | ✅ Yes |
 | `rss_parser.py` | RSS/Atom feed parsing | ✅ Yes |
-| `content_quality.py` | Content quality analysis | ✅ Yes |
-| `broken_link_checker.py` | Broken link checking | ✅ Yes |
 | `search_health.py` | Search health monitoring | ✅ Yes |
 | `serpapi_backend.py` | SerpAPI search backend | 📦 Library |
 
 ### 🧪 Experimental Modules (Extras)
 
-These modules are available in `webscout_mcp.extras` and are not part of the core MCP tools.
+These modules live in `webscout_mcp.extras` and are not part of the core web-research path.
+Note that `content_quality` and `broken_links` are still exposed as MCP tools - they are
+frozen in COMPATIBILITY.md and remain callable. Only their implementation moved out of Core.
 
 | Module | Description |
 |--------|-------------|
+| `extras/content_quality.py` | Content quality analysis (MCP tool `content_quality`) |
+| `extras/broken_link_checker.py` | Broken link checking (MCP tool `broken_links`) |
 | `extras/ai_optimizer.py` | AI-powered query optimization |
 | `extras/rag_optimizer.py` | RAG pipeline optimization |
 | `extras/knowledge_graph.py` | Knowledge graph construction |

@@ -1,0 +1,252 @@
+"""Decide whether a plain HTTP fetch should be escalated to a browser backend.
+
+This module is the single source of truth for "the fast fetch did not do a
+good enough job, ask Crawl4AI to render it". It intentionally does NOT call
+any browser backend itself — it only inspects the FetchResponse that the
+fast HTTP fetch produced and returns a structured decision.
+
+Rules (locked in v1.2.2):
+  escalate on:
+    - HTTP 403                                              (SOFT_BLOCK)
+    - HTTP 200 + Cloudflare/challenge/captcha markers       (SOFT_BLOCK)
+    - HTTP 200 + "Enable JavaScript" / JS-only placeholders (JS_REQUIRED)
+    - extracted text very short AND html/script heavy       (LOW_CONTENT_DENSITY)
+    - content_quality == low AND page size non-trivial      (LOW_QUALITY)
+  never escalate on:
+    - HTTP 451 (legal/geo block — browser won't help)
+    - HTTP 429 (rate limit — back off, don't add pressure)
+    - HTTP 401/407 (auth — not a rendering problem)
+    - DNS / TLS / connect failures (browser can't fix)
+    - PDF / JSON / RSS / images (use their own parsers)
+    - 5xx (retry, don't spawn Chromium)
+
+The decision object is also the unit of measurement: future versions can
+count how often each reason_code fired and whether the browser backend
+actually recovered the content.
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from enum import Enum
+from typing import Any
+
+from .fetch_provider import FetchResponse
+
+
+class EscalationReason(str, Enum):
+    SOFT_BLOCK = "SOFT_BLOCK"  # 403 / challenge / captcha
+    # An explicit interstitial asking the visitor to wait for a check.
+    CHALLENGE = "CHALLENGE"
+    JS_REQUIRED = "JS_REQUIRED"  # explicit "enable JavaScript" placeholder
+    LOW_CONTENT_DENSITY = "LOW_CONTENT_DENSITY"  # short text + heavy HTML/scripts
+    LOW_QUALITY = "LOW_QUALITY"  # analyzer marked the extracted content low quality
+
+
+# Markers that almost always mean a real browser is required.
+_CHALLENGE_MARKERS = (
+    "cloudflare",
+    "attention required",
+    "checking your browser",
+    "just a moment",
+    "captcha",
+    "are you a human",
+    "cf-browser-verification",
+    "challenge-platform",
+    # Non-English interstitials. Measured against three legitimate short Chinese
+    # pages (about / login / product): these hit the challenge and none of them.
+    # Deliberately narrow - broader phrases like 请耐心等待 appear in normal copy,
+    # and 验证码 / 人机验证 appear on legitimate login flows.
+    "安全检测",
+    "检测当前网络环境",
+    "火山引擎",
+)
+
+_JS_PLACEHOLDER_MARKERS = (
+    "enable javascript",
+    "javascript is required",
+    "please enable javascript",
+    "you need to enable javascript",
+    "<noscript>",
+)
+
+# Content types that have their own parsers and should never go to a browser.
+# Single source of truth: recovery.py imports this rather than keeping a second
+# copy, because two copies agreeing today is not the same as one definition.
+_NON_HTML_PREFIXES = (
+    "application/pdf",
+    "application/json",
+    "application/rss",
+    "application/xml",
+    "text/xml",
+    "image/",
+)
+
+# Thresholds. Tuned conservatively so we only escalate when we are fairly
+# confident the fast fetch missed the real content.
+_MIN_HTML_BYTES_FOR_LOW_DENSITY = 3000
+_MIN_TEXT_CHARS_FOR_REAL_PAGE = 200
+_MIN_PAGE_BYTES_FOR_LOW_QUALITY = 2000
+# Script-to-total ratio that marks an SPA shell inside the low-density rule.
+#
+# This is a DIFFERENT decision from recovery._HIGH_SCRIPT_RATIO (0.15), not a
+# drifted copy of it. The two rules differ in every dimension:
+#
+#   recovery thin_shell   html > 20000, text < 1500, ratio > 0.15 -> NOT escalated
+#   escalation low_density html >  3000, text <  200, ratio > 0.20 -> escalated
+#
+# Different document sizes, different text floors, and opposite actions. They
+# share the word "script ratio" and nothing else; unifying the numbers would
+# change behaviour in one direction or the other. Named anyway, because a bare
+# 0.2 inside the rule was invisible to the policy table.
+_LOW_DENSITY_SCRIPT_RATIO = 0.2
+
+
+@dataclass
+class FetchEscalationDecision:
+    """Structured decision returned by :func:`should_escalate_to_browser`."""
+
+    escalate: bool
+    reason_code: EscalationReason | None = None
+    confidence: float = 0.0  # 0..1; 1 = "we are sure browser helps"
+    details: dict[str, Any] | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "escalate": self.escalate,
+            "reason_code": self.reason_code.value if self.reason_code else None,
+            "confidence": round(self.confidence, 3),
+            "details": self.details or {},
+        }
+
+
+def _looks_like_challenge(html: str) -> bool:
+    head = html[:4096].lower()
+    return any(m in head for m in _CHALLENGE_MARKERS)
+
+
+def _looks_like_js_placeholder(html: str) -> bool:
+    head = html[:4096].lower()
+    # A real page with a tiny <noscript> fallback is fine; we only escalate
+    # when the whole page body is basically "enable JS".
+    if any(m in head for m in _JS_PLACEHOLDER_MARKERS[:-1]):
+        return True
+    # <noscript> present and the extracted text is essentially empty.
+    return False
+
+
+def _script_ratio(html: str) -> float:
+    if not html:
+        return 0.0
+    script_len = sum(
+        len(m.group(0)) for m in re.finditer(r"<script\b[^>]*>.*?</script\b[^>]*>", html, re.DOTALL | re.IGNORECASE)
+    )
+    return script_len / max(len(html), 1)
+
+
+def should_escalate_to_browser(response: FetchResponse) -> FetchEscalationDecision:
+    """Inspect a fast-fetch response and decide whether to escalate.
+
+    Args:
+        response: The FetchResponse produced by the plain HTTP fetcher.
+
+    Returns:
+        A FetchEscalationDecision. ``escalate=False`` is the safe default;
+        callers must respect it and NOT call the browser backend.
+    """
+    details: dict[str, Any] = {"status_code": response.status_code}
+    meta = response.metadata or {}
+
+    # --- Hard "do not escalate" cases -------------------------------------
+    if response.status_code in (451, 429, 401, 407):
+        return FetchEscalationDecision(False, details=details)
+
+    if response.error is not None:
+        low = response.error.lower()
+        if any(k in low for k in ("dns", "ssl", "certificate", "connect", "timeout", "robot")):
+            return FetchEscalationDecision(False, details=details)
+        # 5xx: retry, don't spawn Chromium.
+        if response.status_code >= 500:
+            return FetchEscalationDecision(False, details=details)
+
+    ctype = (response.content_type or "").lower()
+    if any(ctype.startswith(p) for p in _NON_HTML_PREFIXES):
+        details["content_type"] = ctype
+        return FetchEscalationDecision(False, details=details)
+
+    # --- Hard "escalate" cases --------------------------------------------
+    if response.status_code == 403:
+        details["content_type"] = ctype
+        return FetchEscalationDecision(
+            escalate=True,
+            reason_code=EscalationReason.SOFT_BLOCK,
+            confidence=0.9,
+            details=details,
+        )
+
+    # On success, inspect the body we got.
+    body = response.content or ""
+    # Prefer the internal raw HTML carried by the provider response; fall
+    # back to the (possibly extracted/truncated) body. raw_html is never
+    # read from metadata so it cannot leak into WebResult or SQLite.
+    raw_html = getattr(response, "raw_html", "") or meta.get("raw_html", "") or body
+    details["text_len"] = len(body)
+    details["html_len"] = len(raw_html)
+    details["script_ratio"] = round(_script_ratio(raw_html), 3)
+    # Output-limit truncation is a delivery-budget signal, not a browser
+    # requirement: a 200K RFC truncated to 8K needs continuation/chunking,
+    # not Chromium. Record it for observability but never escalate on it.
+    truncated_by_output_limit = bool(meta.get("truncated_by_output_limit", False))
+    details["truncated_by_output_limit"] = truncated_by_output_limit
+    if truncated_by_output_limit:
+        details["omitted_chars"] = meta.get("omitted_chars", 0)
+
+    if response.status_code == 200:
+        # Challenge markers are searched in the extracted body as well as the HTML
+        # head. On 36kr the marker sits at byte 25065 of a 25258-byte document, so
+        # the head-only check saw markup boilerplate; the body is 58 chars and
+        # contains it at position 0. Measured against two legitimate short pages:
+        # no false positives. Scanning the whole 25KB instead would match any large
+        # page whose scripts merely mention "captcha", which is why the body - what
+        # the reader would actually see - is the right extra surface.
+        if _looks_like_challenge(raw_html) or _looks_like_challenge(body):
+            # An explicit interstitial, not a silent fingerprint rejection: the page
+            # tells the visitor a check is running. Naming it lets a caller tell the
+            # two apart.
+            return FetchEscalationDecision(
+                escalate=True,
+                reason_code=EscalationReason.CHALLENGE,
+                confidence=0.95,
+                details=details,
+            )
+        if _looks_like_js_placeholder(raw_html):
+            return FetchEscalationDecision(
+                escalate=True,
+                reason_code=EscalationReason.JS_REQUIRED,
+                confidence=0.85,
+                details=details,
+            )
+
+        # Low content density: very little extracted text, but the HTML is
+        # non-trivial. This is the classic "JS-rendered SPA" signature.
+        if len(body) < _MIN_TEXT_CHARS_FOR_REAL_PAGE and len(raw_html) > _MIN_HTML_BYTES_FOR_LOW_DENSITY:
+            sr = _script_ratio(raw_html)
+            if sr > _LOW_DENSITY_SCRIPT_RATIO or _looks_like_js_placeholder(raw_html):
+                return FetchEscalationDecision(
+                    escalate=True,
+                    reason_code=EscalationReason.LOW_CONTENT_DENSITY,
+                    confidence=0.8,
+                    details=details,
+                )
+
+        # Content-quality analyzer (if the fetcher ran it) flagged the page.
+        if meta.get("content_quality") == "low" and len(raw_html) > _MIN_PAGE_BYTES_FOR_LOW_QUALITY:
+            return FetchEscalationDecision(
+                escalate=True,
+                reason_code=EscalationReason.LOW_QUALITY,
+                confidence=0.6,
+                details=details,
+            )
+
+    return FetchEscalationDecision(False, details=details)

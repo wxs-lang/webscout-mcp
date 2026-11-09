@@ -1,18 +1,17 @@
-# WebScout MCP - AI 智能网页侦察兵
+# WebScout MCP - AI Agent 的自愈式网页访问层
 
-> 为 AI Agent 打造的一站式网页智能平台，搜索、抓取、爬取、分析、理解、监控——全部本地运行，免费开源。
+> 为 AI Agent 打造的网页访问层：搜索、抓取、正文提取、长文渐进式阅读，配合 provider 路由、确定性恢复、浏览器回退、缓存与可观测性——全部本地运行，免费开源。核心 MCP 服务暴露 11 个工具。
 
 ## 🎯 这是什么？
 
 WebScout MCP 是一个 **MCP（Model Context Protocol）服务器**，让你的 AI 助手（Claude、Cursor、豆包等）拥有强大的网页能力：
 
 - 🔍 **搜索** - 多搜索引擎聚合，无需 API Key
-- 📄 **抓取** - 智能正文提取，JS 动态页面渲染
+- 📄 **抓取** - 智能正文提取，一次抓取后按 `start_char` 渐进式续读长文
 - 🕷️ **爬取** - 并发全站爬取，遵守 robots.txt
-- 🧠 **理解** - AI 摘要、问答、分类、情感分析
-- 🔎 **分析** - SEO 审计、死链检测、性能分析
-- 📡 **监控** - 网页变化监控，多渠道告警
-- 💾 **存储** - 本地向量数据库，语义搜索 + RAG
+- ♻️ **自愈恢复** - 截断 / JS 渲染 / 反爬 / 网络失败由确定性 Recovery 自动编排（续读 / 浏览器回退 / 重试 / 停止）
+- 🧠 **理解** - AI 摘要、问答、分类等为可选库（extras），核心安装不依赖
+- 📡 **监控 / 💾 向量** - 网页监控、本地向量库 / RAG 同样为可选 extras
 
 ## ✨ 核心亮点
 
@@ -79,6 +78,19 @@ webscout-mcp setup
 - 登录态保持（Cookie 持久化）
 - 反检测隐身模式
 - 资源拦截加速
+
+> **遇到反爬页面拿不到内容？** 需要装可选依赖，浏览器能力才会启用：
+>
+> `ash
+> pip install 'webscout-mcp[browser]'
+> playwright install chromium
+> `
+>
+> 装好后 web_fetch 会在页面需要渲染时自动升级，无需 sidecar 或 Docker。
+>
+> **注意**：挑战页的返回是 `status_code: 200` 且 `error: null`——从状态码看不出问题。
+> 判断依据是 `recovery_outcome` 和内容长度。完整的识别方法、能力边界（哪些站点连
+> 浏览器也打不开）、以及诊断步骤，见 [完整 README 的故障排查章节](README.md#troubleshooting-pages-that-need-a-browser)。
 
 ### 🔍 网站分析（新增）
 - **SEO 审计** - Meta 标签、标题结构、图片 Alt、链接质量、Schema 标记，多维度评分

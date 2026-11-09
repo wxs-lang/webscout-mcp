@@ -73,6 +73,14 @@ class SearchError(WebScoutError):
         super().__init__(message or f"Search failed for query: {query}")
 
 
+class SearchParseError(SearchError):
+    """Search backend returned HTTP success but its parser extracted zero results.
+
+    This is a backend-format drift / parser failure, NOT a legitimate empty
+    result set. It must be classified as PARSER_FAILURE, never EMPTY.
+    """
+
+
 class AllBackendsFailedError(SearchError):
     """Every configured search backend failed."""
 

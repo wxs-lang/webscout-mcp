@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Comprehensive MCP Function Test Suite - Test all 11 MCP tools.
+Comprehensive MCP Function Test Suite - Test all MCP tools.
 
 Covers:
 - web_search (multiple queries, languages, providers)
