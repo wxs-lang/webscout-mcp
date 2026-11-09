@@ -291,6 +291,18 @@ class LiveTestReport:
         except Exception:
             pass
 
+        # Content-quality counters (GOAL G1/G5). These live in process memory
+        # inside webscout_mcp.observability, so a report that omits them leaves
+        # the SLO aggregator with no quality data at all — which is exactly the
+        # state this report was in before. Best-effort: a reporting bug must
+        # never fail the live run.
+        try:
+            from webscout_mcp.observability import get_observability_summary
+
+            report["content_quality"] = get_observability_summary().get("content_quality", {})
+        except Exception:
+            pass
+
         return report
 
     def save(self, path: str | Path) -> None:

@@ -68,12 +68,19 @@ class BrowserFingerprint:
     browser_type: str = "chrome"  # chrome, firefox, safari
 
     def to_headers(self) -> dict[str, str]:
-        """Convert fingerprint to HTTP headers dictionary."""
+        """Convert fingerprint to HTTP headers dictionary.
+
+        Deliberately omits Accept-Encoding. The fingerprint value is still available
+        on the dataclass for diagnostics, but advertising an encoding this install
+        may not be able to decode is how the brotli bug happened: the header claimed
+        `br`, servers complied, and httpx silently handed back compressed bytes when
+        the `brotli` package was absent. httpx now negotiates this itself, adding
+        `br` only when it can actually decode it.
+        """
         headers = {
             "User-Agent": self.user_agent,
             "Accept": self.accept,
             "Accept-Language": self.accept_language,
-            "Accept-Encoding": self.accept_encoding,
             "Connection": self.connection,
             "Upgrade-Insecure-Requests": self.upgrade_insecure_requests,
             "Sec-Fetch-Dest": self.sec_fetch_dest,

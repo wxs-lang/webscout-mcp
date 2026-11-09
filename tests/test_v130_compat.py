@@ -26,6 +26,12 @@ def test_mcp_tool_count_unchanged():
             "rss_parse",
             "content_quality",
             "broken_links",
+            # Added deliberately for content understanding; see COMPATIBILITY.md.
+            # The eleven originals are unchanged in name and schema.
+            "web_knowledge_graph",
+            "web_rag_context",
+            "web_compare_sites",
+            "web_monitor",
         ]
     )
     assert names == expected, names
@@ -46,8 +52,14 @@ def test_observability_still_callable():
 
 
 def test_ssrf_guard_still_blocks_localhost():
+    from unittest.mock import patch
+
     from webscout_mcp.url_safety import check_url_safe
 
     assert not check_url_safe("http://127.0.0.1/").safe
     assert not check_url_safe("http://169.254.169.254/latest/meta-data/").safe
-    assert check_url_safe("https://example.com/").safe
+    # The two assertions above are IP literals (no DNS). The example.com
+    # hop is pinned to its real public IP so sandbox DNS hijacking
+    # (example.com -> 198.18.0.79) does not flip this assertion.
+    with patch("webscout_mcp.url_safety._resolve_host", return_value=["93.184.216.34"]):
+        assert check_url_safe("https://example.com/").safe

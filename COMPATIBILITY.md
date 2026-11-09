@@ -12,7 +12,7 @@ v2.0.0. Agents and integrations can rely on these being stable.
 
 ## 1. MCP Tools (Frozen)
 
-The following 11 MCP tools are frozen. Their names, parameter schemas,
+The following 15 MCP tools are frozen. Their names, parameter schemas,
 and return structure will remain backwards-compatible.
 
 ### Core Web Tools
@@ -53,6 +53,22 @@ Fetch a single URL and extract main content, returning one window of the article
 > Note: the legacy `max_length` parameter name is **deprecated/removed**; the current parameter is `max_chars`.
 
 **Returns:** JSON string with extracted content, metadata, and status. When more content remains, the response includes an additive `continuation` object (`has_more`, `start_char`, `end_char`, `next_start_char`, `total_chars`, `remaining_chars`, `served_from_snapshot`). Agents that ignore it behave exactly as before; the field is purely additive.
+
+**v1.10.0 additive fields** (backwards-compatible; old consumers may ignore):
+
+- `error_code` (string or null): the standard error taxonomy code for a failed
+  fetch, e.g. `FETCH_NOT_FOUND`, `FETCH_SERVER_ERROR`, `FETCH_CONNECTION_ERROR`.
+  Null on success. Before this, a caller saw only `status_code` and could not
+  distinguish a missing page from a rate limit without parsing prose.
+- `retryable` (boolean, always present): whether repeating the same request could
+  plausibly succeed. A 4xx is `false`; a 5xx, timeout, rate limit or connection
+  failure is `true`.
+- `extraction_status` (string or null): `"ok"` when text was extracted,
+  `"empty"` when an extractor ran but the page yielded too little, `"unavailable"`
+  when no extractor could be imported. Null when extraction was not requested.
+  `extracted: false` alone could not tell an environment fault from a page that
+  simply had no article - and in the `unavailable` case the caller was receiving
+  raw HTML while having asked for markdown.
 
 #### `web_crawl`
 Crawl a website with depth/page limits.
@@ -137,6 +153,140 @@ Check for broken links on a web page.
 - `url` (string, required): URL to check
 
 **Returns:** JSON string with broken links and status codes.
+
+### Content Understanding
+
+#### `web_knowledge_graph`
+
+Build a knowledge graph of entities and relationships from a page or from text.
+
+**Parameters:**
+- `url` (string, optional): page to fetch first
+- `text` (string, optional): text to analyse directly
+- `max_entities` (integer, default `50`): cap on returned entities
+- `include_centrality` (boolean, default `true`): include the centrality ranking
+
+Exactly one of `url` or `text` must be supplied; passing neither returns an explicit
+error rather than an empty graph.
+
+**Returns:** JSON string with `entities`, `relationships`, `stats`, `notes`, and
+`top_entities_by_centrality` when enabled.
+
+**Stability: beta.** The extraction is rule-based, not model-based, and the response
+says so in its `notes` field:
+
+- relationships are proximity-derived and always typed `co_occurs_with`; there is no
+  sentence-level semantic parsing yet
+- entity types come from suffix and keyword patterns. A word the patterns cannot
+  classify is reported as `unknown` rather than guessed, and a known technology
+  keyword upgrades it to `technology`
+
+Frozen: the tool name and the parameter schema. Not frozen: the entity and
+relationship payload shape, which may gain fields (the same additive precedent as
+`error_code` / `retryable` / `extraction_status`).
+
+#### `web_rag_context`
+
+Retrieve the passages of a page most relevant to a query, compressed to fit a context
+window.
+
+**Parameters:**
+- `url` (string, optional): page to fetch first
+- `text` (string, optional): text to analyse directly
+- `query` (string, required): what to retrieve passages about
+- `top_k` (integer, default `5`): number of passages returned
+- `max_chunk_size` (integer, default `60`): words per passage
+
+Exactly one of `url` or `text` must be supplied, plus `query`.
+
+**Returns:** JSON string with `passages` (each carrying `chunk_id`, `score`, `words`,
+`text`), `compressed_context`, `stats`, `retrieval_score`, `confidence`, and `notes`.
+
+**Stability: beta.** Ranking is lexical, not semantic:
+
+- passages are ranked by stop-word-filtered IDF over content terms; there is no
+  embedding model, so a query phrased with different vocabulary than the document will
+  miss. Synonyms do not match.
+- the default `max_chunk_size` of 60 words is deliberately small. At the library
+  default of 500 a normal article stays a single passage and there is nothing to rank;
+  measured retrieval went from 0/5 to 5/5 on a probe set after this change.
+- passages are sentence-aligned, so each one reads as complete sentences.
+
+`compressed_context` is the field intended to be handed to a model; `passages` are for
+inspection and citation.
+
+Frozen: the tool name and the parameter schema. Not frozen: the passage payload shape.
+
+#### `web_compare_sites`
+
+Compare several websites side by side on SEO, performance, content and links.
+
+**Parameters:**
+- `urls` (array of strings, required): 1 to 10 pages to compare
+- `names` (array of strings, optional): labels, same length as `urls`
+
+**Returns:** JSON string with `sites` (each with per-axis and overall scores), a
+`comparison_matrix` of 15 metrics across sites, `winner`, `recommendations`, `summary`,
+and `failures` for URLs that could not be fetched.
+
+**Stability: beta.** The scores are heuristics, and the response says so in its `notes`:
+
+- each axis is 0-100 from hand-written thresholds, not a search engine's ranking
+- metrics come from a plain HTTP fetch, so a JavaScript-rendered page can look thin when
+  it is not; that shows up as a low content score rather than an error
+- an unfetchable URL appears in `failures` with its recovery reason instead of aborting
+  the comparison, so one dead competitor cannot sink the other nine
+
+Frozen: the tool name and the parameter schema. Not frozen: the metric payload shape.
+
+#### `web_monitor`
+
+Check a URL for changes since the last check, and return what changed.
+
+**Parameters:**
+- `url` (string, required): page to check
+- `ignore_text` (array of strings, optional): regexes removed before comparing, for values that change every request
+- `ignore_selector` (array of strings, optional): CSS selectors whose subtrees are excluded
+- `price_selector` (string, optional): CSS selector for a price to track
+- `price_change_threshold` (float, default `0.0`): minimum fractional move to report, e.g. `0.05` for 5%
+- `min_change_size` (integer, default `10`): characters that must differ before a text change counts
+- `keywords_appear` (array of strings, optional): report when these appear
+- `include_diff` (boolean, default `true`): include a unified diff
+- `state_path` (string, optional): where the snapshot lives; defaults to `~/.cache/webscout/monitor_history.json`
+- `json_path` (string, optional): watch one value inside a JSON response. `json:$.a.b` uses JSONPath, `jq:.a.b` uses jq. Requires the `[json]` extra
+
+**Returns:** JSON string with `changes`, `change_count`, `baseline_established`,
+`state_path` and `notes`.
+
+**Stability: beta**, with two behaviours a caller must know:
+
+- **it checks once per call and does not schedule itself.** Monitoring continuously
+  requires the MCP client or an external scheduler to call it again. A user who sets it
+  once and expects automatic tracking would reasonably conclude it is broken.
+- **the first call for a URL only records a baseline** and reports no changes, signalled
+  by `baseline_established: true`.
+- **`json_path` reduces the response to one value before comparing.** That is the point:
+  a JSON API's neighbours and formatting churn while the watched field does not, so
+  watching `$.product.price` is stable where watching the body is not. `json:` needs the
+  `jsonpath` package and `jq:` needs `jq`; both come from the `[json]` extra, and a
+  selector for an uninstalled language fails with the install command rather than an
+  obscure error.
+- **a malformed JSONPath is rejected rather than silently watching everything.**
+  Measured: the `jsonpath` library degrades bad syntax like `$[[[` into a wildcard and
+  returns the whole document plus its nodes. The signature - the document appearing first
+  in a multi-match result - is detected and refused.
+
+State persists to disk between calls, because the comparison baseline is written
+alongside the change log. Without that the tool could never report a change - see the
+v2.1.0 note below.
+
+Frozen: the tool name and the parameter schema. Not frozen: the change payload shape.
+
+Note on a scoring change this release: readability used to contribute up to 35 points
+without a minimum body length, which made a 6-word stub (readability 88) outscore a
+667-word article (readability 30). Readability now only contributes once a page has at
+least 100 words. Scores for very short pages are therefore lower than in earlier
+versions; for substantial pages nothing changed.
 
 ---
 

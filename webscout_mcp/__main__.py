@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from . import __version__
-from .config import Config
+from .core.config import Config
 from .logging_config import get_logger, setup_logging
 
 
@@ -42,10 +42,15 @@ def _print_json(data: Any) -> None:
 
 
 async def _cmd_serve(args: argparse.Namespace) -> None:
+    from .observability import enable_snapshot_on_exit
     from .server import create_server
 
     config = _build_config(args)
     config.ensure_dirs()
+    # A long-lived server keeps its counters in memory, so the only chance to
+    # write them out is shutdown. Without this, a whole session's content
+    # quality numbers are lost and the SLO aggregator never sees them.
+    enable_snapshot_on_exit(config.cache_dir / "live_report.json")
     mcp = create_server(config)
     log = get_logger("cli")
     log.info(f"starting MCP server, transport={args.transport}")
@@ -63,7 +68,7 @@ async def _cmd_serve(args: argparse.Namespace) -> None:
 
 
 async def _cmd_search(args: argparse.Namespace) -> None:
-    from .cache import Cache
+    from .core.cache import Cache
     from .search import SearchEngine
 
     config = _build_config(args)
@@ -82,7 +87,7 @@ async def _cmd_search(args: argparse.Namespace) -> None:
 
 
 async def _cmd_fetch(args: argparse.Namespace) -> None:
-    from .cache import Cache
+    from .core.cache import Cache
     from .fetcher import Fetcher
 
     config = _build_config(args)
@@ -106,7 +111,7 @@ async def _cmd_fetch(args: argparse.Namespace) -> None:
 
 
 async def _cmd_crawl(args: argparse.Namespace) -> None:
-    from .cache import Cache
+    from .core.cache import Cache
     from .crawler import Crawler
     from .fetcher import Fetcher
     from .robots import RobotsChecker
@@ -179,7 +184,7 @@ async def _cmd_export(args: argparse.Namespace) -> None:
     from .exporter import Exporter
 
     if args.type == "search":
-        from .cache import Cache
+        from .core.cache import Cache
         from .search import SearchEngine
 
         config = _build_config(args)
@@ -204,7 +209,7 @@ async def _cmd_export(args: argparse.Namespace) -> None:
         finally:
             await engine.close()
     elif args.type == "fetch":
-        from .cache import Cache
+        from .core.cache import Cache
         from .fetcher import Fetcher
 
         config = _build_config(args)
@@ -228,9 +233,40 @@ async def _cmd_export(args: argparse.Namespace) -> None:
             await fetcher.close()
 
 
+async def _cmd_metrics(args: argparse.Namespace) -> None:
+    """Observability counter commands.
+
+    ``metrics snapshot`` exists so a CI step can persist counters at a known
+    point instead of hoping a process exits while a hook is still installed.
+    It always writes, even with no data, because an explicitly requested file
+    that silently fails to appear is harder to debug than a zeroed one.
+    """
+    from .observability import get_observability_summary, has_data, write_snapshot
+
+    command = getattr(args, "metrics_command", None)
+    if command == "snapshot":
+        out = args.out
+        snapshot = write_snapshot(out)
+        cq = snapshot.get("content_quality", {})
+        _print_json(
+            {
+                "written": out,
+                "has_data": has_data(),
+                "content_quality": {
+                    "fetches": cq.get("fetches", 0),
+                    "usable_rate": cq.get("usable_rate", 0.0),
+                    "thin_rate": cq.get("thin_rate", 0.0),
+                    "truncation_rate": cq.get("truncation_rate", 0.0),
+                },
+            }
+        )
+    else:
+        _print_json(get_observability_summary())
+
+
 async def _cmd_cache(args: argparse.Namespace) -> None:
     """Cache management commands."""
-    from .cache import Cache
+    from .core.cache import Cache
 
     config = _build_config(args)
     config.ensure_dirs()
@@ -319,6 +355,20 @@ def build_parser() -> argparse.ArgumentParser:
     cache_clear_parser = cache_subparsers.add_parser("clear", help="Clear the cache")
     cache_clear_parser.set_defaults(func=_cmd_cache)
 
+    metrics_parser = subparsers.add_parser("metrics", help="Inspect or persist in-process observability counters")
+    metrics_subparsers = metrics_parser.add_subparsers(dest="metrics_command", help="Metrics commands")
+    metrics_show_parser = metrics_subparsers.add_parser("show", help="Print the current counters as JSON")
+    metrics_show_parser.set_defaults(func=_cmd_metrics)
+    metrics_snapshot_parser = metrics_subparsers.add_parser(
+        "snapshot", help="Write the current counters to a live_report.json file"
+    )
+    metrics_snapshot_parser.add_argument(
+        "--out",
+        required=True,
+        help="Destination path, e.g. live-test-results/live_report.json",
+    )
+    metrics_snapshot_parser.set_defaults(func=_cmd_metrics)
+
     jev_parser = subparsers.add_parser("jev-report", help="Read-only report of Jev shadow decisions")
     jev_group = jev_parser.add_mutually_exclusive_group(required=False)
     jev_group.add_argument("--last", type=int, metavar="N", help="Show N most recent shadow decisions")
@@ -335,6 +385,51 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run a live TypeSafe smoke test (requires TYPESAFE_API_KEY; does not write to DB)",
     )
     jev_parser.set_defaults(func=_cmd_jev_report)
+
+    # --- decision telemetry (v1.5.0) ---
+    decision_report_parser = subparsers.add_parser(
+        "decision-report", help="Aggregate report of recorded Fetch/Search decisions"
+    )
+    decision_report_parser.add_argument("--domain", choices=["fetch", "search", "all"], default="all")
+    decision_report_parser.add_argument("--limit", type=int, default=100, help="Show N most recent events")
+    decision_report_parser.add_argument("--json", action="store_true", help="Output as JSON")
+    decision_report_parser.set_defaults(func=_cmd_decision_report)
+
+    decision_export_parser = subparsers.add_parser("decision-export", help="Export sanitized decision events as JSON")
+    decision_export_parser.add_argument("--domain", choices=["fetch", "search", "all"], default="all")
+    decision_export_parser.add_argument("--limit", type=int, default=500)
+    decision_export_parser.add_argument("--output", "-o", default=None, help="Output file (default: stdout)")
+    decision_export_parser.set_defaults(func=_cmd_decision_export)
+
+    decision_replay_parser = subparsers.add_parser(
+        "decision-replay", help="Evaluate replay cases against production decisions"
+    )
+    decision_replay_parser.add_argument("--domain", choices=["fetch", "search", "all"], default="all")
+    decision_replay_parser.add_argument("--limit", type=int, default=1000)
+    decision_replay_parser.add_argument("--json", action="store_true", help="Output as JSON")
+    decision_replay_parser.set_defaults(func=_cmd_decision_replay)
+
+    decision_label_parser = subparsers.add_parser("decision-label", help="Label a replay case for offline evaluation")
+    decision_label_parser.add_argument("case_id", help="ReplayCase case_id to label")
+    decision_label_parser.add_argument(
+        "--label",
+        required=True,
+        help="Expected label (e.g. ACCEPT, BROWSER, STOP, RETURN_EMPTY, browser_rescued)",
+    )
+    decision_label_parser.add_argument(
+        "--source",
+        default="human_verified",
+        choices=["human_verified", "deterministic_fixture", "objective_outcome", "historical_verified"],
+    )
+    decision_label_parser.add_argument("--confidence", type=float, default=1.0)
+    decision_label_parser.add_argument("--notes", default="")
+    decision_label_parser.set_defaults(func=_cmd_decision_label)
+
+    decision_join_parser = subparsers.add_parser(
+        "decision-join-report", help="Join DecisionEvents with Jev Shadow records by (run_id, trace_id)"
+    )
+    decision_join_parser.add_argument("--json", action="store_true", help="Output as JSON")
+    decision_join_parser.set_defaults(func=_cmd_decision_join_report)
 
     return parser
 
@@ -517,6 +612,183 @@ async def _jev_smoke() -> None:
         print(f"Smoke FAILED: {type(exc).__name__}: {exc}")
     finally:
         await client.aclose()
+
+
+async def _cmd_decision_report(args: argparse.Namespace) -> None:
+    """Aggregate report of recorded Fetch/Search decisions."""
+    import json as _json
+
+    from . import decision_store
+
+    db = decision_store.configure()
+    print(f"Decision DB: {db}")
+
+    domain = None if args.domain == "all" else args.domain
+    s = decision_store.summary()
+
+    if getattr(args, "json", False):
+        print(_json.dumps(s, indent=2, default=str))
+        return
+
+    print()
+    print("=== Decision Telemetry Summary ===")
+    print(f"Total events:    {s['total_events']}")
+    print(f"  Fetch events:  {s['fetch_events']}")
+    print(f"  Search events: {s['search_events']}")
+    print(f"Replay cases:    {s['replay_cases']}")
+    jev_corr = s.get("jev_correlation", {})
+    if jev_corr:
+        print(f"Jev eligible:              {jev_corr.get('eligible_decisions', 0)}")
+        print(f"Jev enabled (advisor on):  {jev_corr.get('advisor_enabled_decisions', 0)}")
+        print(f"Jev joined (enabled+elig): {jev_corr.get('joined_enabled_eligible', 0)}")
+        print(f"Jev coverage:              {jev_corr.get('join_coverage', 0.0):.2%}")
+        print(f"  Intentional unjoined:    {jev_corr.get('intentional_unjoined', 0)}")
+        print(f"  Advisor disabled:        {jev_corr.get('advisor_disabled', 0)}")
+        print(f"  Unexpected unjoined:     {jev_corr.get('unexpected_unjoined', 0)}")
+    else:
+        print(f"Jev-joined:      {s['jev_joined_events']} (deprecated metric)")
+    from .decision_event import hash_key_persistent
+
+    print(f"Hash key persistent: {hash_key_persistent()}")
+    print()
+    if domain in (None, "fetch"):
+        print("--- Fetch ---")
+        print(f"  Reasons:  {s['fetch']['reasons']}")
+        print(f"  Actions:  {s['fetch']['actions']}")
+        print(f"  Outcomes: {s['fetch']['outcomes']}")
+        print()
+    if domain in (None, "search"):
+        print("--- Search ---")
+        print(f"  Reasons:  {s['search']['reasons']}")
+        print(f"  Actions:  {s['search']['actions']}")
+        print(f"  Outcomes: {s['search']['outcomes']}")
+
+    # Recent events.
+    limit = getattr(args, "limit", 20)
+    events = decision_store.load_events(domain=domain, limit=limit)
+    if events:
+        print()
+        print(f"--- Recent {len(events)} events ---")
+        for e in events:
+            print(
+                f"  {e.get('domain', '?'):6s} {e.get('deterministic_reason', '?'):24s} "
+                f"-> {e.get('deterministic_action', '?'):20s} "
+                f"outcome={e.get('production_outcome', '?'):20s} "
+                f"subject={e.get('subject', '?')}"
+            )
+
+
+async def _cmd_decision_export(args: argparse.Namespace) -> None:
+    """Export sanitized decision events as JSON."""
+    import json as _json
+
+    from . import decision_store
+
+    decision_store.configure()
+    domain = None if args.domain == "all" else args.domain
+    events = decision_store.load_events(domain=domain, limit=args.limit)
+    payload = _json.dumps(events, indent=2, default=str, ensure_ascii=False)
+
+    output = getattr(args, "output", None)
+    if output:
+        with open(output, "w", encoding="utf-8") as f:  # noqa: ASYNC230
+            f.write(payload)
+        print(f"Exported {len(events)} events to {output}")
+    else:
+        print(payload)
+
+
+async def _cmd_decision_replay(args: argparse.Namespace) -> None:
+    """Evaluate replay cases against production decisions."""
+    import json as _json
+
+    from .decision_evaluator import evaluate_from_store
+
+    domain = None if args.domain == "all" else args.domain
+    result = evaluate_from_store(domain=domain, limit=args.limit)
+
+    if getattr(args, "json", False):
+        print(_json.dumps(result.to_dict(), indent=2, default=str))
+        return
+
+    print("=== Replay Evaluation ===")
+    print(f"Total cases:     {result.total_cases}")
+    print(f"Covered:         {result.covered_cases}")
+    print(f"Uncovered:       {result.uncovered_cases}")
+    print(f"Coverage rate:   {result.to_dict()['coverage_rate']:.1%}")
+    print(f"Agreed:          {result.overall_agreement}")
+    print(f"Disagreed:       {result.overall_disagreement}")
+    print(f"Agreement rate:  {result.to_dict()['overall_agreement_rate']:.1%}")
+    print()
+    if result.per_label:
+        print("--- Per-label ---")
+        for label, m in sorted(result.per_label.items()):
+            if label.startswith("FP:"):
+                continue
+            print(
+                f"  {label:24s} total={m.total:4d}  agreed={m.agreed:4d}  "
+                f"disagreed={m.disagreed:4d}  rate={m.agreement_rate:.1%}"
+            )
+    if result.disagreements:
+        print()
+        print(f"--- Disagreements ({len(result.disagreements)}) ---")
+        for d in result.disagreements[:10]:
+            print(
+                f"  {d['case_id'][:8]}  expected={d['expected_label']:20s} "
+                f"production={d['production_action']:20s} source={d['label_source']}"
+            )
+
+
+async def _cmd_decision_label(args: argparse.Namespace) -> None:
+    """Label a replay case for offline evaluation."""
+    from . import decision_store
+
+    decision_store.configure()
+    ok = decision_store.update_replay_label(
+        case_id=args.case_id,
+        label=args.label,
+        source=args.source,
+        confidence=args.confidence,
+        notes=args.notes,
+    )
+    if ok:
+        print(f"Labeled case {args.case_id}: {args.label} (source={args.source})")
+    else:
+        print(f"Case {args.case_id} not found.")
+        raise SystemExit(1)
+
+
+async def _cmd_decision_join_report(args: argparse.Namespace) -> None:
+    """Join DecisionEvents with Jev Shadow records by (run_id, trace_id)."""
+    import json as _json
+
+    from . import decision_store
+
+    decision_store.configure()
+    report = decision_store.join_report()
+    if getattr(args, "json", False):
+        print(_json.dumps(report, indent=2, ensure_ascii=False))
+    else:
+        print("Decision ↔ Jev Join Report")
+        print("=" * 50)
+        print(f"Total decisions:           {report.get('total_decisions', 0)}")
+        print(f"Eligible decisions:        {report.get('eligible_decisions', 0)}")
+        print(f"Advisor enabled (elig+on): {report.get('advisor_enabled_decisions', 0)}")
+        print(f"Joined (enabled+elig):     {report.get('joined_enabled_eligible', 0)}")
+        print(f"Join coverage:             {report.get('join_coverage', 0.0):.2%}")
+        print(f"  Intentional unjoined:    {report.get('intentional_unjoined', 0)}")
+        print(f"  Advisor disabled:        {report.get('advisor_disabled', 0)}")
+        print(f"  Unexpected unjoined:     {report.get('unexpected_unjoined', 0)}")
+        print(f"Orphan Jev pairs:          {report.get('orphan_jev_pairs', 0)}")
+        by_domain = report.get("by_domain", {})
+        for domain, stats in by_domain.items():
+            print(
+                f"  {domain}: decisions={stats.get('decision_events', 0)}, "
+                f"eligible={stats.get('eligible_decisions', 0)}, "
+                f"enabled={stats.get('advisor_enabled_decisions', 0)}, "
+                f"joined={stats.get('joined_enabled_eligible', 0)}, "
+                f"coverage={stats.get('join_coverage', 0.0):.2%}"
+            )
 
 
 def main() -> None:
