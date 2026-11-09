@@ -107,6 +107,11 @@ class ComparisonResult:
     def to_dict(self) -> dict:
         return {
             "sites": [s.to_dict() for s in self.sites],
+            # `compare()` builds a 15-metric matrix across sites specifically for
+            # side-by-side reading, but this method never emitted it - so callers using
+            # the documented serialisation saw only the per-site list. Additive: no
+            # existing key changed.
+            "comparison_matrix": dict(self.comparison_matrix),
             "winner": self.winner,
             "recommendations": self.recommendations,
             "summary": self.summary,
@@ -262,15 +267,25 @@ class CompetitorAnalyzer:
         site.performance_score = min(100, perf_score)
 
         # Content Score (0-100)
+        #
+        # Readability is gated on a minimum body length. Flesch reading ease rewards
+        # short sentences and short words, so a six-word stub scores ~88 while a real
+        # article of long sentences scores ~30 - and because readability is worth up to
+        # 35 points, the stub out-scored a 667-word page 65 to 50. That inverts the one
+        # thing a comparison is for: spotting thin pages.
+        #
+        # The formula is unchanged; only its contribution is gated. Below 100 words
+        # there is not enough text for the metric to mean anything.
         content_score = 30  # Base
         if site.word_count >= 300:
             content_score += 20
         if site.word_count >= 1000:
             content_score += 15
-        if site.readability_score >= 60:
-            content_score += 20
-        if site.readability_score >= 80:
-            content_score += 15
+        if site.word_count >= 100:
+            if site.readability_score >= 60:
+                content_score += 20
+            if site.readability_score >= 80:
+                content_score += 15
         site.content_score = min(100, content_score)
 
         # Broken Link Score (0-100, higher is better)

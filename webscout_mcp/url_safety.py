@@ -56,7 +56,10 @@ def _ip_is_public(ip_str: str) -> bool:
         return False
     if getattr(ip, "is_site_local", False):
         return False
-    return True
+    # Some special-use ranges (notably RFC 6598 shared space 100.64.0.0/10)
+    # are neither private nor reserved according to ipaddress, but are not
+    # globally routable. SSRF protection must fail closed for those too.
+    return ip.is_global
 
 
 def _resolve_host(host: str) -> list[str]:

@@ -1,0 +1,795 @@
+"""SQLite-backed durable store for DecisionEvent records.
+
+Location: ``<data_dir>/decision_events.db`` (overridable via
+``WEBSCOUT_DECISION_DB``).
+
+Design goals:
+  * WAL mode for concurrent read/write.
+  * Idempotent schema + migration (fresh DBs get full schema; old DBs get
+    missing columns added).
+  * Thread-safe via a module-level lock (same level as JevStore).
+  * Retention: rows older than ``retention_days`` are pruned on write.
+  * Size cap: if the DB file exceeds ``max_db_size_mb``, oldest rows are
+    deleted until under the cap.
+  * Best-effort: every public write function catches all exceptions and logs
+    a warning. A store failure MUST NOT change Fetch/Search production
+    results.
+  * Privacy: only sanitized fields are stored. The store additionally
+    scrubs secret-like keys from request_features / outcome_features /
+    metadata before INSERT.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import sqlite3
+import threading
+import time
+from pathlib import Path
+from typing import Any
+
+from .decision_event import DecisionEvent, _scrub_dict, _scrub_text
+from .logging_config import get_logger
+from .replay_case import _validate_label_source
+
+log = get_logger(__name__)
+
+_lock = threading.Lock()
+_db_path: Path | None = None
+
+DEFAULT_RETENTION_DAYS = 30
+DEFAULT_MAX_DB_SIZE_MB = 256
+
+_SCHEMA_VERSION = 1
+
+_SCHEMA_BASE = """
+CREATE TABLE IF NOT EXISTS decision_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    schema_version TEXT NOT NULL,
+    event_id TEXT NOT NULL UNIQUE,
+    trace_id TEXT,
+    run_id TEXT,
+    domain TEXT NOT NULL,
+    stage TEXT NOT NULL,
+    subject TEXT,
+    observed_status TEXT,
+    deterministic_reason TEXT,
+    deterministic_action TEXT,
+    production_action TEXT,
+    production_outcome TEXT,
+    started_at REAL,
+    completed_at REAL,
+    latency_ms REAL,
+    request_features TEXT,
+    outcome_features TEXT,
+    metadata TEXT,
+    jev_call_id TEXT,
+    created_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_decision_ts ON decision_events(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_decision_domain ON decision_events(domain, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_decision_trace ON decision_events(trace_id);
+CREATE INDEX IF NOT EXISTS idx_decision_run ON decision_events(run_id);
+CREATE INDEX IF NOT EXISTS idx_decision_reason ON decision_events(deterministic_reason, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_decision_action ON decision_events(deterministic_action, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS replay_cases (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    case_id TEXT NOT NULL UNIQUE,
+    run_id TEXT,
+    trace_id TEXT,
+    domain TEXT NOT NULL,
+    input_features TEXT,
+    observed_outcome TEXT,
+    production_decision TEXT,
+    expected_label TEXT,
+    label_source TEXT,
+    label_confidence REAL,
+    label_time REAL,
+    notes TEXT,
+    created_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_replay_domain ON replay_cases(domain);
+CREATE INDEX IF NOT EXISTS idx_replay_label ON replay_cases(expected_label);
+CREATE INDEX IF NOT EXISTS idx_replay_run ON replay_cases(run_id);
+CREATE INDEX IF NOT EXISTS idx_replay_trace ON replay_cases(trace_id);
+"""
+
+_MIGRATIONS = [
+    # (table, column, ddl)
+    ("replay_cases", "label_time", "ALTER TABLE replay_cases ADD COLUMN label_time REAL"),
+    ("replay_cases", "run_id", "ALTER TABLE replay_cases ADD COLUMN run_id TEXT"),
+    ("replay_cases", "trace_id", "ALTER TABLE replay_cases ADD COLUMN trace_id TEXT"),
+]
+
+
+def _run_migrations(path: Path) -> None:
+    """Idempotent column migrations for existing DBs.
+
+    Runs BEFORE ``_SCHEMA_BASE`` so that indexes added to the schema (which
+    reference these columns) are created only after the columns exist. Tables
+    created by ``_SCHEMA_BASE`` themselves already include the columns, so a
+    missing table simply means "fresh DB, skip".
+    """
+    try:
+        with sqlite3.connect(str(path), timeout=5.0) as c:
+            existing_tables = {row[0] for row in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            for table, column, ddl in _MIGRATIONS:
+                if table not in existing_tables:
+                    continue
+                cols = {row[1] for row in c.execute(f"PRAGMA table_info({table})")}
+                if column not in cols:
+                    c.execute(ddl)
+            c.commit()
+    except Exception:
+        log.warning("decision_events migration failed", exc_info=True)
+
+
+def _default_db_path() -> Path:
+    """Resolve the default DB path.
+
+    Priority:
+      1. ``WEBSCOUT_DECISION_DB`` env var
+      2. ``${XDG_DATA_HOME:-~/.local/share}/webscout/decision_events.db``
+    """
+    env = os.environ.get("WEBSCOUT_DECISION_DB")
+    if env:
+        return Path(env)
+    xdg = os.environ.get("XDG_DATA_HOME")
+    base = Path(xdg) if xdg else (Path.home() / ".local" / "share")
+    return base / "webscout" / "decision_events.db"
+
+
+def configure(db_path: str | Path | None = None) -> Path:
+    """Point the store at a specific DB file. Called from tests or CLI."""
+    global _db_path
+    _db_path = Path(db_path) if db_path else _default_db_path()
+    _db_path.parent.mkdir(parents=True, exist_ok=True)
+    _init_schema(_db_path)
+    return _db_path
+
+
+def _conn() -> sqlite3.Connection:
+    global _db_path
+    if _db_path is None:
+        _db_path = _default_db_path()
+        _db_path.parent.mkdir(parents=True, exist_ok=True)
+    _init_schema(_db_path)
+    c = sqlite3.connect(str(_db_path), timeout=5.0)
+    c.row_factory = sqlite3.Row
+    c.execute("PRAGMA journal_mode=WAL")
+    return c
+
+
+def _init_schema(path: Path) -> None:
+    try:
+        # Migrations FIRST: existing DBs gain new columns before the schema
+        # script (which creates indexes over them) runs. Fresh DBs: table
+        # does not exist yet, migrations are skipped, CREATE TABLE below
+        # includes the columns already.
+        _run_migrations(path)
+        with sqlite3.connect(str(path), timeout=5.0) as c:
+            c.executescript(_SCHEMA_BASE)
+            c.commit()
+    except Exception:
+        log.warning("decision_events schema init failed", exc_info=True)
+
+
+def _prune_old(conn: sqlite3.Connection, retention_days: int) -> None:
+    """Delete rows older than retention_days."""
+    cutoff = time.time() - retention_days * 86400
+    conn.execute("DELETE FROM decision_events WHERE created_at < ?", (cutoff,))
+    conn.execute("DELETE FROM replay_cases WHERE created_at < ?", (cutoff,))
+
+
+def _total_db_size(path: Path) -> int:
+    """Total on-disk size: main DB + WAL file."""
+    total = 0
+    for suffix in ("", "-wal", "-shm"):
+        p = Path(str(path) + suffix)
+        try:
+            total += p.stat().st_size
+        except OSError:
+            pass
+    return total
+
+
+def _logical_used_bytes(conn: sqlite3.Connection) -> int:
+    """Compute logical data size: (page_count - freelist_count) * page_size.
+
+    This reflects actual data, not the physical file which may retain freed
+    pages until VACUUM. Used as the DELETE-loop progress condition so we
+    don't delete until the file shrinks (which only happens at VACUUM).
+    """
+    try:
+        page_count = int(conn.execute("PRAGMA page_count").fetchone()[0])
+        freelist = int(conn.execute("PRAGMA freelist_count").fetchone()[0])
+        page_size = int(conn.execute("PRAGMA page_size").fetchone()[0])
+        return max(0, (page_count - freelist) * page_size)
+    except sqlite3.Error:
+        return 0
+
+
+def _enforce_size_cap(conn: sqlite3.Connection, max_mb: int, db_path: Path, *, force_vacuum: bool = False) -> None:
+    """Size-cap maintenance with logical-page-based pruning and hysteresis.
+
+    High watermark (110% of cap): trigger maintenance.
+    Target (90% of cap): stop deleting.
+    VACUUM: only after pruning, if physical size still > high watermark.
+
+    The DELETE loop uses LOGICAL used bytes (page_count - freelist_count) as
+    its progress condition, NOT physical file size. SQLite does not shrink
+    the file on DELETE; using physical size would cause delete-until-empty.
+    """
+    try:
+        max_bytes = max_mb * 1024 * 1024
+        high_watermark = int(max_bytes * 1.10)
+        target_bytes = int(max_bytes * 0.90)
+
+        # Checkpoint WAL first so page_count reflects committed data.
+        try:
+            conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
+        except sqlite3.Error:
+            pass
+
+        # Only trigger if physical size exceeds high watermark (or forced).
+        physical = _total_db_size(db_path)
+        if physical <= high_watermark and not force_vacuum:
+            return
+
+        # Phase A: prune oldest rows until logical usage <= target.
+        deleted_any = False
+        max_iterations = 50  # safety bound against infinite loops
+        for _ in range(max_iterations):
+            logical = _logical_used_bytes(conn)
+            if logical <= target_bytes:
+                break
+            ev_count = conn.execute("SELECT COUNT(*) FROM decision_events").fetchone()[0]
+            rp_count = conn.execute("SELECT COUNT(*) FROM replay_cases").fetchone()[0]
+            if ev_count == 0 and rp_count == 0:
+                break
+            total = ev_count + rp_count
+            # Delete 5-10% from each table proportionally.
+            batch = max(1, total // 10)
+            if ev_count > 0:
+                ev_delete = max(1, int(ev_count / total * batch))
+                conn.execute(
+                    "DELETE FROM decision_events WHERE id IN (SELECT id FROM decision_events ORDER BY created_at ASC LIMIT ?)",
+                    (ev_delete,),
+                )
+                deleted_any = True
+            if rp_count > 0:
+                rp_delete = max(1, int(rp_count / total * batch))
+                conn.execute(
+                    "DELETE FROM replay_cases WHERE id IN (SELECT id FROM replay_cases ORDER BY created_at ASC LIMIT ?)",
+                    (rp_delete,),
+                )
+                deleted_any = True
+            conn.commit()
+
+        # Phase B: checkpoint + VACUUM if still materially over cap.
+        try:
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        except sqlite3.Error:
+            pass
+
+        if force_vacuum or (_total_db_size(db_path) > high_watermark and deleted_any):
+            try:
+                conn.execute("VACUUM")
+                conn.commit()
+                # VACUUM writes the rebuilt DB to the WAL; checkpoint it back
+                # into the main file and truncate the WAL so total size shrinks.
+                conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            except sqlite3.Error:
+                pass
+    except Exception:
+        log.warning("decision_events size cap enforcement failed", exc_info=True)
+
+
+def record_event(
+    event: DecisionEvent, retention_days: int = DEFAULT_RETENTION_DAYS, max_db_size_mb: int | None = None
+) -> bool:
+    """Insert one DecisionEvent. Best-effort; never raises.
+
+    Returns True if the record was written, False otherwise (including
+    duplicate event_id).
+    """
+    try:
+        if max_db_size_mb is None:
+            max_db_size_mb = DEFAULT_MAX_DB_SIZE_MB
+        with _lock, _conn() as c:
+            _prune_old(c, retention_days)
+            req = json.dumps(_scrub_dict(event.request_features), ensure_ascii=False)
+            out = json.dumps(_scrub_dict(event.outcome_features), ensure_ascii=False)
+            meta = json.dumps(_scrub_dict(event.metadata), ensure_ascii=False)
+            cur = c.execute(
+                """INSERT OR IGNORE INTO decision_events (
+                    schema_version, event_id, trace_id, run_id, domain, stage,
+                    subject, observed_status, deterministic_reason,
+                    deterministic_action, production_action, production_outcome,
+                    started_at, completed_at, latency_ms,
+                    request_features, outcome_features, metadata, jev_call_id,
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    event.schema_version,
+                    event.event_id,
+                    event.trace_id,
+                    event.run_id,
+                    event.domain.value if hasattr(event.domain, "value") else event.domain,
+                    event.stage.value if hasattr(event.stage, "value") else event.stage,
+                    event.subject,
+                    event.observed_status,
+                    event.deterministic_reason,
+                    event.deterministic_action,
+                    event.production_action,
+                    event.production_outcome,
+                    event.started_at,
+                    event.completed_at,
+                    event.latency_ms,
+                    req,
+                    out,
+                    meta,
+                    event.jev_call_id,
+                    time.time(),
+                ),
+            )
+            inserted = cur.rowcount > 0
+            c.commit()
+            _enforce_size_cap(c, max_db_size_mb, _db_path or _default_db_path())
+            return inserted
+    except Exception:
+        log.warning("decision_events record failed", exc_info=True)
+        return False
+
+
+def record_replay_case(case: Any, retention_days: int = DEFAULT_RETENTION_DAYS) -> bool:
+    """Insert or update a ReplayCase. Best-effort; never raises.
+
+    Strictly validates label_source (jev_verified rejected). Scrubs
+    input_features / observed_outcome / production_decision / notes
+    at the store layer.
+    """
+    try:
+        from .replay_case import ReplayCase
+
+        if isinstance(case, ReplayCase):
+            data = case.to_dict()
+        else:
+            data = dict(case)
+        # Strict label_source validation BEFORE writing.
+        label_source = _validate_label_source(data.get("label_source", "objective_outcome"))
+        data["label_source"] = label_source.value
+
+        # Store-level scrub: all dict fields + notes text.
+        input_features = json.dumps(_scrub_dict(data.get("input_features", {})), ensure_ascii=False)
+        observed_outcome = json.dumps(_scrub_dict(data.get("observed_outcome", {})), ensure_ascii=False)
+        production_decision = json.dumps(_scrub_dict(data.get("production_decision", {})), ensure_ascii=False)
+        notes = _scrub_text(data.get("notes", ""))
+
+        label_time = data.get("label_time")
+        if label_time is not None:
+            label_time = float(label_time)
+
+        with _lock, _conn() as c:
+            _prune_old(c, retention_days)
+            c.execute(
+                """INSERT OR REPLACE INTO replay_cases (
+                    case_id, run_id, trace_id, domain, input_features, observed_outcome,
+                    production_decision, expected_label, label_source,
+                    label_confidence, label_time, notes, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    data.get("case_id"),
+                    data.get("run_id", "") or "",
+                    data.get("trace_id", "") or "",
+                    data.get("domain", "fetch"),
+                    input_features,
+                    observed_outcome,
+                    production_decision,
+                    data.get("expected_label", ""),
+                    data["label_source"],
+                    float(data.get("label_confidence", 1.0)),
+                    label_time,
+                    notes,
+                    float(data.get("created_at", time.time())),
+                ),
+            )
+            c.commit()
+            _enforce_size_cap(c, DEFAULT_MAX_DB_SIZE_MB, _db_path or _default_db_path())
+            return True
+    except Exception:
+        log.warning("replay_cases record failed", exc_info=True)
+        return False
+
+
+def load_events(
+    domain: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[dict[str, Any]]:
+    """Load recent DecisionEvents as dicts (JSON fields parsed)."""
+    try:
+        with _lock, _conn() as c:
+            if domain:
+                rows = c.execute(
+                    "SELECT * FROM decision_events WHERE domain = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                    (domain, limit, offset),
+                ).fetchall()
+            else:
+                rows = c.execute(
+                    "SELECT * FROM decision_events ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                    (limit, offset),
+                ).fetchall()
+            result = []
+            for row in rows:
+                d = dict(row)
+                for key in ("request_features", "outcome_features", "metadata"):
+                    if d.get(key):
+                        try:
+                            d[key] = json.loads(d[key])
+                        except (json.JSONDecodeError, TypeError):
+                            d[key] = {}
+                result.append(d)
+            return result
+    except Exception:
+        log.warning("decision_events load failed", exc_info=True)
+        return []
+
+
+def load_events_for_run(run_id: str, limit: int = 10000) -> list[dict[str, Any]]:
+    """Load all DecisionEvents for one evaluation run as dicts (JSON parsed).
+
+    Used by the offline evaluator (objective materialization). Best-effort;
+    returns [] on failure.
+    """
+    if not run_id:
+        return []
+    try:
+        with _lock, _conn() as c:
+            rows = c.execute(
+                "SELECT * FROM decision_events WHERE run_id = ? ORDER BY created_at ASC LIMIT ?",
+                (run_id, limit),
+            ).fetchall()
+            result = []
+            for row in rows:
+                d = dict(row)
+                for key in ("request_features", "outcome_features", "metadata"):
+                    if d.get(key):
+                        try:
+                            d[key] = json.loads(d[key])
+                        except (json.JSONDecodeError, TypeError):
+                            d[key] = {}
+                result.append(d)
+            return result
+    except Exception:
+        log.warning("decision_events load_for_run failed", exc_info=True)
+        return []
+
+
+def load_replay_cases(domain: str | None = None, run_id: str | None = None, limit: int = 1000) -> list[dict[str, Any]]:
+    """Load ReplayCases as dicts, optionally filtered by domain and/or run_id.
+
+    ``run_id=None`` (default) keeps the prior global behavior. When ``run_id``
+    is given, rows are scoped to that evaluation run (composed with the
+    optional domain filter).
+    """
+    try:
+        with _lock, _conn() as c:
+            where: list[str] = []
+            params: list[Any] = []
+            if domain:
+                where.append("domain = ?")
+                params.append(domain)
+            if run_id:
+                where.append("run_id = ?")
+                params.append(run_id)
+            sql = "SELECT * FROM replay_cases"
+            if where:
+                sql += " WHERE " + " AND ".join(where)
+            sql += " ORDER BY created_at DESC LIMIT ?"
+            params.append(limit)
+            rows = c.execute(sql, params).fetchall()
+            result = []
+            for row in rows:
+                d = dict(row)
+                for key in ("input_features", "observed_outcome", "production_decision"):
+                    if d.get(key):
+                        try:
+                            d[key] = json.loads(d[key])
+                        except (json.JSONDecodeError, TypeError):
+                            d[key] = {}
+                result.append(d)
+            return result
+    except Exception:
+        log.warning("replay_cases load failed", exc_info=True)
+        return []
+
+
+def count_events(domain: str | None = None) -> int:
+    try:
+        with _lock, _conn() as c:
+            if domain:
+                row = c.execute("SELECT COUNT(*) FROM decision_events WHERE domain = ?", (domain,)).fetchone()
+            else:
+                row = c.execute("SELECT COUNT(*) FROM decision_events").fetchone()
+            return int(row[0]) if row else 0
+    except Exception:
+        return 0
+
+
+def summary() -> dict[str, Any]:
+    """Aggregate summary for decision-report CLI."""
+    try:
+        # Collect all decision DB data inside the lock.
+        with _lock, _conn() as c:
+            total = c.execute("SELECT COUNT(*) FROM decision_events").fetchone()[0]
+            fetch_count = c.execute("SELECT COUNT(*) FROM decision_events WHERE domain='fetch'").fetchone()[0]
+            search_count = c.execute("SELECT COUNT(*) FROM decision_events WHERE domain='search'").fetchone()[0]
+            replay_count = c.execute("SELECT COUNT(*) FROM replay_cases").fetchone()[0]
+
+            fetch_reasons = {
+                row[0]: row[1]
+                for row in c.execute(
+                    "SELECT deterministic_reason, COUNT(*) FROM decision_events WHERE domain='fetch' GROUP BY deterministic_reason ORDER BY 2 DESC"
+                )
+            }
+            fetch_actions = {
+                row[0]: row[1]
+                for row in c.execute(
+                    "SELECT deterministic_action, COUNT(*) FROM decision_events WHERE domain='fetch' GROUP BY deterministic_action ORDER BY 2 DESC"
+                )
+            }
+            fetch_outcomes = {
+                row[0]: row[1]
+                for row in c.execute(
+                    "SELECT production_outcome, COUNT(*) FROM decision_events WHERE domain='fetch' GROUP BY production_outcome ORDER BY 2 DESC"
+                )
+            }
+            search_reasons = {
+                row[0]: row[1]
+                for row in c.execute(
+                    "SELECT deterministic_reason, COUNT(*) FROM decision_events WHERE domain='search' GROUP BY deterministic_reason ORDER BY 2 DESC"
+                )
+            }
+            search_actions = {
+                row[0]: row[1]
+                for row in c.execute(
+                    "SELECT deterministic_action, COUNT(*) FROM decision_events WHERE domain='search' GROUP BY deterministic_action ORDER BY 2 DESC"
+                )
+            }
+            search_outcomes = {
+                row[0]: row[1]
+                for row in c.execute(
+                    "SELECT production_outcome, COUNT(*) FROM decision_events WHERE domain='search' GROUP BY production_outcome ORDER BY 2 DESC"
+                )
+            }
+            jev_joined = c.execute(
+                "SELECT COUNT(*) FROM decision_events WHERE jev_call_id IS NOT NULL AND jev_call_id != ''"
+            ).fetchone()[0]
+
+        # Lock released — join_report() acquires its own lock (would deadlock otherwise).
+        # Eligibility-aware Jev correlation via join_report().
+        # jev_joined_events is deprecated (based on jev_call_id); kept for
+        # backward compatibility. Authoritative metrics are in jev_correlation.
+        try:
+            jev_corr = join_report()
+        except Exception:
+            jev_corr = {"join_coverage": 0.0, "eligible_decisions": 0, "joined_eligible": 0}
+
+        return {
+            "total_events": total,
+            "fetch_events": fetch_count,
+            "search_events": search_count,
+            "replay_cases": replay_count,
+            "fetch": {
+                "reasons": fetch_reasons,
+                "actions": fetch_actions,
+                "outcomes": fetch_outcomes,
+            },
+            "search": {
+                "reasons": search_reasons,
+                "actions": search_actions,
+                "outcomes": search_outcomes,
+            },
+            "jev_joined_events": jev_joined,  # deprecated: use jev_correlation
+            "jev_correlation": jev_corr,
+        }
+    except Exception:
+        log.warning("decision_events summary failed", exc_info=True)
+        return {"total_events": 0, "fetch_events": 0, "search_events": 0, "replay_cases": 0}
+
+
+def update_replay_label(
+    case_id: str, label: str, source: str = "human_verified", confidence: float = 1.0, notes: str = ""
+) -> bool:
+    """Update the expected_label of an existing ReplayCase (human labeling).
+
+    Strictly validates label_source. Sets label_time to current UTC epoch.
+    Scrubs notes of secrets.
+    """
+    try:
+        label_source = _validate_label_source(source)
+        notes_clean = _scrub_text(notes)
+        with _lock, _conn() as c:
+            c.execute(
+                "UPDATE replay_cases SET expected_label=?, label_source=?, label_confidence=?, label_time=?, notes=? WHERE case_id=?",
+                (label, label_source.value, confidence, time.time(), notes_clean, case_id),
+            )
+            c.commit()
+            return c.total_changes > 0
+    except Exception:
+        log.warning("replay label update failed", exc_info=True)
+        return False
+
+
+def join_report(run_id: str | None = None) -> dict[str, Any]:
+    """Read-only join report between DecisionEvents and Jev Shadow records.
+
+    Join key: (run_id, trace_id). Does NOT copy Jev state into Decision DB.
+
+    Args:
+        run_id: when given, scope EVERY metric (DecisionEvent query, Jev query,
+            and the entire ``by_domain`` block) strictly to that run. When
+            None (default), the global behavior and exact returned keys are
+            preserved byte-for-byte.
+
+    Two independent dimensions:
+      * jev_eligible: this production path is theoretically applicable to Jev
+        Shadow (e.g. normal Fetch ACCEPT, Search ACCEPT with results).
+        Snapshot/cache hits, EMPTY, ERROR, STOP are NOT eligible.
+      * jev_enabled: a non-Noop Jev client was actually configured at runtime
+        for this operation.
+
+    The formal correlation denominator is eligible AND enabled. A DecisionEvent
+    that is eligible but has Jev disabled is "advisor_disabled" — not a
+    correlation failure. A DecisionEvent that is eligible AND enabled but has
+    no Jev record is "unexpected_unjoined" — a genuine correlation failure.
+
+    Four categories (mutually exclusive among non-joined):
+      * intentional_unjoined: not eligible (snapshot/cache/empty/error/stop)
+      * advisor_disabled: eligible but Jev not enabled at runtime
+      * unexpected_unjoined: eligible AND enabled but no Jev record
+      * joined_enabled_eligible: eligible AND enabled AND has Jev record
+    """
+    try:
+        from .jev_store import db_path as jev_db_path
+
+        decision_pairs: set[tuple[str, str]] = set()
+        eligible_pairs: set[tuple[str, str]] = set()
+        enabled_eligible_pairs: set[tuple[str, str]] = set()
+        decision_by_domain: dict[str, dict[str, set]] = {
+            "fetch": {"all": set(), "eligible": set(), "enabled_eligible": set()},
+            "search": {"all": set(), "eligible": set(), "enabled_eligible": set()},
+        }
+        with _lock, _conn() as c:
+            decision_sql = (
+                "SELECT DISTINCT run_id, trace_id, domain, metadata "
+                "FROM decision_events WHERE run_id != '' AND trace_id != ''"
+            )
+            decision_params: list[Any] = []
+            if run_id:
+                decision_sql += " AND run_id = ?"
+                decision_params.append(run_id)
+            rows = c.execute(decision_sql, decision_params).fetchall()
+            for row in rows:
+                pair = (row["run_id"], row["trace_id"])
+                decision_pairs.add(pair)
+                d = row["domain"]
+                if d in decision_by_domain:
+                    decision_by_domain[d]["all"].add(pair)
+                # Check eligibility and enabled from metadata JSON.
+                eligible = False
+                enabled = False
+                try:
+                    meta = json.loads(row["metadata"]) if row["metadata"] else {}
+                    eligible = bool(meta.get("jev_eligible", False))
+                    enabled = bool(meta.get("jev_enabled", False))
+                except (json.JSONDecodeError, TypeError):
+                    pass
+                if eligible:
+                    eligible_pairs.add(pair)
+                    if d in decision_by_domain:
+                        decision_by_domain[d]["eligible"].add(pair)
+                    if enabled:
+                        enabled_eligible_pairs.add(pair)
+                        if d in decision_by_domain:
+                            decision_by_domain[d]["enabled_eligible"].add(pair)
+
+        jev_pairs: set[tuple[str, str]] = set()
+        jev_by_operation: dict[str, set] = {"fetch": set(), "search": set()}
+        jev_db = jev_db_path()
+        if jev_db.exists():
+            try:
+                with sqlite3.connect(str(jev_db), timeout=5.0) as jc:
+                    jc.row_factory = sqlite3.Row
+                    jev_sql = (
+                        "SELECT DISTINCT run_id, trace_id, operation FROM jev_records "
+                        "WHERE run_id IS NOT NULL AND run_id != '' "
+                        "AND trace_id IS NOT NULL AND trace_id != ''"
+                    )
+                    jev_params: list[Any] = []
+                    if run_id:
+                        jev_sql += " AND run_id = ?"
+                        jev_params.append(run_id)
+                    jrows = jc.execute(jev_sql, jev_params).fetchall()
+                    for row in jrows:
+                        pair = (row["run_id"], row["trace_id"])
+                        jev_pairs.add(pair)
+                        op = row["operation"]
+                        if op in jev_by_operation:
+                            jev_by_operation[op].add(pair)
+            except Exception:
+                log.warning("join_report: jev db read failed", exc_info=True)
+
+        joined = decision_pairs & jev_pairs
+        joined_enabled_eligible = enabled_eligible_pairs & jev_pairs
+        unjoined_decisions = decision_pairs - jev_pairs
+        orphan_jev = jev_pairs - decision_pairs
+
+        # Four mutually exclusive categories.
+        intentional_unjoined = decision_pairs - eligible_pairs
+        advisor_disabled = eligible_pairs - enabled_eligible_pairs
+        unexpected_unjoined = enabled_eligible_pairs - jev_pairs
+
+        total_eligible = len(eligible_pairs)
+        advisor_enabled = len(enabled_eligible_pairs)
+        join_coverage = len(joined_enabled_eligible) / advisor_enabled if advisor_enabled else 0.0
+
+        by_domain: dict[str, dict[str, Any]] = {}
+        for domain in ("fetch", "search"):
+            d_all = decision_by_domain[domain]["all"]
+            d_eligible = decision_by_domain[domain]["eligible"]
+            d_enabled_eligible = decision_by_domain[domain]["enabled_eligible"]
+            j_domain = jev_by_operation.get(domain, set())
+            d_joined = d_all & j_domain
+            d_joined_enabled = d_enabled_eligible & j_domain
+            d_intentional = d_all - d_eligible
+            d_advisor_disabled = d_eligible - d_enabled_eligible
+            d_unexpected = d_enabled_eligible - j_domain
+            d_cov = len(d_joined_enabled) / len(d_enabled_eligible) if d_enabled_eligible else 0.0
+            by_domain[domain] = {
+                "decision_events": len(d_all),
+                "eligible_decisions": len(d_eligible),
+                "advisor_enabled_decisions": len(d_enabled_eligible),
+                "jev_records": len(j_domain),
+                "joined_pairs": len(d_joined),
+                "joined_enabled_eligible": len(d_joined_enabled),
+                "joined_eligible": len(d_joined_enabled),  # deprecated alias
+                "intentional_unjoined": len(d_intentional),
+                "advisor_disabled": len(d_advisor_disabled),
+                "unexpected_unjoined": len(d_unexpected),
+                "unjoined_decisions": len(d_all - j_domain),
+                "orphan_jev": len(j_domain - d_all),
+                "join_coverage": round(d_cov, 4),
+            }
+
+        return {
+            "total_decisions": len(decision_pairs),
+            "eligible_decisions": total_eligible,
+            "advisor_enabled_decisions": advisor_enabled,
+            "joined_decisions": len(joined),
+            "joined_enabled_eligible": len(joined_enabled_eligible),
+            "joined_eligible": len(joined_enabled_eligible),  # deprecated alias
+            "intentional_unjoined": len(intentional_unjoined),
+            "advisor_disabled": len(advisor_disabled),
+            "unexpected_unjoined": len(unexpected_unjoined),
+            "unjoined_decision_pairs": len(unjoined_decisions),
+            "orphan_jev_pairs": len(orphan_jev),
+            "join_coverage": round(join_coverage, 4),
+            "by_domain": by_domain,
+        }
+    except Exception:
+        log.warning("join_report failed", exc_info=True)
+        return {
+            "total_decisions": 0,
+            "eligible_decisions": 0,
+            "advisor_enabled_decisions": 0,
+            "joined_enabled_eligible": 0,
+            "join_coverage": 0.0,
+        }
+
+
+def db_path() -> Path:
+    return _db_path or _default_db_path()

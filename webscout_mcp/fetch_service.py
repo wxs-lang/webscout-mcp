@@ -14,14 +14,17 @@ and maps the result back to the legacy JSON shape.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
+from .content_grading import assess
 from .fetch_escalation import FetchEscalationDecision
 from .fetch_provider import FetchProvider, FetchRequest, FetchResponse
 from .logging_config import get_logger
 from .normalization import fetch_response_to_web_result
 from .observability import (
+    record_content_quality,
     record_continuation,
     record_escalation,
     record_fetch_attempt,
@@ -37,6 +40,7 @@ from .recovery import (
     classify_recovery,
     recovery_to_legacy_escalation,
 )
+from .runtime_context import PROCESS_RUN_ID, new_trace_id
 from .web_result import WebResult
 
 log = get_logger(__name__)
@@ -97,10 +101,38 @@ class FetchRouteResult:
             "content": self.primary_response.content,
             "content_type": self.primary_response.content_type,
             "extracted": self.primary_response.extracted,
+            # Additive: why extraction did not happen, when it did not.
+            "extraction_status": self.primary_response.extraction_status,
             "cached": self.primary_response.cached,
             "error": self.primary_response.error,
+            # The internal response has carried these since the error taxonomy
+            # landed; the MCP payload never surfaced them, so a caller saw a bare
+            # status code and could not tell a missing page from a rate limit.
+            # Additive fields: COMPATIBILITY.md freezes names and schema, and
+            # extra keys are backwards-compatible (the v1.4.0 status/error
+            # additions set the same precedent).
+            "error_code": (
+                self.primary_response.error_code.value if self.primary_response.error_code is not None else None
+            ),
+            "retryable": self.primary_response.retryable,
             "latency_ms": round(self.primary_response.latency_ms, 2),
         }
+        # What the recovery layer concluded, and what it did about it.
+        #
+        # Without these a challenge page is indistinguishable from a good fetch:
+        # status 200, error null, extraction ok - while the pipeline had already
+        # decided "CHALLENGE, need a browser, none registered". That conclusion was
+        # only visible through route_trace on the Python API.
+        #
+        # `browser_attempted` cannot carry this: it is set only when a browser ran,
+        # so its absence means either "not needed" or "no backend", which need
+        # different remedies.
+        _decision = self.recovery_decision
+        if _decision is not None:
+            out["recovery_reason"] = _decision.reason.value
+            out["recovery_action"] = _decision.action.value
+        if self.recovery_outcome:
+            out["recovery_outcome"] = self.recovery_outcome
         if self.escalation_decision is not None:
             out["escalation"] = self.escalation_decision.to_dict()
         # Progressive content delivery (Phase 2.7C). Sourced from the FINAL
@@ -126,6 +158,15 @@ class FetchRouteResult:
             else:
                 out["browser_success"] = False
                 out["browser_error"] = self.final_response.error
+        elif self.fallback_used and self.fallback_provider:
+            # An alternate FETCH provider recovered the content; surface it
+            # (matches the browser path: the recovered body becomes content).
+            out["content"] = self.final_response.content[:max_chars]
+            if self.final_response.title:
+                out["title"] = self.final_response.title
+            out["extracted"] = True
+            out["fallback_used"] = True
+            out["fallback_provider"] = self.fallback_provider
         return out
 
 
@@ -186,6 +227,8 @@ class FetchService:
                 self._jev_client = None
 
     async def fetch(self, request: FetchRequest) -> FetchRouteResult:
+        _decision_started_at = time.time()
+        _trace_id = new_trace_id()
         # 1) Select fast FETCH provider.
         primary_name = self.registry.select(ProviderCapability.FETCH)
         primary_provider: FetchProvider | None = None
@@ -212,7 +255,21 @@ class FetchService:
             primary_name = "none"
             route_trace.append({"capability": "fetch", "provider": "none", "result": "failure"})
         else:
-            primary = await primary_provider.fetch(request)
+            try:
+                primary = await primary_provider.fetch(request)
+            except BaseException:
+                # A provider that raises must still produce a content-quality
+                # data point, otherwise failures silently leave the denominator
+                # and the usable-rate looks better than reality.
+                try:
+                    record_content_quality(
+                        returned_chars=0,
+                        backend=primary_name or "",
+                        status="failed",
+                    )
+                except Exception:  # pragma: no cover - telemetry is best-effort
+                    log.debug("content quality telemetry failed", exc_info=True)
+                raise
             route_trace.append(
                 {
                     "capability": "fetch",
@@ -231,6 +288,44 @@ class FetchService:
                     record_continuation("chunk_served", len(primary.content or ""))
                 except Exception:  # pragma: no cover
                     log.exception("observability continuation record failed")
+                # Telemetry-only DecisionEvent for snapshot hit. This is NOT
+                # a recovery classification — it records that the continuation
+                # was served from the local cache. 0 network, 0 extraction,
+                # 0 Jev, 0 Browser.
+                try:
+                    from .decision_adapter import record_fetch_decision
+
+                    _jev_enabled = self._jev_client is not None and getattr(self._jev_client, "name", "") not in (
+                        "noop",
+                        "",
+                    )
+                    record_fetch_decision(
+                        request=request,
+                        primary=primary,
+                        final=primary,
+                        recovery=type(
+                            "R",
+                            (),
+                            {
+                                "reason": type("V", (), {"value": "SNAPSHOT_HIT"})(),
+                                "action": type("A", (), {"value": "ACCEPT"})(),
+                            },
+                        )(),
+                        recovery_outcome="snapshot_served",
+                        primary_provider=primary_name,
+                        browser_attempted=False,
+                        browser_success=False,
+                        fallback_used=False,
+                        cache_hit=True,
+                        snapshot_hit=True,
+                        jev_eligible=False,
+                        jev_enabled=_jev_enabled,
+                        trace_id=_trace_id,
+                        run_id=PROCESS_RUN_ID,
+                        started_at=_decision_started_at,
+                    )
+                except Exception:  # pragma: no cover
+                    log.debug("snapshot hit decision telemetry failed", exc_info=True)
                 web_result = fetch_response_to_web_result(primary)
                 route_trace.append({"action": "continue_from_snapshot", "provider": primary_name})
                 return FetchRouteResult(
@@ -323,6 +418,19 @@ class FetchService:
                 browser_success,
                 recovery_outcome,
             ) = await self._execute_browser_recovery(request, primary, recovery, legacy_escalation, route_trace)
+            # A browser-recoverable soft block (e.g. a 403 with an HTML body)
+            # with no browser backend wired in (Crawl4AI sidecar not
+            # configured) falls back to ONE alternate FETCH provider.
+            # Bounded: exactly one fallback attempt, never re-classified,
+            # never recursive.
+            if recovery_outcome == "browser_unavailable":
+                (
+                    final,
+                    fallback_provider_name,
+                    fallback_used,
+                    fallback_outcome,
+                ) = await self._execute_provider_fallback(request, primary, primary_name, route_trace)
+                recovery_outcome = f"browser_unavailable:{fallback_outcome}"
         elif action is RecoveryAction.PROVIDER_FALLBACK:
             (
                 final,
@@ -375,12 +483,67 @@ class FetchService:
                         browser_attempted=browser_attempted,
                         browser_success=browser_success,
                         max_state_chars=self._jev_max_state_chars,
+                        trace_id=_trace_id,
+                        run_id=PROCESS_RUN_ID,
                     )
                 )
                 self._pending_jev_tasks.add(task)
                 task.add_done_callback(self._pending_jev_tasks.discard)
             except Exception:  # pragma: no cover
                 log.debug("Jev shadow fire failed", exc_info=True)
+
+        # 6) Decision telemetry (best-effort, never affects routing).
+        try:
+            from .decision_adapter import record_fetch_decision
+
+            _jev_enabled = self._jev_client is not None and getattr(self._jev_client, "name", "") not in ("noop", "")
+            record_fetch_decision(
+                request=request,
+                primary=primary,
+                final=final,
+                recovery=recovery,
+                recovery_outcome=recovery_outcome,
+                primary_provider=primary_name,
+                browser_attempted=browser_attempted,
+                browser_success=browser_success,
+                fallback_used=fallback_used,
+                cache_hit=getattr(primary, "from_cache", False),
+                snapshot_hit=used_legacy and getattr(request, "start_char", 0) > 0,
+                jev_enabled=_jev_enabled,
+                trace_id=_trace_id,
+                run_id=PROCESS_RUN_ID,
+                started_at=_decision_started_at,
+            )
+        except Exception:  # pragma: no cover - telemetry must never break production
+            log.debug("fetch decision telemetry failed", exc_info=True)
+
+        # 7) Content-usability telemetry (GOAL G1/G4, best-effort).
+        # Records what the caller will actually receive, not what the network
+        # returned: a browser-recovered or fallback-recovered body supersedes
+        # the primary response, so the served content length is taken from the
+        # same source that ``legacy_out`` uses when building the response.
+        try:
+            # Mirror legacy_out's precedence: a recovered body (browser or
+            # alternate FETCH provider) supersedes the fast-HTTP body.
+            _recovered = (browser_attempted and browser_success) or (fallback_used and bool(fallback_provider_name))
+            _served_content = (final.content if _recovered else primary.content) or ""
+            _served_meta = final.metadata or {}
+            _truncated = bool(_served_meta.get("truncated_by_output_limit", False))
+            _pre_limit = _served_meta.get("pre_limit_content_chars")
+            record_content_quality(
+                returned_chars=len(_served_content),
+                pre_limit_chars=int(_pre_limit) if _pre_limit is not None else None,
+                truncated=_truncated,
+                omitted_chars=int(_served_meta.get("omitted_chars") or 0),
+                backend=web_result.backend or primary_name or "",
+                status=web_result.status.value if web_result and web_result.status else "",
+                # Graded here, where the text already exists: a 256-char navigation
+                # shell and a 279-char complete page differ in prose structure, not
+                # size. Only the label crosses into the metrics sink.
+                content_grade=assess(_served_content).grade,
+            )
+        except Exception:  # pragma: no cover - telemetry must never break production
+            log.debug("content quality telemetry failed", exc_info=True)
 
         return FetchRouteResult(
             primary_response=primary,

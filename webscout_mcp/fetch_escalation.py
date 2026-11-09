@@ -37,6 +37,8 @@ from .fetch_provider import FetchResponse
 
 class EscalationReason(str, Enum):
     SOFT_BLOCK = "SOFT_BLOCK"  # 403 / challenge / captcha
+    # An explicit interstitial asking the visitor to wait for a check.
+    CHALLENGE = "CHALLENGE"
     JS_REQUIRED = "JS_REQUIRED"  # explicit "enable JavaScript" placeholder
     LOW_CONTENT_DENSITY = "LOW_CONTENT_DENSITY"  # short text + heavy HTML/scripts
     LOW_QUALITY = "LOW_QUALITY"  # analyzer marked the extracted content low quality
@@ -52,6 +54,13 @@ _CHALLENGE_MARKERS = (
     "are you a human",
     "cf-browser-verification",
     "challenge-platform",
+    # Non-English interstitials. Measured against three legitimate short Chinese
+    # pages (about / login / product): these hit the challenge and none of them.
+    # Deliberately narrow - broader phrases like 请耐心等待 appear in normal copy,
+    # and 验证码 / 人机验证 appear on legitimate login flows.
+    "安全检测",
+    "检测当前网络环境",
+    "火山引擎",
 )
 
 _JS_PLACEHOLDER_MARKERS = (
@@ -63,6 +72,8 @@ _JS_PLACEHOLDER_MARKERS = (
 )
 
 # Content types that have their own parsers and should never go to a browser.
+# Single source of truth: recovery.py imports this rather than keeping a second
+# copy, because two copies agreeing today is not the same as one definition.
 _NON_HTML_PREFIXES = (
     "application/pdf",
     "application/json",
@@ -77,6 +88,19 @@ _NON_HTML_PREFIXES = (
 _MIN_HTML_BYTES_FOR_LOW_DENSITY = 3000
 _MIN_TEXT_CHARS_FOR_REAL_PAGE = 200
 _MIN_PAGE_BYTES_FOR_LOW_QUALITY = 2000
+# Script-to-total ratio that marks an SPA shell inside the low-density rule.
+#
+# This is a DIFFERENT decision from recovery._HIGH_SCRIPT_RATIO (0.15), not a
+# drifted copy of it. The two rules differ in every dimension:
+#
+#   recovery thin_shell   html > 20000, text < 1500, ratio > 0.15 -> NOT escalated
+#   escalation low_density html >  3000, text <  200, ratio > 0.20 -> escalated
+#
+# Different document sizes, different text floors, and opposite actions. They
+# share the word "script ratio" and nothing else; unifying the numbers would
+# change behaviour in one direction or the other. Named anyway, because a bare
+# 0.2 inside the rule was invisible to the policy table.
+_LOW_DENSITY_SCRIPT_RATIO = 0.2
 
 
 @dataclass
@@ -179,10 +203,20 @@ def should_escalate_to_browser(response: FetchResponse) -> FetchEscalationDecisi
         details["omitted_chars"] = meta.get("omitted_chars", 0)
 
     if response.status_code == 200:
-        if _looks_like_challenge(raw_html):
+        # Challenge markers are searched in the extracted body as well as the HTML
+        # head. On 36kr the marker sits at byte 25065 of a 25258-byte document, so
+        # the head-only check saw markup boilerplate; the body is 58 chars and
+        # contains it at position 0. Measured against two legitimate short pages:
+        # no false positives. Scanning the whole 25KB instead would match any large
+        # page whose scripts merely mention "captcha", which is why the body - what
+        # the reader would actually see - is the right extra surface.
+        if _looks_like_challenge(raw_html) or _looks_like_challenge(body):
+            # An explicit interstitial, not a silent fingerprint rejection: the page
+            # tells the visitor a check is running. Naming it lets a caller tell the
+            # two apart.
             return FetchEscalationDecision(
                 escalate=True,
-                reason_code=EscalationReason.SOFT_BLOCK,
+                reason_code=EscalationReason.CHALLENGE,
                 confidence=0.95,
                 details=details,
             )
@@ -198,7 +232,7 @@ def should_escalate_to_browser(response: FetchResponse) -> FetchEscalationDecisi
         # non-trivial. This is the classic "JS-rendered SPA" signature.
         if len(body) < _MIN_TEXT_CHARS_FOR_REAL_PAGE and len(raw_html) > _MIN_HTML_BYTES_FOR_LOW_DENSITY:
             sr = _script_ratio(raw_html)
-            if sr > 0.2 or _looks_like_js_placeholder(raw_html):
+            if sr > _LOW_DENSITY_SCRIPT_RATIO or _looks_like_js_placeholder(raw_html):
                 return FetchEscalationDecision(
                     escalate=True,
                     reason_code=EscalationReason.LOW_CONTENT_DENSITY,

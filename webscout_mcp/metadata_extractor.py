@@ -11,10 +11,21 @@ Extracts common metadata from HTML:
 
 from __future__ import annotations
 
+import json
+import logging
 from dataclasses import dataclass, field
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
+
+log = logging.getLogger(__name__)
+
+# Hard limits to prevent resource exhaustion
+MAX_RAW_META_TAGS = 200
+MAX_JSON_LD_ENTRIES = 50
+MAX_IMAGES = 100
+MAX_LINKS = 200
+MAX_JSON_LD_DEPTH = 3  # recursion depth for @graph / nested arrays
 
 
 @dataclass
@@ -126,15 +137,22 @@ class MetadataExtractor:
     def __init__(self, base_url: str = "") -> None:
         self.base_url = base_url
 
-    def extract(self, html: str) -> PageMetadata:
+    def extract(self, html: str, base_url: str | None = None) -> PageMetadata:
         """Extract all metadata from HTML.
 
         Args:
             html: Raw HTML content.
+            base_url: Optional base URL for resolving relative URLs. If provided,
+                overrides the base_url set in the constructor. This makes the
+                method compatible with callers that pass base_url as a keyword
+                argument (e.g. server.py metadata_extract tool).
 
         Returns:
             PageMetadata with all extracted fields.
         """
+        if base_url is not None:
+            self.base_url = base_url
+
         metadata = PageMetadata()
         try:
             soup = BeautifulSoup(html, "lxml")
@@ -154,34 +172,24 @@ class MetadataExtractor:
         if charset_meta:
             metadata.charset = charset_meta["charset"]
 
-        # Extract all meta tags
+        # Extract all meta tags (with hard limit)
         meta_tags = soup.find_all("meta")
-        for tag in meta_tags:
+        for tag in meta_tags[:MAX_RAW_META_TAGS]:
             name = tag.get("name", "").lower()
             property_attr = tag.get("property", "").lower()
             content = tag.get("content", "").strip()
             key = name or property_attr
 
-            if key and content:
+            if key and content and len(metadata.raw_meta) < MAX_RAW_META_TAGS:
                 metadata.raw_meta[key] = content
 
-            # Basic meta
+            # Basic meta (name attribute)
             if name == "description":
                 metadata.description = content
             elif name == "keywords":
                 metadata.keywords = [k.strip() for k in content.split(",") if k.strip()]
             elif name == "author":
                 metadata.author = content
-            elif name == "article:author":
-                metadata.article_author = content
-            elif name == "article:published_time":
-                metadata.article_published_time = content
-            elif name == "article:modified_time":
-                metadata.article_modified_time = content
-            elif name == "article:section":
-                metadata.article_section = content
-            elif name == "article:tag":
-                metadata.article_tags.append(content)
             elif name == "robots":
                 metadata.robots = content
             elif name == "viewport":
@@ -191,7 +199,22 @@ class MetadataExtractor:
             elif name == "theme-color":
                 metadata.theme_color = content
 
-            # Open Graph
+            # Article metadata — can appear in BOTH name and property attributes
+            article_key = (
+                name if name.startswith("article:") else property_attr if property_attr.startswith("article:") else ""
+            )
+            if article_key == "article:author":
+                metadata.article_author = content
+            elif article_key == "article:published_time":
+                metadata.article_published_time = content
+            elif article_key == "article:modified_time":
+                metadata.article_modified_time = content
+            elif article_key == "article:section":
+                metadata.article_section = content
+            elif article_key == "article:tag":
+                metadata.article_tags.append(content)
+
+            # Open Graph (property attribute)
             if property_attr == "og:title":
                 metadata.og_title = content
             elif property_attr == "og:description":
@@ -205,7 +228,7 @@ class MetadataExtractor:
             elif property_attr == "og:site_name":
                 metadata.og_site_name = content
 
-            # Twitter
+            # Twitter (name attribute)
             if name == "twitter:card":
                 metadata.twitter_card = content
             elif name == "twitter:title":
@@ -227,24 +250,19 @@ class MetadataExtractor:
         if favicon and favicon.get("href"):
             metadata.favicon = self._resolve_url(favicon["href"])
 
-        # JSON-LD structured data
+        # JSON-LD structured data (with @graph support and hard limits)
         json_ld_scripts = soup.find_all("script", type="application/ld+json")
         for script in json_ld_scripts:
-            if script.string:
+            if script.string and len(metadata.json_ld) < MAX_JSON_LD_ENTRIES:
                 try:
-                    import json
-
                     data = json.loads(script.string.strip())
-                    if isinstance(data, list):
-                        metadata.json_ld.extend(data)
-                    elif isinstance(data, dict):
-                        metadata.json_ld.append(data)
-                except (json.JSONDecodeError, ValueError):
-                    pass
+                    self._flatten_json_ld(data, metadata.json_ld, depth=0)
+                except (json.JSONDecodeError, ValueError, TypeError) as exc:
+                    log.debug("Malformed JSON-LD skipped: %s", exc)
 
-        # Images extraction
+        # Images extraction (with hard limit)
         img_tags = soup.find_all("img")
-        for img in img_tags:
+        for img in img_tags[:MAX_IMAGES]:
             src = img.get("src", "")
             if not src:
                 continue
@@ -255,13 +273,12 @@ class MetadataExtractor:
                 "width": img.get("width", ""),
                 "height": img.get("height", ""),
             }
-            # Only add images with valid src
-            if image_info["src"]:
+            if image_info["src"] and len(metadata.images) < MAX_IMAGES:
                 metadata.images.append(image_info)
 
-        # Links extraction
+        # Links extraction (with hard limit)
         a_tags = soup.find_all("a", href=True)
-        for a in a_tags:
+        for a in a_tags[:MAX_LINKS]:
             href = a.get("href", "")
             if not href or href.startswith(("#", "javascript:", "mailto:", "tel:")):
                 continue
@@ -272,11 +289,39 @@ class MetadataExtractor:
                 "rel": a.get("rel", ""),
                 "target": a.get("target", ""),
             }
-            # Only add links with valid href
-            if link_info["href"]:
+            if link_info["href"] and len(metadata.links) < MAX_LINKS:
                 metadata.links.append(link_info)
 
         return metadata
+
+    def _flatten_json_ld(self, data: object, target: list[dict], depth: int = 0) -> None:
+        """Flatten JSON-LD data, expanding @graph arrays and nested lists.
+
+        Handles:
+        - dict with @graph key (schema.org graph)
+        - list of nodes
+        - single dict node
+        Recursion is bounded by MAX_JSON_LD_DEPTH to prevent stack exhaustion.
+        """
+        if depth > MAX_JSON_LD_DEPTH or len(target) >= MAX_JSON_LD_ENTRIES:
+            return
+        if isinstance(data, list):
+            for item in data:
+                if len(target) >= MAX_JSON_LD_ENTRIES:
+                    break
+                self._flatten_json_ld(item, target, depth + 1)
+        elif isinstance(data, dict):
+            # If the dict has an @graph key, expand its contents as separate nodes
+            if "@graph" in data and isinstance(data["@graph"], list):
+                # Keep the outer dict too (it may have @context etc.)
+                if len(target) < MAX_JSON_LD_ENTRIES:
+                    target.append(data)
+                for node in data["@graph"]:
+                    if len(target) >= MAX_JSON_LD_ENTRIES:
+                        break
+                    self._flatten_json_ld(node, target, depth + 1)
+            else:
+                target.append(data)
 
     def _resolve_url(self, url: str) -> str:
         """Resolve relative URL to absolute URL."""

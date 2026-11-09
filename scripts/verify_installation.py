@@ -48,6 +48,17 @@ class VerificationReport:
         return self.failed_count == 0
 
 
+# The report uses status glyphs. A console whose default codec is not UTF-8
+# (cp936 on Windows) cannot encode them, and this script exists to prove the
+# package works on every platform - crashing on one of them defeats the point.
+# reconfigure() is available on 3.7+, which is below the supported floor.
+if sys.stdout.encoding and sys.stdout.encoding.lower().replace("-", "") != "utf8":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):  # pragma: no cover - exotic streams
+        pass
+
+
 def run_check(name: str, fn) -> CheckResult:
     """Run a single check and return result."""
     start = time.time()
@@ -150,6 +161,53 @@ def check_platform() -> str:
     return f"{platform.system()} {platform.release()} ({platform.machine()})"
 
 
+def _package_installed() -> bool:
+    """True when webscout-mcp is installed as a distribution, not just on disk."""
+    from importlib.metadata import PackageNotFoundError, distribution
+
+    try:
+        distribution("webscout-mcp")
+        return True
+    except PackageNotFoundError:
+        return False
+
+
+def check_cli_entry_point() -> str:
+    """Run the console script a user gets after pip install (GOAL.md E2).
+
+    Only meaningful in an installed environment: a source checkout has no
+    console script on PATH, and that is a legitimate state, so main() decides
+    whether to include this check.
+
+    Covers what nothing else did - that pyproject's
+    ``webscout-mcp = "webscout_mcp.__main__:main"`` entry point resolves and the
+    command prints a version instead of a traceback.
+    """
+    import shutil
+    import subprocess
+
+    exe = shutil.which("webscout-mcp")
+    if not exe:
+        raise RuntimeError("webscout-mcp not on PATH despite the package being installed")
+
+    try:
+        proc = subprocess.run([exe, "--version"], capture_output=True, text=True, timeout=120)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("CLI --version timed out after 120s") from None
+
+    if proc.returncode != 0:
+        lines = (proc.stderr or proc.stdout or "").strip().splitlines()
+        last = lines[-1] if lines else "no output"
+        raise RuntimeError(f"CLI exited {proc.returncode}: {last[:160]}")
+
+    out = (proc.stdout or "").strip()
+    if not out:
+        raise RuntimeError("CLI printed nothing for --version")
+    if "webscout-mcp" not in out:
+        raise RuntimeError(f"unexpected --version output: {out[:160]}")
+    return out.splitlines()[0][:60]
+
+
 def main() -> int:
     """Run all verification checks."""
     print("=" * 70)
@@ -182,6 +240,10 @@ def main() -> int:
         ("Server creation", check_server_creation),
         ("SearchService creation", check_search_service_creation),
     ]
+    if _package_installed():
+        # Only in an installed environment: a source tree has no console
+        # script, and that is not a defect.
+        checks.append(("CLI entry point", check_cli_entry_point))
 
     print("Running checks...")
     print("-" * 70)

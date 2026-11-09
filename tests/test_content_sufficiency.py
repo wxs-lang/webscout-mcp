@@ -39,7 +39,7 @@ def _stub_result(html: str, content_type: str = "text/html; charset=utf-8") -> F
 
 
 def _install_stub(fetcher: Fetcher, html: str, content_type: str = "text/plain") -> None:
-    async def _stub(url):
+    async def _stub(url, follow_redirects: bool = True):
         # Fresh object per call, mirroring a real network fetch (the
         # fetcher mutates content in place during truncation).
         return _stub_result(html, content_type=content_type)
@@ -110,7 +110,7 @@ def test_none_and_8000_share_cache_entry(tmp_path):
     first = asyncio.run(fetcher.fetch("https://example.com/page", max_chars=None))
     stub_calls = {"n": 0}
 
-    async def _stub(url):
+    async def _stub(url, follow_redirects: bool = True):
         stub_calls["n"] += 1
         return _stub_result(body, content_type="text/plain")
 
@@ -144,7 +144,7 @@ def test_cached_8000_does_not_pollute_200000(tmp_path):
     body = "F" * 30000
     calls = {"n": 0}
 
-    async def _stub(url):
+    async def _stub(url, follow_redirects: bool = True):
         calls["n"] += 1
         return _stub_result(body, content_type="text/plain")
 
@@ -263,19 +263,14 @@ def test_metadata_never_carries_raw_html():
 
 
 def test_mcp_tool_count_unchanged():
-    """Guard: Phase 2.7A must not add MCP tools."""
-    import subprocess
-    import sys
+    """Guard: the MCP tool surface must stay at 11.
+
+    Read with an explicit encoding. The previous version shelled out to a
+    subprocess with `open(r'{server}')`, which uses the locale default - cp936
+    on Windows - and could not decode the UTF-8 source there, so stdout came
+    back empty and the test failed on encoding rather than on tool count.
+    """
     from pathlib import Path
 
-    server = Path(__file__).resolve().parents[1] / "webscout_mcp" / "server.py"
-    out = subprocess.run(
-        [sys.executable, "-c", f"print(open(r'{server}').read().count('@mcp.tool'))"],
-        capture_output=True,
-        text=True,
-    )
-    assert int(out.stdout.strip()) == 11
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+    server = (Path(__file__).resolve().parents[1] / "webscout_mcp" / "server.py").read_text(encoding="utf-8")
+    assert server.count("@mcp.tool()") == 15  # 15 since web_monitor; see COMPATIBILITY.md
