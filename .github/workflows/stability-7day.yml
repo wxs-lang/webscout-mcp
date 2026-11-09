@@ -32,7 +32,7 @@ jobs:
           pip install -e . --quiet
 
       - name: Download previous results artifact (if any)
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         continue-on-error: true
         with:
           name: stability-7day-results
