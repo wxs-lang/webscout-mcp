@@ -11,7 +11,12 @@ class TestBackendHealth:
     """Tests for BackendHealth class."""
 
     def test_initial_state(self):
-        """Test initial health state."""
+        """Test initial health state.
+
+        v1.9.0: unobserved backends report status="unobserved" and
+        health_score=None, NOT healthy/1.0. This is the P0 fix:
+        unknown must not be reported as healthy.
+        """
         backend = BackendHealth(name="test")
         assert backend.name == "test"
         assert backend.enabled is True
@@ -20,8 +25,9 @@ class TestBackendHealth:
         assert backend.total_requests == 0
         assert backend.circuit_open is False
         assert backend.can_use() is True
-        assert backend.get_status() == "healthy"
-        assert backend.get_health_score() == 1.0
+        assert backend.observed is False
+        assert backend.get_status() == "unobserved"
+        assert backend.get_health_score() is None
 
     def test_record_success(self):
         """Test recording successful requests."""

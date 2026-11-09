@@ -217,12 +217,14 @@ class TestRSSParser:
         assert feed.entries[0].link == "https://example.com/item"
 
     def test_empty_feed(self):
-        """Test parsing empty feed."""
+        """Test that empty feed content raises RSSParseError (fail-closed)."""
+        import pytest
+
+        from webscout_mcp.rss_parser import RSSParseError
+
         parser = RSSParser()
-        feed = parser.parse("")
-        # Empty content may default to rss type, but should have no entries
-        assert feed.title == ""
-        assert feed.entries == []
+        with pytest.raises(RSSParseError, match="Empty feed content"):
+            parser.parse("")
 
     def test_invalid_xml(self):
         """Test parsing invalid XML (should not crash)."""

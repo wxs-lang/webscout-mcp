@@ -1,0 +1,23 @@
+# Normalise line endings in the repository so a generated file does not appear as a
+# whole-file rewrite on a machine whose autocrlf settings differ. The generator pins
+# newline="\n" for the same reason; this is the second half of that guarantee.
+* text=auto
+*.py text eol=lf
+*.md text eol=lf
+*.toml text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+
+# Binary-ish artifacts: never touch.
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.so binary
+*.pyd binary
+*.zip binary
+*.gz binary
+*.tar binary

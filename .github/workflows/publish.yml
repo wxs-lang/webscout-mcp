@@ -124,15 +124,6 @@ jobs:
           skip-existing: true
           verbose: true
 
-      - name: Publish to TestPyPI (dry run)
-        if: github.event_name == 'workflow_dispatch'
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          repository-url: https://test.pypi.org/legacy/
-          packages-dir: dist/
-          skip-existing: true
-          verbose: true
-
   post-publish:
     name: Post-Publish
     runs-on: ubuntu-latest

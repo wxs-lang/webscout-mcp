@@ -38,7 +38,44 @@ SLO_TARGETS = {
     "mcp_e2e_success_rate_7d": float(os.getenv("SLO_MCP_SUCCESS_7D", "99.5")),
     "search_p95_latency_ms": float(os.getenv("SLO_SEARCH_P95", "5000")),
     "fetch_p95_latency_ms": float(os.getenv("SLO_FETCH_P95", "10000")),
+    # Content-quality targets (GOAL G1/G5). Higher is better for usable content;
+    # lower is better for thin content.
+    "usable_content_rate_min": float(os.getenv("SLO_USABLE_CONTENT_RATE", "85.0")),
+    "thin_content_rate_max": float(os.getenv("SLO_THIN_CONTENT_RATE", "10.0")),
+    # truncation_rate is NOT a target. It reports gated, not alerting - see the
+    # note where the content-quality block is assembled. Kept here only so an
+    # operator can surface it if their corpus is expected to be short pages.
+    "truncation_rate_max": float(os.getenv("SLO_TRUNCATION_RATE", "25.0")),
 }
+
+
+def _extract_content_quality(report: dict[str, Any]) -> dict[str, Any] | None:
+    """Pull the content-quality block out of a report, if the run recorded one.
+
+    Accepts both a snapshot written by ``observability.write_snapshot`` (nested
+    under ``content_quality``) and a flat layout. Returns None when the report
+    predates content-quality instrumentation, so old reports keep contributing
+    their success/latency numbers without being counted as zero-quality.
+    """
+    block = report.get("content_quality")
+    if not isinstance(block, dict) or not block:
+        return None
+    try:
+        fetches = int(block.get("fetches", 0) or 0)
+    except (TypeError, ValueError):
+        return None
+    if fetches <= 0:
+        return None
+    return {
+        "fetches": fetches,
+        "usable": int(block.get("usable", 0) or 0),
+        "thin": int(block.get("thin", 0) or 0),
+        "empty": int(block.get("empty", 0) or 0),
+        # Unreadable bytes. Kept rather than dropped: a window of mojibake must
+        # not look better than one of thin pages.
+        "garbled": int(block.get("garbled", 0) or 0),
+        "truncated": int(block.get("truncated_by_output_limit", 0) or 0),
+    }
 
 
 def load_live_reports(results_dir: Path) -> list[dict[str, Any]]:
@@ -49,7 +86,7 @@ def load_live_reports(results_dir: Path) -> list[dict[str, Any]]:
 
     for report_file in sorted(results_dir.glob("**/live_report.json")):
         try:
-            with open(report_file) as f:
+            with open(report_file, encoding="utf-8") as f:
                 report = json.load(f)
                 report["_source_file"] = str(report_file)
                 reports.append(report)
@@ -194,8 +231,27 @@ def aggregate_slo_metrics(reports: list[dict[str, Any]], days: int) -> dict[str,
     fallback_count = 0
     error_types: dict[str, int] = {}
     provider_counts: dict[str, int] = {}
+    cq_fetches = 0
+    cq_usable = 0
+    cq_thin = 0
+    cq_garbled = 0
+    cq_empty = 0
+    cq_truncated = 0
+    cq_reports = 0
 
     for report in recent_reports:
+        # Content quality (GOAL G1/G5). Absent on reports that predate the
+        # instrumentation; those are skipped rather than counted as zero.
+        cq = _extract_content_quality(report)
+        if cq is not None:
+            cq_reports += 1
+            cq_fetches += cq["fetches"]
+            cq_usable += cq["usable"]
+            cq_thin += cq["thin"]
+            cq_garbled += cq.get("garbled", 0)
+            cq_empty += cq["empty"]
+            cq_truncated += cq["truncated"]
+
         # Search metrics
         search_stats = _extract_stats(report.get("search_stats", report.get("search", {})))
         total_searches += search_stats["total"]
@@ -228,9 +284,15 @@ def aggregate_slo_metrics(reports: list[dict[str, Any]], days: int) -> dict[str,
         for provider, count in report.get("provider_distribution", {}).items():
             provider_counts[provider] = provider_counts.get(provider, 0) + count
 
-    # Calculate rates
-    search_success_rate = (successful_searches / total_searches * 100) if total_searches > 0 else 0.0
-    fetch_success_rate = (successful_fetches / total_fetches * 100) if total_fetches > 0 else 0.0
+    # Calculate rates.
+    #
+    # None means "no observations", which is a different finding from 0.0%,
+    # which means "every observation failed". Collapsing the two made a run
+    # with no data report a violation: total=0 produced rate 0.0 and the gate
+    # read it as a total outage. That inverts the meaning of the metric and
+    # trains people to ignore real violations.
+    search_success_rate = (successful_searches / total_searches * 100) if total_searches > 0 else None
+    fetch_success_rate = (successful_fetches / total_fetches * 100) if total_fetches > 0 else None
     fallback_rate = (fallback_count / total_searches * 100) if total_searches > 0 else 0.0
 
     # Calculate percentiles
@@ -239,47 +301,109 @@ def aggregate_slo_metrics(reports: list[dict[str, Any]], days: int) -> dict[str,
     fetch_p50 = calculate_percentile(fetch_latencies, 50)
     fetch_p95 = calculate_percentile(fetch_latencies, 95)
 
+    # Content quality rates. None (not 0.0) when no report carried the block:
+    # "no data" and "zero usable content" are very different findings.
+    if cq_fetches > 0:
+        usable_content_rate = cq_usable / cq_fetches * 100
+        thin_content_rate = cq_thin / cq_fetches * 100
+        garbled_content_rate = cq_garbled / cq_fetches * 100
+        empty_content_rate = cq_empty / cq_fetches * 100
+        truncation_rate = cq_truncated / cq_fetches * 100
+    else:
+        usable_content_rate = thin_content_rate = empty_content_rate = truncation_rate = None
+        garbled_content_rate = None
+
     # Determine SLO status
     status = "healthy"
-    violations = []
+    violations: list[str] = []
+    # Observations that belong in the report but must never change the status.
+    notes: list[str] = []
 
     if days == 7:
-        if search_success_rate < SLO_TARGETS["search_success_rate_7d"]:
+        if search_success_rate is not None and search_success_rate < SLO_TARGETS["search_success_rate_7d"]:
             status = "violating"
             violations.append(
                 f"Search success rate {search_success_rate:.1f}% < target {SLO_TARGETS['search_success_rate_7d']}%"
             )
-        if fetch_success_rate < SLO_TARGETS["fetch_success_rate_7d"]:
+        if fetch_success_rate is not None and fetch_success_rate < SLO_TARGETS["fetch_success_rate_7d"]:
             status = "violating"
             violations.append(
                 f"Fetch success rate {fetch_success_rate:.1f}% < target {SLO_TARGETS['fetch_success_rate_7d']}%"
             )
-        if search_p95 > SLO_TARGETS["search_p95_latency_ms"]:
+        if total_searches > 0 and search_p95 > SLO_TARGETS["search_p95_latency_ms"]:
             status = "warning"
             violations.append(
                 f"Search P95 latency {search_p95:.0f}ms > target {SLO_TARGETS['search_p95_latency_ms']}ms"
             )
     elif days == 30:
-        if search_success_rate < SLO_TARGETS["search_success_rate_30d"]:
+        if search_success_rate is not None and search_success_rate < SLO_TARGETS["search_success_rate_30d"]:
             status = "violating"
             violations.append(
                 f"Search success rate {search_success_rate:.1f}% < target {SLO_TARGETS['search_success_rate_30d']}%"
             )
-        if fetch_success_rate < SLO_TARGETS["fetch_success_rate_30d"]:
+        if fetch_success_rate is not None and fetch_success_rate < SLO_TARGETS["fetch_success_rate_30d"]:
             status = "violating"
             violations.append(
                 f"Fetch success rate {fetch_success_rate:.1f}% < target {SLO_TARGETS['fetch_success_rate_30d']}%"
             )
+
+    # Content-quality gates. Usable content is a hard violation: the whole
+    # point of the layer is returning content worth reading. Thin content is a
+    # warning, because a site adding a captcha can spike it and the layer only
+    # partly controls that. Truncation is not a gate at all - see below.
+    if usable_content_rate is not None:
+        if usable_content_rate < SLO_TARGETS["usable_content_rate_min"]:
+            status = "violating"
+            violations.append(
+                f"Usable content rate {usable_content_rate:.1f}% < target {SLO_TARGETS['usable_content_rate_min']}%"
+            )
+        if thin_content_rate > SLO_TARGETS["thin_content_rate_max"]:
+            if status == "healthy":
+                status = "warning"
+            violations.append(
+                f"Thin content rate {thin_content_rate:.1f}% > target {SLO_TARGETS['thin_content_rate_max']}%"
+            )
+        # Truncation is reported, never gated.
+        #
+        # has_more=True means the full body was fetched and extracted and the
+        # caller is being served the first 8000-char window - by design, with
+        # start_char available to read on. So the rate measures how long the
+        # pages in the corpus are, not how good the service is. A documentation-
+        # heavy corpus produces a high rate and a perfect usable_rate at the same
+        # time; the first live baseline showed 70% truncation alongside 100%
+        # usable, which is the correct reading, not a defect.
+        #
+        # Gating on it would alert whenever the corpus contains long pages, which
+        # is to say always for a web-research tool. Reported in the payload
+        # instead, so the number stays visible without pretending to be a SLO.
+        if truncation_rate > SLO_TARGETS["truncation_rate_max"]:
+            notes.append(
+                f"Truncation rate {truncation_rate:.1f}% (informational only: long pages are "
+                "served as progressive windows via start_char, not lost)"
+            )
+
+    # A window full of reports that recorded nothing is not "healthy". Treat it
+    # as no_data so a pipeline that never actually ran anything cannot present a
+    # green SLO. This distinguishes three states that were previously smeared
+    # together: no reports, reports with no observations, and reports showing
+    # failures.
+    if total_searches == 0 and total_fetches == 0 and cq_fetches == 0 and status == "healthy":
+        status = "no_data"
+        violations.append(
+            "reports were present but contained no observations "
+            f"({len(recent_reports)} report(s) in the last {days} days)"
+        )
 
     return {
         "period_days": days,
         "data_points": len(recent_reports),
         "status": status,
         "violations": violations,
+        "notes": notes,
         "search": {
             "total": total_searches,
             "successful": successful_searches,
-            "success_rate": round(search_success_rate, 2),
+            "success_rate": None if search_success_rate is None else round(search_success_rate, 2),
             "fallback_count": fallback_count,
             "fallback_rate": round(fallback_rate, 2),
             "latency_p50_ms": round(search_p50, 1),
@@ -288,9 +412,24 @@ def aggregate_slo_metrics(reports: list[dict[str, Any]], days: int) -> dict[str,
         "fetch": {
             "total": total_fetches,
             "successful": successful_fetches,
-            "success_rate": round(fetch_success_rate, 2),
+            "success_rate": None if fetch_success_rate is None else round(fetch_success_rate, 2),
             "latency_p50_ms": round(fetch_p50, 1),
             "latency_p95_ms": round(fetch_p95, 1),
+        },
+        "content_quality": {
+            "reports_with_data": cq_reports,
+            "fetches": cq_fetches,
+            "usable": cq_usable,
+            "thin": cq_thin,
+            "garbled": cq_garbled,
+            "empty": cq_empty,
+            "truncated_by_output_limit": cq_truncated,
+            "usable_rate": None if usable_content_rate is None else round(usable_content_rate, 2),
+            "thin_rate": None if thin_content_rate is None else round(thin_content_rate, 2),
+            "garbled_rate": None if garbled_content_rate is None else round(garbled_content_rate, 2),
+            "empty_rate": None if empty_content_rate is None else round(empty_content_rate, 2),
+            "truncation_rate": None if truncation_rate is None else round(truncation_rate, 2),
+            "status": "no_data" if usable_content_rate is None else "measured",
         },
         "error_types": error_types,
         "provider_distribution": provider_counts,
@@ -323,12 +462,15 @@ def generate_slo_report(reports: list[dict[str, Any]], output_dir: Path) -> dict
 
     # Write JSON report
     json_path = output_dir / "slo_report.json"
-    with open(json_path, "w") as f:
+    with open(json_path, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2, default=str)
 
     # Write Markdown report
     md_path = output_dir / "SLO_DASHBOARD.md"
-    with open(md_path, "w") as f:
+    # Encoding is explicit: the default is locale-dependent, and this file
+    # contains status glyphs (⚠️, ❌, 📊) that cp936 cannot encode. Without this,
+    # generating the dashboard crashes on Windows with UnicodeEncodeError.
+    with open(md_path, "w", encoding="utf-8") as f:
         f.write("# WebScout MCP - SLO Dashboard\n\n")
         f.write(f"**Generated:** {report['generated_at']}\n\n")
         f.write(f"**Overall Status:** `{report['overall_status'].upper()}`\n\n")
@@ -430,12 +572,18 @@ def main():
     print("=" * 60)
     print("SLO Summary")
     print("=" * 60)
+
+    def _fmt(pct: object) -> str:
+        # None means "no observations in this window", which must not print as
+        # "0.0%" - that reads as a total outage.
+        return "N/A (no data)" if pct is None else f"{pct}%"
+
     print(f"7-Day Status: {report['slo_7d']['status']}")
-    print(f"  Search Success: {report['slo_7d'].get('search', {}).get('success_rate', 'N/A')}%")
-    print(f"  Fetch Success: {report['slo_7d'].get('fetch', {}).get('success_rate', 'N/A')}%")
+    print(f"  Search Success: {_fmt(report['slo_7d'].get('search', {}).get('success_rate'))}")
+    print(f"  Fetch Success:  {_fmt(report['slo_7d'].get('fetch', {}).get('success_rate'))}")
     print(f"30-Day Status: {report['slo_30d']['status']}")
-    print(f"  Search Success: {report['slo_30d'].get('search', {}).get('success_rate', 'N/A')}%")
-    print(f"  Fetch Success: {report['slo_30d'].get('fetch', {}).get('success_rate', 'N/A')}%")
+    print(f"  Search Success: {_fmt(report['slo_30d'].get('search', {}).get('success_rate'))}")
+    print(f"  Fetch Success:  {_fmt(report['slo_30d'].get('fetch', {}).get('success_rate'))}")
     print(f"Overall: {report['overall_status']}")
 
     # Exit with error if SLO is violating (but not if no_data)
