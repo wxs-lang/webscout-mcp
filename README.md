@@ -27,7 +27,7 @@ The MCP server currently exposes these **11 tools**:
 |------|-------------|-----------|
 | `web_search` | Self-healing multi-provider search with deterministic recovery and automatic fallback | ✅ Stable |
 | `web_fetch` | Fetch a URL and return one window of extracted main content, with progressive continuation (`start_char`) | ✅ Stable |
-| `web_crawl` | Concurrent website crawling with depth limits | 🔶 Beta |
+| `web_crawl` | Concurrent website crawling with depth limits | ✅ Stable |
 | `web_extract` | Structured content extraction with CSS selectors | ✅ Stable |
 | `metadata_extract` | Extract metadata (JSON-LD, OpenGraph, Twitter cards) from a page | 🔶 Beta |
 | `rss_parse` | Parse an RSS or Atom feed and return its entries | 🔶 Beta |
@@ -611,6 +611,110 @@ headless = true
 [monitor]
 check_interval = 300
 ```
+
+## 🔧 Troubleshooting: pages that need a browser
+
+Some sites answer a plain HTTP request with a page that says "checking your browser"
+instead of the content you asked for. `web_fetch` detects this, and if a browser is
+available it retries with one.
+
+### What it looks like when there is no browser
+
+The payload does **not** look like a failure:
+
+```json
+{
+  "status_code": 200,
+  "error": null,
+  "error_code": null,
+  "extracted": true,
+  "extraction_status": "ok",
+  "content": "火山引擎\n\n正在进行安全检测...\n\n为保障您的访问安全..."
+}
+```
+
+Status 200, no error, extraction "ok" - because a readable page was returned. It is
+just not the page you wanted. The signals that identify it are:
+
+| Signal | Value for a challenge page |
+|---|---|
+| `recovery_decision.reason` | `CHALLENGE`, `JS_REQUIRED`, `LOW_CONTENT_DENSITY`, or `SOFT_BLOCK` |
+| `recovery_outcome` | `browser_unavailable:fallback_unavailable` |
+| `content` length | very short (tens of characters) |
+| `status_code` | often 200, not 403 |
+
+**If you only check `status_code` and `error`, you will treat a challenge page as
+success.** Check `recovery_outcome` when content looks thin.
+
+### Enabling browser escalation
+
+```bash
+pip install 'webscout-mcp[browser]'
+playwright install chromium
+```
+
+That is all. With the extra installed, `web_fetch` escalates automatically when a
+page needs rendering - no sidecar, no Docker, no configuration.
+
+Verify it took effect:
+
+```bash
+python -c "from webscout_mcp.local_browser_backend import LocalBrowserBackend; print(LocalBrowserBackend().is_available)"
+# True
+```
+
+### When a browser is not enough
+
+Measured against sixteen real sites, browser escalation fixes client-rendered pages
+but not all anti-bot walls. Sites that reject by IP reputation rather than by
+rendering keep returning 403/202 even through a real browser:
+
+| Site | Response with browser | What would actually help |
+|---|---|---|
+| medium.com | 200, but navigation only | client-side rendering |
+| stackoverflow.com | 403 | residential IP |
+| zhihu.com | 403 | residential IP, login session |
+| amazon.com | 202 | JS + cookie handshake |
+| reuters.com | **200, full article** | already works (TLS impersonation) |
+
+A proxy can be configured for the browser:
+
+```python
+from webscout_mcp.browser_fetcher import BrowserConfig, BrowserFetcher
+
+fetcher = BrowserFetcher(BrowserConfig(proxy_server="http://host:port"))
+```
+
+### If a fetch returns unreadable text
+
+`content_quality` grades each response and reports `garbled` when the bytes are not
+readable prose - typically a decoding fault rather than a blocked page. The most
+common historical cause was a brotli response decoded without the `brotli` package
+(fixed in v1.13.0; upgrade if you see it).
+
+To grade a payload yourself:
+
+```python
+from webscout_mcp.content_grading import assess
+
+print(assess(content).to_dict())
+# {'grade': 'usable' | 'thin' | 'empty' | 'garbled', 'chars': ..., 'reason': ...}
+```
+
+### Diagnosing why an escalation did not happen
+
+`web_fetch` returns a `route_trace` describing every decision:
+
+```json
+{"stage": "recovery_classification", "reason": "CHALLENGE", "action": "BROWSER"}
+{"capability": "browser", "provider": null, "result": "unavailable"}
+{"stage": "recovery_execution", "outcome": "browser_unavailable:fallback_unavailable"}
+```
+
+`provider: null` with `result: unavailable` means no browser backend was registered -
+install the extra as above. A populated provider with `result: failure` means the
+browser ran and the site rejected it, which points at the IP-reputation cases in the
+table.
 
 ## 📚 Documentation
 

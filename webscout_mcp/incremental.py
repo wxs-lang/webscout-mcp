@@ -17,10 +17,10 @@ from urllib.parse import urljoin, urlparse
 import httpx
 from bs4 import BeautifulSoup
 
-from .config import Config
+from .core.config import Config
+from .core.utils import normalize_url
 from .fetcher import Fetcher, FetchResult
 from .logging_config import get_logger
-from .utils import normalize_url
 
 log = get_logger(__name__)
 
@@ -190,7 +190,13 @@ class IncrementalCrawler:
                 continue
             result.pages_changed += 1
             if extract and fetch_result.raw_html:
-                extracted = await asyncio.to_thread(self.fetcher._extract_content, fetch_result.raw_html, "markdown")
+                extracted, status = await asyncio.to_thread(
+                    self.fetcher._extract_content, fetch_result.raw_html, "markdown"
+                )
+                fetch_result.extraction_status = status
+                # Unpack, do not truth-test the pair: a tuple is always truthy, so
+                # `if extracted:` would store ('', 'unavailable') as content whenever
+                # extraction produced nothing.
                 if extracted:
                     fetch_result.content = extracted
                     fetch_result.extracted = True

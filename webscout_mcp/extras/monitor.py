@@ -56,6 +56,11 @@ class MonitorConfig:
     include_diff: bool = True
     # Max diff length in alert
     max_diff_length: int = 2000
+    # Noise suppression, applied before hashing so a filtered difference cannot
+    # produce a false positive. ignore_text strips values that change every request
+    # (timestamps, session ids); ignore_selector removes whole churning regions.
+    ignore_text: list[str] = field(default_factory=list)
+    ignore_selector: list[str] = field(default_factory=list)
 
     @classmethod
     def from_env(cls) -> MonitorConfig:
@@ -72,6 +77,11 @@ class MonitorConfig:
             include_diff=os.environ.get("WEBSCOUT_MONITOR_INCLUDE_DIFF", "true").lower() == "true",
             max_diff_length=int(os.environ.get("WEBSCOUT_MONITOR_MAX_DIFF", "2000")),
         )
+
+
+# Reserved key inside the history file for the comparison baseline. Leading
+# underscores keep it from colliding with any URL.
+_BASELINE_KEY = "__baseline__"
 
 
 @dataclass
@@ -294,6 +304,47 @@ class WeComAlert(AlertChannel):
             return False
 
 
+def _to_channel_message(change: ChangeRecord, source: AlertMessage):
+    """Convert this module's AlertMessage into the channel-side one.
+
+    Two dataclasses share the name `AlertMessage` but not their fields: the monitor's has
+    ``change_type`` and an ISO-format timestamp; :mod:`alert_channels`' has ``level`` and a
+    float timestamp, and its ``format_message`` reads ``level``. Handing the monitor's
+    object straight to a channel therefore fails at send time, which the per-channel
+    try/except hides.
+
+    Converting here keeps each module's own shape intact and puts the adapter in one
+    place instead of asking either module to know about the other.
+    """
+    from .alert_channels import AlertMessage as ChannelMessage
+
+    return ChannelMessage(
+        title=source.title,
+        content=source.content,
+        level="info",
+        url=source.url,
+        metadata={
+            **dict(source.metadata or {}),
+            "change_type": change.change_type,
+            "change_timestamp": change.timestamp,
+        },
+        timestamp=_epoch_from_isoformat(change.timestamp),
+    )
+
+
+def _epoch_from_isoformat(value) -> float:
+    """Epoch seconds from an isoformat string, falling back to now.
+
+    ``ChangeRecord.timestamp`` is an ISO string; the channel-side message wants a float.
+    """
+    if isinstance(value, (int, float)):
+        return float(value)
+    try:
+        return datetime.fromisoformat(str(value)).timestamp()
+    except (TypeError, ValueError):
+        return datetime.now().timestamp()
+
+
 class WebMonitor:
     """Web page monitor with change detection and alerting.
 
@@ -324,8 +375,14 @@ class WebMonitor:
         history_path = os.path.expanduser(self.config.history_path)
         if os.path.exists(history_path):
             try:
-                with open(history_path, "r") as f:
+                with open(history_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
+                # The baseline lives under a reserved key so files written before it
+                # existed still parse - they simply yield no baseline, which falls back to
+                # "first check establishes one" rather than raising.
+                baseline = data.pop(_BASELINE_KEY, None)
+                if isinstance(baseline, dict):
+                    self._last_content = baseline
                 for url, records in data.items():
                     self._history[url] = [ChangeRecord(**r) for r in records]
                 log.info("Monitor history loaded", extra={"path": history_path, "urls": len(self._history)})
@@ -342,7 +399,12 @@ class WebMonitor:
             data = {}
             for url, records in self._history.items():
                 data[url] = [r.to_dict() for r in records[-self.config.max_history :]]
-            with open(history_path, "w") as f:
+            # `_last_content` holds the hashes and prices the next check compares against.
+            # Without it every restart re-establishes a baseline and can never report a
+            # change, which is the whole point of the tool.
+            if self._last_content:
+                data[_BASELINE_KEY] = self._last_content
+            with open(history_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
         except Exception as exc:
             log.warning("Failed to save monitor history", extra={"error": str(exc)})
@@ -384,6 +446,110 @@ class WebMonitor:
             log.error("Failed to fetch URL for monitoring", extra={"url": url, "error": str(exc)})
             return "", ""
 
+    def _changed_char_count(self, old: str, new: str) -> int:
+        """Characters that differ between two texts.
+
+        Sums non-matching diff blocks: removed characters plus inserted ones. Replacing a
+        word counts twice, which is the right magnitude for a threshold that should ignore
+        trivia while catching edits.
+        """
+        if old == new:
+            return 0
+        import difflib
+
+        matcher = difflib.SequenceMatcher(None, old, new, autojunk=False)
+        total = 0
+        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+            if tag == "equal":
+                continue
+            total += (i2 - i1) + (j2 - j1)
+        return total
+
+    def _apply_ignore_filters(self, text: str, html: str) -> tuple[str, str]:
+        """Strip configured noise before comparison.
+
+        Two mechanisms, both needed: ``ignore_text`` removes values that change on every
+        request (timestamps, session ids, cache busters); ``ignore_selector`` removes
+        whole regions (ad slots, "you may also like") whose content churns independently
+        of the page being watched.
+
+        Selector removal re-extracts text from the cleaned HTML so a removed region cannot
+        keep influencing the text comparison. A bad selector is logged and skipped rather
+        than aborting the check.
+        """
+        ignore_text = getattr(self.config, "ignore_text", None) or []
+        ignore_selector = getattr(self.config, "ignore_selector", None) or []
+
+        if ignore_text:
+            import re as _re
+
+            for pattern in ignore_text:
+                if not pattern:
+                    continue
+                try:
+                    text = _re.sub(pattern, "", text)
+                except _re.error:
+                    text = text.replace(pattern, "")
+
+        if ignore_selector and html:
+            try:
+                from bs4 import BeautifulSoup
+
+                soup = BeautifulSoup(html, "html.parser")
+                removed = False
+                for selector in ignore_selector:
+                    if not selector:
+                        continue
+                    try:
+                        for node in soup.select(selector):
+                            node.decompose()
+                            removed = True
+                    except Exception:  # noqa: BLE001 - one bad selector must not stop the check
+                        log.warning("monitor: invalid ignore_selector", extra={"selector": selector})
+                if removed:
+                    html = str(soup)
+                    text = soup.get_text(separator="\n", strip=True)
+            except ImportError:
+                log.warning("monitor: ignore_selector needs beautifulsoup4; filters skipped")
+
+        return text, html
+
+    def _extract_price(self, html: str) -> float | None:
+        """Numeric price from the configured selector, or None.
+
+        ``price_selector`` and ``price_change_threshold`` were declared in MonitorConfig
+        and never implemented, so the documented price monitoring did nothing. Extraction
+        lives here so ``check_url`` stays readable and this is testable on its own.
+        """
+        selector = getattr(self.config, "price_selector", "") or ""
+        if not selector or not html:
+            return None
+        try:
+            from bs4 import BeautifulSoup
+        except ImportError:
+            log.warning("monitor: price_selector needs beautifulsoup4; skipped")
+            return None
+        try:
+            soup = BeautifulSoup(html, "html.parser")
+            node = soup.select_one(selector)
+            if node is None:
+                return None
+            raw = node.get_text(separator=" ", strip=True)
+        except Exception:  # noqa: BLE001 - a bad selector must not abort the check
+            log.warning("monitor: invalid price_selector", extra={"selector": selector})
+            return None
+
+        import re as _re
+
+        match = _re.search(r"-?\d[\d,\s]*(?:\.\d+)?", raw)
+        if not match:
+            return None
+        cleaned = match.group(0).replace(",", "").replace(" ", "")
+        try:
+            return float(cleaned)
+        except ValueError:
+            return None
+
     def _compute_hash(self, content: str) -> str:
         """Compute hash of content."""
         return hashlib.md5(content.encode("utf-8"), usedforsecurity=False).hexdigest()
@@ -417,12 +583,16 @@ class WebMonitor:
         """
         changes = []
         text, html = self._get_content(url)
+        text, html = self._apply_ignore_filters(text, html)
 
         if not text and not html:
             log.warning("Empty content for monitoring", extra={"url": url})
             return changes
 
         timestamp = datetime.now().isoformat()
+        # Snapshot of what we are comparing against, so the save condition below can tell
+        # whether this run established or moved the baseline.
+        self._baseline_before_check = dict(self._last_content.get(url, {}))
 
         # Check text changes
         if self.config.monitor_text and text:
@@ -430,7 +600,10 @@ class WebMonitor:
             last = self._last_content.get(url, {})
             if "text_hash" in last and last["text_hash"] != text_hash:
                 old_text = last.get("text", "")
-                change_size = abs(len(text) - len(old_text))
+                # Measure what changed, not how the lengths differ. abs(len diff)
+                # reports 0 for "$100.00" -> "$900.00" and for any same-length
+                # rewrite, so the changes a monitor exists to catch were invisible.
+                change_size = self._changed_char_count(old_text, text)
                 if change_size >= self.config.min_change_size:
                     diff = self._generate_diff(old_text, text) if self.config.include_diff else ""
                     change = ChangeRecord(
@@ -492,18 +665,63 @@ class WebMonitor:
         current_keywords = [kw for kw in self.config.keywords_appear + self.config.keywords_disappear if kw in text]
         self._last_content.setdefault(url, {})["keywords"] = current_keywords
 
-        # Record changes in history
-        if changes:
+        # Price change. Independent of min_change_size on purpose: "$100.00" ->
+        # "$900.00" differs by one character, so a text-change threshold swallows it, yet
+        # it is the most important change on a product page. Compared as a percentage.
+        price_selector = getattr(self.config, "price_selector", "") or ""
+        if price_selector and html:
+            new_price = self._extract_price(html)
+            last = self._last_content.setdefault(url, {})
+            old_price = last.get("price")
+            if new_price is not None and old_price is not None:
+                delta = new_price - old_price
+                pct = abs(delta) / old_price if old_price else 0.0
+                threshold = getattr(self.config, "price_change_threshold", 0.0) or 0.0
+                if delta != 0 and pct >= threshold:
+                    changes.append(
+                        ChangeRecord(
+                            url=url,
+                            timestamp=timestamp,
+                            change_type="price",
+                            old_value=f"{old_price:g}",
+                            new_value=f"{new_price:g}",
+                            diff=f"{old_price:g} -> {new_price:g} ({pct * 100:.2f}%)",
+                            metadata={
+                                "old_price": old_price,
+                                "new_price": new_price,
+                                "change_pct": round(pct, 6),
+                                "threshold": threshold,
+                            },
+                        )
+                    )
+            if new_price is not None:
+                last["price"] = new_price
+
+        # Persist whenever the baseline moved, not only when something was reported.
+        #
+        # `_last_content` is what the next comparison is made against. Saving it only on
+        # a detected change means the first check for a URL - which by definition reports
+        # nothing - leaves no baseline on disk, so the next process starts empty and can
+        # never report a change at all. The tool exposed exactly that: three calls, three
+        # fresh baselines, no changes ever.
+        if changes or self._last_content.get(url) != self._baseline_before_check:
             self._history.setdefault(url, []).extend(changes)
             self._save_history()
-            self._send_alerts(changes)
+        self.last_delivery = self._send_alerts(changes) if changes else []
 
         return changes
 
-    def _send_alerts(self, changes: list[ChangeRecord]) -> None:
-        """Send alerts for detected changes."""
+    def _send_alerts(self, changes: list[ChangeRecord]) -> list[dict]:
+        """Send alerts for detected changes.
+
+        Returns one entry per attempted send. The result used to be discarded, so a
+        channel that failed - wrong URL, missing dependency, non-2xx - was indistinguishable
+        from one that delivered, and the caller had no way to notice.
+        """
         if not self._alert_channels:
-            return
+            return []
+
+        outcomes: list[dict] = []
 
         for change in changes:
             title = f"[网页监控] {change.change_type} - {change.url}"
@@ -515,6 +733,12 @@ class WebMonitor:
             if change.diff:
                 content_parts.append(f"差异:\n{change.diff}")
 
+            # `monitor.AlertMessage` and `alert_channels.AlertMessage` are two different
+            # dataclasses with different fields: this module's carries `change_type` and
+            # an ISO timestamp, the channel-side one carries `level` and a float timestamp.
+            # Channels call `message.level`, so passing this module's class raised
+            # AttributeError for every change - swallowed by the per-channel try/except and
+            # logged, which is why notifications looked wired up but never fired.
             message = AlertMessage(
                 title=title,
                 content="\n".join(content_parts),
@@ -524,11 +748,33 @@ class WebMonitor:
                 metadata=change.metadata,
             )
 
+            channel_message = _to_channel_message(change, message)
             for channel in self._alert_channels:
                 try:
-                    channel.send(message)
+                    result = channel.send(channel_message)
+                    outcomes.append(
+                        {
+                            "channel": getattr(result, "channel", type(channel).__name__),
+                            "success": bool(getattr(result, "success", False)),
+                            "message": getattr(result, "message", "") or "",
+                            "error": getattr(result, "error", None),
+                        }
+                    )
                 except Exception as exc:
-                    log.error("Failed to send alert", extra={"channel": type(channel).__name__, "error": str(exc)})
+                    log.error(
+                        "Failed to send alert",
+                        extra={"channel": type(channel).__name__, "error": str(exc)},
+                    )
+                    outcomes.append(
+                        {
+                            "channel": type(channel).__name__,
+                            "success": False,
+                            "message": "",
+                            "error": str(exc),
+                        }
+                    )
+
+        return outcomes
 
     def get_history(self, url: str, limit: int = 50) -> list[ChangeRecord]:
         """Get change history for a URL.

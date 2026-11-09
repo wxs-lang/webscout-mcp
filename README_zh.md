@@ -79,6 +79,19 @@ webscout-mcp setup
 - 反检测隐身模式
 - 资源拦截加速
 
+> **遇到反爬页面拿不到内容？** 需要装可选依赖，浏览器能力才会启用：
+>
+> `ash
+> pip install 'webscout-mcp[browser]'
+> playwright install chromium
+> `
+>
+> 装好后 web_fetch 会在页面需要渲染时自动升级，无需 sidecar 或 Docker。
+>
+> **注意**：挑战页的返回是 `status_code: 200` 且 `error: null`——从状态码看不出问题。
+> 判断依据是 `recovery_outcome` 和内容长度。完整的识别方法、能力边界（哪些站点连
+> 浏览器也打不开）、以及诊断步骤，见 [完整 README 的故障排查章节](README.md#troubleshooting-pages-that-need-a-browser)。
+
 ### 🔍 网站分析（新增）
 - **SEO 审计** - Meta 标签、标题结构、图片 Alt、链接质量、Schema 标记，多维度评分
 - **死链检测** - 批量检查链接有效性，重定向链分析，混合内容检测

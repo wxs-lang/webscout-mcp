@@ -27,6 +27,25 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+# The CI lint job installs ruff only, so the package is not importable there.
+# Running this file puts `scripts/` on sys.path, not the repository root, so the
+# recovery_policy import below would fail with ModuleNotFoundError. Anchor on
+# __file__ so the script works from any working directory and without an install.
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+# The tool table contains emoji status markers. A console whose default codec is
+# not UTF-8 (cp936 on Windows; the default on a bare CI runner reading a pipe)
+# cannot encode them:
+#   UnicodeEncodeError: gbk codec cannot encode character u2705
+# Found by running this script in a clean venv rather than a configured shell.
+if sys.stdout.encoding and sys.stdout.encoding.lower().replace("-", "") != "utf8":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):  # pragma: no cover - exotic streams
+        pass
+
 
 @dataclass
 class ToolParam:
@@ -65,7 +84,9 @@ def extract_tools_from_server(server_path: Path) -> list[MCPTool]:
     This avoids importing the MCP server (which is slow due to mcp library
     import time ~14s) and instead parses the source code directly.
     """
-    with open(server_path, "r") as f:
+    # encoding is explicit: the default is locale-dependent (cp936 on Windows),
+    # which makes this script fail on a file it reads fine on Linux CI.
+    with open(server_path, "r", encoding="utf-8") as f:
         source = f.read()
 
     tree = ast.parse(source)
@@ -156,16 +177,15 @@ def _get_tool_stability(name: str) -> str:
     stable_tools = {
         "web_search",
         "web_fetch",
+        "web_crawl",
         "web_extract",
         "cache_stats",
         "cache_clear",
-    }
-    beta_tools = {
-        "web_crawl",
-        "search_health",
-        "metadata_extract",
         "rss_parse",
+        "metadata_extract",
+        "search_health",
     }
+    beta_tools = set()
     if name in stable_tools:
         return "✅ Stable"
     if name in beta_tools:
@@ -271,17 +291,19 @@ These modules are the foundation of webscout-mcp. They are well-tested, used in 
 |--------|-------------|----------------|
 | `metadata_extractor.py` | Page metadata extraction | ✅ Yes |
 | `rss_parser.py` | RSS/Atom feed parsing | ✅ Yes |
-| `content_quality.py` | Content quality analysis | ✅ Yes |
-| `broken_link_checker.py` | Broken link checking | ✅ Yes |
 | `search_health.py` | Search health monitoring | ✅ Yes |
 | `serpapi_backend.py` | SerpAPI search backend | 📦 Library |
 
 ### 🧪 Experimental Modules (Extras)
 
-These modules are available in `webscout_mcp.extras` and are not part of the core MCP tools.
+These modules live in `webscout_mcp.extras` and are not part of the core web-research path.
+Note that `content_quality` and `broken_links` are still exposed as MCP tools - they are
+frozen in COMPATIBILITY.md and remain callable. Only their implementation moved out of Core.
 
 | Module | Description |
 |--------|-------------|
+| `extras/content_quality.py` | Content quality analysis (MCP tool `content_quality`) |
+| `extras/broken_link_checker.py` | Broken link checking (MCP tool `broken_links`) |
 | `extras/ai_optimizer.py` | AI-powered query optimization |
 | `extras/rag_optimizer.py` | RAG pipeline optimization |
 | `extras/knowledge_graph.py` | Knowledge graph construction |
@@ -398,7 +420,7 @@ def main() -> int:
         # Check MODULE_STATUS.md
         module_status_path = args.output_dir / "MODULE_STATUS.md"
         if module_status_path.exists():
-            existing = module_status_path.read_text()
+            existing = module_status_path.read_text(encoding="utf-8")
             generated = generate_module_status(tools)
             if existing.strip() != generated.strip():
                 print("  ❌ MODULE_STATUS.md is out of date")
@@ -409,13 +431,28 @@ def main() -> int:
         # Check docs/tools.md
         tools_doc_path = args.output_dir / "docs" / "tools.md"
         if tools_doc_path.exists():
-            existing = tools_doc_path.read_text()
+            existing = tools_doc_path.read_text(encoding="utf-8")
             generated = generate_tools_doc(tools)
             if existing.strip() != generated.strip():
                 print("  ❌ docs/tools.md is out of date")
                 checks_passed = False
             else:
                 print("  ✅ docs/tools.md is up to date")
+
+        # Check docs/RECOVERY_POLICY.md - generated from the policy table, which is
+        # what makes the policy inspectable. It was hand-written once and had already
+        # drifted: 17 rules and 8 markers in the doc against 18 and 11 in the code.
+        recovery_doc_path = args.output_dir / "docs" / "RECOVERY_POLICY.md"
+        if recovery_doc_path.exists():
+            from webscout_mcp.recovery_policy import build_policy_table, render_markdown
+
+            existing = recovery_doc_path.read_text(encoding="utf-8")
+            generated = render_markdown(build_policy_table())
+            if existing.strip() != generated.strip():
+                print("  ❌ docs/RECOVERY_POLICY.md is out of date")
+                checks_passed = False
+            else:
+                print("  ✅ docs/RECOVERY_POLICY.md is up to date")
 
         if not checks_passed:
             print("\n❌ Documentation is out of date. Run 'python scripts/generate_docs.py' to update.")
@@ -429,15 +466,23 @@ def main() -> int:
     # Generate MODULE_STATUS.md
     module_status_path = args.output_dir / "MODULE_STATUS.md"
     module_status_content = generate_module_status(tools)
-    module_status_path.write_text(module_status_content)
+    module_status_path.write_text(module_status_content, encoding="utf-8", newline="\n")
     print(f"  ✅ Generated {module_status_path}")
 
     # Generate docs/tools.md
     tools_doc_path = args.output_dir / "docs" / "tools.md"
     tools_doc_path.parent.mkdir(parents=True, exist_ok=True)
     tools_doc_content = generate_tools_doc(tools)
-    tools_doc_path.write_text(tools_doc_content)
+    tools_doc_path.write_text(tools_doc_content, encoding="utf-8", newline="\n")
     print(f"  ✅ Generated {tools_doc_path}")
+
+    # Generate docs/RECOVERY_POLICY.md from the policy table.
+    from webscout_mcp.recovery_policy import build_policy_table, render_markdown
+
+    recovery_doc_path = args.output_dir / "docs" / "RECOVERY_POLICY.md"
+    recovery_doc_path.parent.mkdir(parents=True, exist_ok=True)
+    recovery_doc_path.write_text(render_markdown(build_policy_table()), encoding="utf-8", newline="\n")
+    print(f"  ✅ Generated {recovery_doc_path}")
 
     print(f"\n✅ Generated documentation for {len(tools)} MCP tools!")
     return 0

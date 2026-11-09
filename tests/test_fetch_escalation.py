@@ -67,7 +67,10 @@ def test_challenge_page_escalates():
     )
     d = should_escalate_to_browser(_resp(content="", raw_html=html))
     assert d.escalate is True
-    assert d.reason_code == EscalationReason.SOFT_BLOCK
+    # SOFT_BLOCK became CHALLENGE: the page is an explicit interstitial saying a
+    # check is running, which is not the same observation as "the server rejected
+    # our fingerprint and said nothing". Both still escalate via BROWSER.
+    assert d.reason_code == EscalationReason.CHALLENGE
 
 
 def test_js_placeholder_escalates():

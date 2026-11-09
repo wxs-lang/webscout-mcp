@@ -28,7 +28,7 @@ def _make_fetcher(tmp_path) -> Fetcher:
 
 
 def _install_body(fetcher: Fetcher, body: str, content_type: str = "text/plain", counter=None):
-    async def _stub(url):
+    async def _stub(url, follow_redirects: bool = True):
         if counter is not None:
             counter["n"] += 1
         return FetchResult(

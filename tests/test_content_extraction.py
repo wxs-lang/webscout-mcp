@@ -4,7 +4,12 @@ from webscout_mcp.fetcher import Fetcher
 
 
 class TestContentExtraction:
-    """Test enhanced content extraction."""
+    """_extract_content returns (content, status).
+
+    The status is what distinguishes "no extractor installed" from "the page had
+    no text"; only the former is an environment fault. Callers unpack it -
+    truth-testing the pair would always succeed.
+    """
 
     def test_extract_basic_html(self):
         html = """
@@ -19,7 +24,7 @@ class TestContentExtraction:
         </body>
         </html>
         """
-        result = Fetcher._extract_content(html, output_format="text")
+        result, _status = Fetcher._extract_content(html, output_format="text")
         assert len(result) > 0
         assert "Test Article" in result or "first paragraph" in result
 
@@ -33,7 +38,7 @@ class TestContentExtraction:
         </article>
         </body></html>
         """
-        result = Fetcher._extract_content(html, output_format="markdown")
+        result, _status = Fetcher._extract_content(html, output_format="markdown")
         assert len(result) > 0
 
     def test_extract_html_format(self):
@@ -45,15 +50,15 @@ class TestContentExtraction:
         </article>
         </body></html>
         """
-        result = Fetcher._extract_content(html, output_format="html")
+        result, _status = Fetcher._extract_content(html, output_format="html")
         assert len(result) > 0
 
     def test_extract_empty_html(self):
-        result = Fetcher._extract_content("", output_format="text")
+        result, _status = Fetcher._extract_content("", output_format="text")
         assert result == ""
 
     def test_extract_invalid_html(self):
-        result = Fetcher._extract_content("not valid html <><>", output_format="text")
+        result, _status = Fetcher._extract_content("not valid html <><>", output_format="text")
         # Should not raise, may return empty or partial content
         assert isinstance(result, str)
 
@@ -66,7 +71,7 @@ class TestContentExtraction:
         </article>
         </body></html>
         """
-        result = Fetcher._extract_content(html, output_format="markdown", include_images=False)
+        result, _status = Fetcher._extract_content(html, output_format="markdown", include_images=False)
         assert len(result) > 0
 
     def test_extract_with_images_enabled(self):
@@ -78,7 +83,7 @@ class TestContentExtraction:
         </article>
         </body></html>
         """
-        result = Fetcher._extract_content(html, output_format="markdown", include_images=True)
+        result, _status = Fetcher._extract_content(html, output_format="markdown", include_images=True)
         assert len(result) > 0
 
     def test_extract_min_content_length(self):
@@ -88,7 +93,7 @@ class TestContentExtraction:
         <p>Short</p>
         </body></html>
         """
-        result = Fetcher._extract_content(html, output_format="text")
+        result, _status = Fetcher._extract_content(html, output_format="text")
         # May return empty or short content depending on extractor
         assert isinstance(result, str)
 
@@ -102,7 +107,7 @@ class TestContentExtraction:
         </article>
         </body></html>
         """
-        result = Fetcher._extract_content(html, output_format="text")
+        result, _status = Fetcher._extract_content(html, output_format="text")
         assert len(result) > 100  # Should extract substantial content
 
     def test_extract_ignores_navigation(self):
@@ -117,5 +122,5 @@ class TestContentExtraction:
         <footer>Copyright 2024</footer>
         </body></html>
         """
-        result = Fetcher._extract_content(html, output_format="text")
+        result, _status = Fetcher._extract_content(html, output_format="text")
         assert "main article" in result.lower() or "article content" in result.lower()

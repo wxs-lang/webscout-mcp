@@ -261,17 +261,35 @@ class KnowledgeGraphBuilder:
             else:
                 seen[entity_id].count += 1
 
-        # Extract technology keywords
+        # Extract technology keywords.
+        #
+        # A technology word usually also matched the capitalised pass above, which
+        # registered it under _normalize_id(word). Adding `tech_<word>` on top of that
+        # produced two nodes for one thing and an edge between them:
+        #     python --co_occurs_with--> tech_python
+        # So look for an existing entity with the same normalised name first and
+        # merge into it, promoting the type to "technology" because a known keyword is
+        # a stronger signal than the capitalisation heuristic.
+        by_normalized_name: dict[str, Entity] = {self._normalize_id(entity.name): entity for entity in entities}
         words = re.findall(r"\b[a-z]{2,}\b", text.lower())
         for word in words:
-            if word in self.TECH_KEYWORDS:
-                entity_id = f"tech_{word}"
-                if entity_id not in seen:
-                    entity = Entity(id=entity_id, name=word.title(), type="technology")
-                    entities.append(entity)
-                    seen[entity_id] = entity
-                else:
-                    seen[entity_id].count += 1
+            if word not in self.TECH_KEYWORDS:
+                continue
+
+            existing = by_normalized_name.get(self._normalize_id(word))
+            if existing is not None:
+                existing.count += 1
+                existing.type = "technology"
+                continue
+
+            entity_id = f"tech_{word}"
+            if entity_id not in seen:
+                entity = Entity(id=entity_id, name=word.title(), type="technology")
+                entities.append(entity)
+                seen[entity_id] = entity
+                by_normalized_name[self._normalize_id(entity.name)] = entity
+            else:
+                seen[entity_id].count += 1
 
         return entities
 
@@ -298,9 +316,13 @@ class KnowledgeGraphBuilder:
         if any(w in location_indicators for w in words):
             return "location"
 
-        # Single capitalized word could be a person or organization
+        # A single capitalised word is genuinely ambiguous: "Python" is a language,
+        # "Guido" is a person, "American" is an adjective. Returning "person" for all
+        # of them turned three wrong answers into apparent facts, so say "unknown".
+        # The technology pass upgrades it when the word is a known technology, which
+        # recovers the right type for exactly the cases that were mislabelled.
         if len(words) == 1:
-            return "person"  # Default to person for single names
+            return "unknown"
 
         # Multi-word capitalized sequences
         return "organization"

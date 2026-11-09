@@ -1,0 +1,56 @@
+{
+  "corpus_name": "webscout-search-eval",
+  "version": "v1",
+  "description": "Curated public, non-sensitive, reproducible search queries for Phase 2 objective evaluation. Never use real user queries.",
+  "queries": [
+    {"query": "python urllib.parse documentation", "category": "technical_exact"},
+    {"query": "rfc 9110 http semantics", "category": "technical_exact"},
+    {"query": "sqlite3 python connect example", "category": "technical_exact"},
+    {"query": "httpbin.org status codes", "category": "technical_exact"},
+    {"query": "PEP 8 style guide", "category": "technical_exact"},
+    {"query": "json.loads python", "category": "technical_exact"},
+    {"query": "http status code 418", "category": "technical_exact"},
+    {"query": "css flexbox mdn", "category": "technical_exact"},
+    {"query": "git rebase vs merge", "category": "technical_exact"},
+    {"query": "dns over https explained", "category": "technical_exact"},
+
+    {"query": "web scraping best practices", "category": "technical_broad"},
+    {"query": "how does a web browser work", "category": "technical_broad"},
+    {"query": "content delivery network overview", "category": "technical_broad"},
+    {"query": "http caching explained simply", "category": "technical_broad"},
+    {"query": "async programming in python", "category": "technical_broad"},
+    {"query": "search engine ranking factors", "category": "technical_broad"},
+    {"query": "types of sql joins", "category": "technical_broad"},
+    {"query": "responsive web design principles", "category": "technical_broad"},
+
+    {"query": "中国的首都是哪里", "category": "chinese"},
+    {"query": "Python 是什么编程语言", "category": "chinese"},
+    {"query": "HTTP 状态码 500 含义", "category": "chinese"},
+    {"query": "如何修复网络连接问题", "category": "chinese"},
+    {"query": "世界上最长的河流", "category": "chinese"},
+    {"query": "机器学习入门教程", "category": "chinese"},
+    {"query": "数据库索引原理", "category": "chinese"},
+    {"query": "什么是云计算", "category": "chinese"},
+
+    {"query": "capital of australia", "category": "english_evergreen"},
+    {"query": "who wrote romeo and juliet", "category": "english_evergreen"},
+    {"query": "speed of light in vacuum", "category": "english_evergreen"},
+    {"query": "distance from earth to moon", "category": "english_evergreen"},
+    {"query": "boiling point of water", "category": "english_evergreen"},
+    {"query": "largest ocean on earth", "category": "english_evergreen"},
+    {"query": "tallest mountain in the world", "category": "english_evergreen"},
+
+    {"query": "lightweight python html parser with css selector support", "category": "long_tail"},
+    {"query": "headless browser render single page app without puppeteer", "category": "long_tail"},
+    {"query": "hmac sha256 truncate hex prefix best practice", "category": "long_tail"},
+    {"query": "sqlite write lock timeout retry strategy", "category": "long_tail"},
+
+    {"query": "apple", "category": "ambiguous"},
+    {"query": "java", "category": "ambiguous"},
+    {"query": "mercury", "category": "ambiguous"},
+    {"query": "python", "category": "ambiguous"},
+
+    {"query": "quercus agrifolia leaf margin morphology", "category": "rare_term"},
+    {"query": "epipalaeolithic natufian settlement patterns", "category": "rare_term"}
+  ]
+}

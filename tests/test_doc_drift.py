@@ -15,9 +15,19 @@ SRC = Path(__file__).resolve().parent.parent / "webscout_mcp" / "server.py"
 DOC = Path(__file__).resolve().parent.parent / "COMPATIBILITY.md"
 
 
-def test_exactly_eleven_mcp_tools_registered():
+def test_mcp_tool_count_is_pinned():
+    """The tool surface must not grow by accident.
+
+    This was 11 through the v1.x freeze. v2.0's first content-understanding tool
+    (web_knowledge_graph) raised it to 12 deliberately, documented in
+    COMPATIBILITY.md with a stability level. Bumping this number is a decision that
+    requires those two things; it is not a number to update when a test goes red.
+    """
     src = SRC.read_text(encoding="utf-8")
-    assert src.count("@mcp.tool()") == 11, "MCP tool count must stay 11 (feature freeze)"
+    assert src.count("@mcp.tool()") == 15, (
+        "MCP tool count changed. Adding a tool requires updating COMPATIBILITY.md "
+        "(count, parameters, stability) and docs/tools.md via scripts/generate_docs.py."
+    )
 
 
 def test_web_fetch_signature_has_current_params():
