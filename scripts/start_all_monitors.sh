@@ -27,8 +27,9 @@ ensure_running() {
 
 mkdir -p "$PROJECT_DIR/stability-7day-results" "$PROJECT_DIR/logs"
 
-# 7-day stability test (highest priority)
-ensure_running "stability_test_7day.py" "scripts/stability_test_7day.py --duration 7 --interval 1800" "stability-7day-results/stability_test.log"
+# NOTE: 7-day stability test was migrated to GitHub Actions
+# (.github/workflows/stability-7day.yml) on 2026-09-14. It must NOT be
+# started locally anymore to avoid running the same test twice (local + CI).
 
 # Watchdog (self-healing for all monitors)
 ensure_running "watchdog.py" "scripts/watchdog.py" "watchdog.log"
