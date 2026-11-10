@@ -15,7 +15,7 @@ and maps the result back to the legacy JSON shape.
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from .content_grading import assess
@@ -464,7 +464,39 @@ class FetchService:
             log.exception("observability recovery execution failed")
         route_trace.append({"stage": "recovery_execution", "action": action.value, "outcome": recovery_outcome})
 
-        # 4) Normalize to WebResult as the internal unified result.
+        # 4) Explain a failed recovery instead of returning silence.
+        #
+        # Measured on medium.com: the classifier saw 134 chars from 52 KB, asked for a
+        # browser, the browser failed, and the caller received `error=None` with
+        # `extracted=True` - a result that claims success. `outcome` said browser_failed but
+        # outcome is a routing label, not an error message.
+        #
+        # Only when the classifier did NOT consider the fast result complete, a recovery was
+        # attempted, it did not succeed, and the response carries no error of its own.
+        _recovery_attempted = action is not RecoveryAction.ACCEPT and action is not RecoveryAction.NONE
+        _recovery_failed = (
+            recovery_outcome.startswith(("browser_failed", "browser_unavailable")) or recovery_outcome == "terminal"
+        )
+        # Only for a 2xx that silently came back thin.
+        #
+        # A 4xx/5xx already explains itself through its status code, and
+        # tests/test_403_recovery.py pins `final_response.error is None` for exactly that
+        # case: the code IS the explanation, and a synthetic message on top would bury it.
+        # The defect this fixes is narrower - a 200 whose extraction collapsed, where
+        # nothing in the payload said anything was wrong.
+        _status_explains = final.status_code >= 400
+        _already_explained = final.error is not None or final.error_code is not None or _status_explains
+        if _recovery_attempted and _recovery_failed and not _already_explained:
+            final = replace(
+                final,
+                error=(
+                    f"content was not complete ({recovery.reason.value}) and "
+                    f"{action.value.lower().replace('_', ' ')} recovery did not succeed "
+                    f"({recovery_outcome}); the returned body is what the fast fetch saw"
+                ),
+            )
+
+        # 5) Normalize to WebResult as the internal unified result.
         web_result = fetch_response_to_web_result(final)
 
         # 5) Jev shadow (best-effort, non-blocking). Never changes routing.
