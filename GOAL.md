@@ -191,15 +191,15 @@ and vector/AI/browser extras are available separately."
 
 ---
 
-## 3. 当前进度快照（2026-11-05，v2.5.0）
+## 3. 当前进度快照（2026-11-10，v2.6.0）
 
 ### 3.1 发布状态
 
 | 项 | 值 |
 |---|---|
-| 最新版本 | **v2.5.0** |
+| 最新版本 | **v2.6.0** |
 | 发布时间 | 2026-11-01 (+08) |
-| `main` HEAD | v2.5.0 tag |
+| `main` HEAD | v2.6.0 tag |
 | Releases 总数 | 16 |
 | MCP 工具数 | **15**（v1.x 冻结时为 11，v2.0.0 起扩充，见 COMPATIBILITY.md）|
 | PyPI / Docker | 均已发布 |
@@ -341,6 +341,40 @@ markers 失败 11 条里的 7 条。
 
 **这条比前两条更值得记：**一个自相矛盾的行比一个错误的数字更有诊断价值，因为两半互相否定
 才把人送去读代码。只打印 verdict 的话，两个谎言看起来是一致的。
+
+### v2.6.0：`degraded` 曾经是个休息站
+
+四个目标长期停在 `degraded`，解释是「反爬边界」——**一个让人停止追问的标签**。逐个重诊断后，三个是不同缺陷，一个才是真边界：
+
+| 目标 | 我的旧说法 | 实际 |
+|---|---|---|
+| medium | 反爬 | 52 KB 提取成 134 字符，`error=None` + `extracted=True` |
+| zhihu | 反爬 | 200 登录墙，`error=None`（上轮修复漏了 `user_action_required`）|
+| reddit | 反爬 | 挑战页 markers 一条不匹配 → 误分类为「内容少」|
+| stackoverflow | 反爬 | ✅ 403 + 明确 error，**本来就诚实** |
+
+**三种「沉默的失败」形态**，各自需要不同措辞：
+
+1. 登录墙 → 不是失败，是「需要你没有的会话」
+2. 恢复失败 → 「恢复没成功」
+3. **路由成功但没内容** → 「路由回来了，但没有可用文本」
+
+第 3 种最隐蔽：**「路由是否成功」和「调用方是否拿到内容」是两个问题**，只有第二个重要。第一版三种情况共用一条消息，产生了自相矛盾的 `recovery did not succeed (browser_success)`。
+
+### 两次被仓库里既有的防护挡住
+
+**一、`test_marker_set_stays_narrow`** 明确守住「三条中文，不是短语堆砌」。我加了 3 条中文触发它。**选择删掉自己的改动，而不是放宽测试**——那个测试的意图是对的，markers 膨胀会让误判率上升。
+
+**二、`test_article_prose_is_not_mistaken_for_a_challenge`**（我自己写的）抓出 `real person` 会命中正常正文「a real person should not have to solve a puzzle」。删掉该 marker。
+
+**共同点：防护的价值在于它会拒绝你。一个从不失败的守卫不是守卫。**
+
+### 诚实结论：诊断质量提升，内容获取能力没提升
+
+reddit / stackoverflow / zhihu 仍是 `degraded`，需要的分别是住宅 IP、Cloudflare clearance cookie、登录会话——**都不是改代码能解决的**。
+
+说成能解决，就是反方向的同一个错误：**用一个方便的说法替代真实判断**。
+
 
 ### 3.1.1 真实世界可用性（2026-10-29 实测，16 个站点）
 
