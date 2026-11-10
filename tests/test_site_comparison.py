@@ -164,7 +164,7 @@ def test_tool_is_registered_and_count_is_fifteen():
     tools = asyncio.run(go())
     names = {t.name for t in tools}
     assert "web_compare_sites" in names
-    assert len(names) == 15, f"tool count changed: {sorted(names)}"
+    assert len(names) == 16, f"tool count changed: {sorted(names)}"
 
 
 def test_empty_url_list_is_an_explicit_error():
