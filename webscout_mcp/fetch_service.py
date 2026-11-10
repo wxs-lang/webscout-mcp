@@ -474,9 +474,13 @@ class FetchService:
         # Only when the classifier did NOT consider the fast result complete, a recovery was
         # attempted, it did not succeed, and the response carries no error of its own.
         _recovery_attempted = action is not RecoveryAction.ACCEPT and action is not RecoveryAction.NONE
-        _recovery_failed = (
-            recovery_outcome.startswith(("browser_failed", "browser_unavailable")) or recovery_outcome == "terminal"
-        )
+        # `user_action_required` belongs here too: a login wall means the caller must do
+        # something, and that is exactly where a silent error field misleads. Measured on
+        # zhihu.com - 200, 126 chars of login page, outcome=user_action_required,
+        # error=None: the same shape as medium's browser_failed.
+        _recovery_failed = recovery_outcome.startswith(
+            ("browser_failed", "browser_unavailable")
+        ) or recovery_outcome in ("terminal", "user_action_required")
         # Only for a 2xx that silently came back thin.
         #
         # A 4xx/5xx already explains itself through its status code, and
@@ -486,15 +490,37 @@ class FetchService:
         # nothing in the payload said anything was wrong.
         _status_explains = final.status_code >= 400
         _already_explained = final.error is not None or final.error_code is not None or _status_explains
-        if _recovery_attempted and _recovery_failed and not _already_explained:
-            final = replace(
-                final,
-                error=(
+        # A recovery that "succeeded" can still have produced nothing usable.
+        #
+        # Measured on medium.com: the classifier asked for a browser (AMBIGUOUS), the browser
+        # returned 229 chars of navigation, and the payload said outcome=browser_success with
+        # error=None. Whether a route succeeded is not the same question as whether the
+        # caller got content, and only the second one matters here.
+        _served_grade = assess(final.content or "").grade
+        _empty_result = _served_grade in ("empty", "thin", "garbled")
+        if _recovery_attempted and (_recovery_failed or _empty_result) and not _already_explained:
+            # Three genuinely different situations, and the caller can act differently on
+            # each. Collapsing them into one sentence produced a contradiction - reddit read
+            # "recovery did not succeed (browser_success)" - because a route can succeed and
+            # still return nothing usable.
+            if action is RecoveryAction.REQUIRE_AUTH:
+                detail = (
+                    f"the page requires authentication ({recovery.reason.value}); "
+                    f"the returned body is the login surface, not content"
+                )
+            elif _recovery_failed:
+                detail = (
                     f"content was not complete ({recovery.reason.value}) and "
                     f"{action.value.lower().replace('_', ' ')} recovery did not succeed "
                     f"({recovery_outcome}); the returned body is what the fast fetch saw"
-                ),
-            )
+                )
+            else:
+                detail = (
+                    f"content was not complete ({recovery.reason.value}) and "
+                    f"{action.value.lower().replace('_', ' ')} recovery returned no usable "
+                    f"text (grade={_served_grade}); the returned body is what it saw"
+                )
+            final = replace(final, error=detail)
 
         # 5) Normalize to WebResult as the internal unified result.
         web_result = fetch_response_to_web_result(final)
