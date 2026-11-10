@@ -150,3 +150,50 @@ def test_server_errors_keep_their_status(status):
     )
     route = _run(_service([http]))
     assert route.final_response.status_code == status
+
+
+def test_a_successful_route_returning_nothing_is_still_explained():
+    """reddit: browser succeeded and handed back a 240-char challenge page.
+
+    Whether a route succeeded is a different question from whether the caller got content,
+    and only the second matters. Before this, that case reported error=None because the
+    check looked only at failures.
+    """
+    http = _FakeProvider(
+        "http",
+        {ProviderCapability.FETCH},
+        _resp(status_code=200, content="Prove your humanity", raw_html=BIG_SHELL),
+    )
+    browser = _FakeProvider(
+        "browser",
+        {ProviderCapability.BROWSER},
+        _resp(
+            status_code=200,
+            content="Prove your humanity",
+            provider="browser",
+            raw_html=BIG_SHELL,
+        ),
+    )
+    route = _run(_service([http, browser]))
+
+    assert route.final_response.error is not None, (
+        "a succeeded route that returned no usable text must still explain itself"
+    )
+    # The wording must not contradict itself.
+    assert "did not succeed" not in route.final_response.error or "returned no usable" in route.final_response.error
+
+
+def test_a_login_wall_says_authentication_not_failure():
+    """zhihu: nothing failed - the page needs a session the caller does not have."""
+    login = "打开知乎App 验证码登录 密码登录 获取短信验证码 忘记密码 登录/注册 自动登录"
+    http = _FakeProvider(
+        "http",
+        {ProviderCapability.FETCH},
+        _resp(status_code=200, content=login, raw_html="<html><body>" + login + "</body></html>"),
+    )
+    route = _run(_service([http]))
+
+    assert route.final_response.error is not None
+    assert "authentication" in route.final_response.error.lower(), (
+        f"a login wall is not a recovery failure; got {route.final_response.error!r}"
+    )
