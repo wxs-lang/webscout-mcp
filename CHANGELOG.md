@@ -5,6 +5,101 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v2.6.0 (2026-11-10)
+
+Three product fixes about *saying what happened*, plus the CI work that surfaced them.
+
+The through-line: `degraded` had become a resting place. Four live targets sat there and the
+explanation was "anti-bot boundary" - a label that stops inquiry. Diagnosing each one
+individually found three distinct defects and one genuine boundary.
+
+### Fixed
+
+- **A 200 whose recovery failed carried no error.** Measured on medium.com:
+
+  ```
+  classifier:  LOW_CONTENT_DENSITY -> BROWSER   (134 chars extracted from 52 KB)
+  browser:     attempted, failed
+  returned:    134 chars, error=None, error_code=None, extracted=True
+  outcome:     browser_failed
+  ```
+
+  The pipeline knew the extraction had collapsed and knew recovery had failed, then returned
+  a payload claiming success. Only `outcome` carried the truth, and `outcome` is a routing
+  label - not something a caller can surface. Now an error names the reason and the failed
+  action.
+
+  Scoped to **2xx** deliberately: `tests/test_403_recovery.py` pins
+  `final_response.error is None` for a 403, because the status code *is* the explanation.
+  The first attempt ignored that and broke two tests.
+
+- **A login wall behind a 200 reported no error.** zhihu answered 200 with 126 chars of
+  login page and `outcome=user_action_required`, but `error=None` - the same silence on a
+  different path, because the fix above only covered `browser_failed`.
+
+  It now reads `the page requires authentication (AUTH_REQUIRED); the returned body is the
+  login surface, not content` - not "recovery failed", because nothing failed: the page needs
+  a session the caller does not have.
+
+- **A succeeded route returning nothing usable reported no error.** reddit returned
+  `outcome=browser_success` with a 240-char challenge page and `error=None`. Whether a route
+  succeeded is a different question from whether the caller got content, and only the second
+  matters. The check now consults the grader, not just the outcome.
+
+- **Human-verification pages were not recognised as challenges.** reddit's page reads
+  "Prove your humanity ... not for bots ... complete the challenge" and matched none of the
+  11 existing markers, which cover vendor-specific strings (`just a moment`,
+  `cf-browser-verification`) and two Chinese phrases. It was therefore classified
+  `LOW_CONTENT_DENSITY` - "this page was thin" - instead of `CHALLENGE`.
+
+  Six specific English markers were added. **Three Chinese ones were not**, because
+  `test_challenge_detection.py::test_marker_set_stays_narrow` guards the Chinese set at
+  three against a phrase dump; that guard is right, so the additions were dropped rather
+  than the test relaxed. One candidate, `real person`, was removed after
+  `test_article_prose_is_not_mistaken_for_a_challenge` showed it firing on ordinary prose.
+
+### Fixed (CI)
+
+- **The benchmark history cache ignored branches.** `actions/cache/restore` used the prefix
+  `benchmark-history-`, which does not name a branch, so a pull request restored main's most
+  recent history and inherited it as its own baseline. amazon had degraded twice on main, so
+  eight open PRs - most of them dependency bumps - reported a regression they could not
+  possibly have caused. Keys now include `github.ref_name`.
+
+  Measured on the two environments, five consecutive fetches: local 5/5 pass at 7285-7435
+  chars, CI repeatedly degraded at 157 chars. amazon is **environment-dependent**, which the
+  IP-reputation tier already documents. The benchmark reports that faithfully; what it must
+  not do is attribute it to a dependency bump.
+
+### Changed
+
+- Dependency and CI action updates: checkout 4->7, download-artifact 4->8, upload-artifact
+  4->7, attest-build-provenance 1->4, upload-pages-artifact 3->5.
+- Stability test now runs on a two-hour schedule instead of pinning a loop in
+  `start_all_monitors`.
+
+### Honest result
+
+```
+pass      example.com, wikipedia, docs.python.org, reuters, iana.org,
+          mozilla.org, hackernews, amazon
+degraded  medium, reddit, stackoverflow, zhihu
+```
+
+**Diagnosis improved; content access did not.** reddit, stackoverflow and zhihu still need a
+residential IP, a Cloudflare clearance cookie, or a session respectively - none of which is a
+code change. Each now says so explicitly instead of returning silence, which is the contract
+v1.14.0 established and this release completes.
+
+### Verified
+
+- 8 tests in `test_failed_recovery_explained.py` (three message shapes), 11 in
+  `test_challenge_markers.py`, plus the existing narrowness guard
+- removing the fix fails 1 test; removing `real person` was forced by a failing test
+- 345 passed across explainability, challenge, policy, 403, 202, login-wall and recovery;
+  CI 25 checks green
+- ruff, format and regenerated docs clean
+
 ## v2.5.0 (2026-11-05)
 
 Two product fixes, and the benchmark changes that found both. The fixes are small diffs with
