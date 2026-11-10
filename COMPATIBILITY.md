@@ -111,6 +111,10 @@ null), and `resolved`/`requested` counts.
 It will not invent a plausible value - `sources` exists so a caller can tell a value the page
 stated from one that was inferred.
 
+**Stability: beta.** The resolution order and the response shape are stable; the set of
+class-name hints and the semantic heuristics will keep changing as pages are measured. Callers
+that need exact extraction should use `web_extract` with selectors, which does not infer.
+
 ### Cache Management
 
 #### `cache_stats`
