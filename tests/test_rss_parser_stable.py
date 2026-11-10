@@ -547,7 +547,7 @@ class TestMCPIntegration:
                     tools = server.tool_manager.tools
                     tool_names = [t.name for t in tools] if hasattr(tools[0], "name") else list(tools.keys())
                     # Should be exactly 15 tools
-                    assert len(tool_names) == 15, f"Expected 15 MCP tools, got {len(tool_names)}: {tool_names}"
+                    assert len(tool_names) == 16, f"Expected 16 MCP tools, got {len(tool_names)}: {tool_names}"
         except Exception as exc:
             pytest.skip(f"Server creation failed: {exc}")
 
