@@ -12,7 +12,7 @@ v2.0.0. Agents and integrations can rely on these being stable.
 
 ## 1. MCP Tools (Frozen)
 
-The following 15 MCP tools are frozen. Their names, parameter schemas,
+The following 16 MCP tools are frozen. Their names, parameter schemas,
 and return structure will remain backwards-compatible.
 
 ### Core Web Tools
@@ -89,6 +89,27 @@ Extract structured data from a page using CSS selectors.
 - `rules` (string, required): JSON string of extraction rules
 
 **Returns:** JSON string with extracted structured data.
+
+#### `web_extract_schema`
+Extract data matching a JSON Schema without writing selectors.
+
+Where `web_extract` requires you to know the page's class names, this takes the shape you
+want and resolves each field itself, best source first: `json-ld` (the page's own structured
+data), then `meta` (OpenGraph / Twitter cards), then `semantic-html` (`<h1>`, `<time>`,
+`itemprop`, narrow class hints). Derivation, not an LLM - no key, no per-call cost,
+deterministic.
+
+**Parameters:**
+- `url` (string, required): URL to extract from
+- `schema` (string, required): JSON Schema, e.g.
+  `{"type": "object", "properties": {"price": {"type": "number"}}}`
+
+**Returns:** JSON with `data`, per-field `sources`, `missing` (explicit, never a silent
+null), and `resolved`/`requested` counts.
+
+**Note on the tradeoff:** a field this cannot place comes back `null` with an empty source.
+It will not invent a plausible value - `sources` exists so a caller can tell a value the page
+stated from one that was inferred.
 
 ### Cache Management
 
