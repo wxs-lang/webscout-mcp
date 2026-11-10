@@ -61,6 +61,21 @@ _CHALLENGE_MARKERS = (
     "安全检测",
     "检测当前网络环境",
     "火山引擎",
+    # Generic human-verification wording, which the vendor-specific markers above miss.
+    #
+    # Measured: reddit.com serves a 240-char page reading "Prove your humanity ... not for
+    # bots ... complete the challenge ... a real person" and matched none of the entries
+    # above, so a challenge page was treated as ordinary thin content and reported
+    # browser_success. The verdict was right by accident of size, not by recognising it.
+    "prove your humanity",
+    "not for bots",
+    "complete the challenge",
+    "verify you are human",
+    "verify you are a human",
+    "human verification",
+    "人机验证",
+    "请完成验证",
+    "滑动验证",
 )
 
 _JS_PLACEHOLDER_MARKERS = (
