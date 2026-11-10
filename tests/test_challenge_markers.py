@@ -53,12 +53,15 @@ def test_reddit_challenge_page_is_recognised():
         "complete the challenge",
         "verify you are human",
         "human verification",
-        "人机验证",
-        "滑动验证",
     ],
 )
 def test_each_added_marker_stands_alone(phrase):
-    """One phrase is enough; they are alternatives, not a combined signature."""
+    """One phrase is enough; they are alternatives, not a combined signature.
+
+    No Chinese entries here on purpose: `test_challenge_detection.py::test_marker_set_stays_narrow`
+    pins the Chinese set at three, guarding against a phrase dump. reddit's page is English,
+    so those additions would not have helped detection anyway.
+    """
     assert _looks_like_challenge(f"<html><body>{phrase}</body></html>")
 
 
