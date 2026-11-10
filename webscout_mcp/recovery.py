@@ -59,6 +59,18 @@ _THIN_SHELL_TEXT_CHARS = 1500
 _LARGE_HTML_CHARS = 20_000
 _HIGH_SCRIPT_RATIO = 0.15
 
+# A large page whose extraction kept almost none of it did not extract - it failed.
+#
+# Measured across seven reachable sites, body/raw ratio:
+#   medium 0.0026 (134 chars from 52 KB - content discarded),
+#   mozilla 0.0132 (thin but usable), wikipedia 0.0684, docs.python 0.2488.
+# 0.005 sits below every working site and above the broken one.
+#
+# Needed because script_ratio measures script *bytes*: medium's 52 KB is mostly markup and
+# style, so 17 <script> tags still left the ratio under the thin_shell threshold.
+_EXTRACTION_COLLAPSE_RATIO = 0.005
+_EXTRACTION_COLLAPSE_MIN_HTML = 20_000
+
 # A 403 that returned at least this many bytes of HTML body is treated as a
 # UA-level soft block (the server rejected our client fingerprint but serves
 # real markup to a real browser). Below this, there is no evidence a browser
@@ -407,6 +419,18 @@ def classify_recovery(response: FetchResponse) -> RecoveryDecision:
         )
         if thin_shell:
             return _d(RecoveryReason.AMBIGUOUS, RecoveryAction.NONE, 0.45, **details)
+
+        # A big page that yielded almost no text did not extract. Measured: medium.com's
+        # 52 KB produced a 134-char nav bar and was accepted as a complete short page, so a
+        # caller could not tell it from a genuinely nav-only page.
+        collapsed = (
+            len(raw_html) >= _EXTRACTION_COLLAPSE_MIN_HTML
+            and (len(body) / max(len(raw_html), 1)) < _EXTRACTION_COLLAPSE_RATIO
+        )
+        if collapsed:
+            details["body_to_raw_ratio"] = round(len(body) / max(len(raw_html), 1), 5)
+            return _d(RecoveryReason.AMBIGUOUS, RecoveryAction.BROWSER, 0.6, **details)
+
         return _d(RecoveryReason.COMPLETE_SHORT_PAGE, RecoveryAction.ACCEPT, 0.8, **details)
 
     return _d(RecoveryReason.COMPLETE_CONTENT, RecoveryAction.ACCEPT, 0.85, **details)
