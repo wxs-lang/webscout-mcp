@@ -52,6 +52,7 @@ from .logging_config import get_logger, setup_logging
 from .metadata_extractor import MetadataExtractor
 from .robots import RobotsChecker
 from .rss_parser import fetch_and_parse_feed
+from .schema_extractor import extract_by_schema
 from .search import SearchEngine
 from .search_service import create_search_service_from_config
 from .startup_check import StartupSelfCheck
@@ -375,6 +376,51 @@ def create_server(config: Config | None = None) -> MCPServer:
         return json.dumps(result, ensure_ascii=False, indent=2)
 
     @mcp.tool()
+    async def web_extract_schema(url: str, schema: str) -> str:
+        """Extract data matching a JSON Schema without writing selectors.
+
+        Pass the shape you want and get back an object; no CSS rules, no LLM key. Each field
+        is resolved from the best available source, tried in this order:
+
+        1. `json-ld`  - the page's own structured data, so nothing is guessed
+        2. `meta`     - OpenGraph / Twitter cards
+        3. `semantic-html` - h1, <time>, itemprop, and a few class-name hints
+
+        The response records `sources` per field, so a caller can tell a stated value from an
+        inferred one, and lists `missing` fields explicitly rather than leaving silent nulls.
+
+        Use `web_extract` instead when you already know the page's selectors: it is exact,
+        whereas this infers. A field whose structure this has never seen comes back null -
+        it will not invent a plausible value.
+
+        `schema` is JSON: {"type": "object", "properties": {"price": {"type": "number"}}}.
+        """
+        try:
+            parsed = json.loads(schema)
+        except json.JSONDecodeError as exc:
+            return json.dumps({"error": f"Invalid schema JSON: {exc}"}, ensure_ascii=False)
+        if not isinstance(parsed, dict):
+            return json.dumps({"error": "schema must be a JSON object"}, ensure_ascii=False)
+        if not isinstance(parsed.get("properties"), dict) or not parsed["properties"]:
+            return json.dumps({"error": 'schema needs a non-empty "properties" object'}, ensure_ascii=False)
+
+        try:
+            result = await metadata_fetcher.fetch(url=url, extract=False, output_format="html", max_chars=2_000_000)
+        except Exception as exc:  # noqa: BLE001 - surfaced to the caller below
+            log.error("web_extract_schema fetch failed", extra={"url": url, "error": str(exc)})
+            return json.dumps({"error": f"Fetch failed: {exc}", "url": url}, ensure_ascii=False)
+
+        # Metadata and semantics both live in the document as served; `content` has already
+        # been processed by this point and no longer contains the head.
+        html = getattr(result, "raw_html", "") or getattr(result, "content", "")
+        if not html:
+            return json.dumps({"error": "Failed to fetch page content", "url": url}, ensure_ascii=False)
+
+        base_url = getattr(result, "final_url", None) or url
+        extracted = extract_by_schema(html, parsed, base_url)
+        return json.dumps(extracted.to_dict(), ensure_ascii=False, indent=2)
+
+    @mcp.tool()
     def cache_stats() -> str:
         """Return cache statistics: entry count, total size, TTL, and limits."""
         stats = cache.stats()
@@ -448,7 +494,11 @@ def create_server(config: Config | None = None) -> MCPServer:
         """
         try:
             result = await metadata_fetcher.fetch(url=url, extract=False, output_format="html", max_chars=200000)
-            html = result.content if hasattr(result, "content") else result.raw_html
+            # Metadata lives in <head>, which `content` does not contain once the body has
+            # been processed - measured 18979 chars of text against 81061 chars of raw HTML
+            # for the same page. Reading `content` first made this tool return empty
+            # metadata for every page that had a usable head.
+            html = getattr(result, "raw_html", "") or getattr(result, "content", "")
             if not html:
                 return json.dumps({"error": "Failed to fetch page content", "url": url}, ensure_ascii=False)
             # Use final_url (post-redirect) as base for resolving relative URLs;
