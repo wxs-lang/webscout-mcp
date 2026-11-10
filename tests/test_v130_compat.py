@@ -32,6 +32,10 @@ def test_mcp_tool_count_unchanged():
             "web_rag_context",
             "web_compare_sites",
             "web_monitor",
+            # v3 readiness: schema-driven extraction, derived rather than LLM-backed.
+            # Same rule applies - COMPATIBILITY.md carries its parameters and a stability
+            # level, and docs/tools.md is generated.
+            "web_extract_schema",
         ]
     )
     assert names == expected, names

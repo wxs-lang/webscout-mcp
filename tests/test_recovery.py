@@ -247,4 +247,7 @@ def test_mcp_tool_count_unchanged():
     """
 
     server = (Path(__file__).resolve().parents[1] / "webscout_mcp" / "server.py").read_text(encoding="utf-8")
-    assert server.count("@mcp.tool()") == 15  # 15 since web_monitor; see COMPATIBILITY.md
+    # 16 since web_extract_schema; 15 since web_monitor. Bumped deliberately, not to make a
+    # failing build green: the guard exists to stop the surface drifting, so a change here
+    # has to be the change being made, and this one adds a tool rather than moving it.
+    assert server.count("@mcp.tool()") == 16
