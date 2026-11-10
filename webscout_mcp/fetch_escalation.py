@@ -73,9 +73,6 @@ _CHALLENGE_MARKERS = (
     "verify you are human",
     "verify you are a human",
     "human verification",
-    "人机验证",
-    "请完成验证",
-    "滑动验证",
 )
 
 _JS_PLACEHOLDER_MARKERS = (
