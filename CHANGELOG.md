@@ -10,18 +10,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Small unextracted HTML pages no longer pay a browser launch per fetch.**
-  Barebones pages (example.org class: <3KB HTML, 156 chars of text) failed
+  Barebones pages (example.org class: 577B HTML, 156 chars of text) failed
   trafilatura's heuristics 29/30 times on identical input — extraction came
   back "empty", `classify_recovery`'s `unextracted_html` branch escalated to
   a full playwright chromium launch per call (~1.2–3s), and the browser
-  returned the identical 577 bytes the fetch already held. The branch had no
-  size gate; `should_escalate_to_browser`'s low-density check requires
-  >3000 bytes of HTML precisely because a smaller document cannot be a JS
-  shell. `classify_recovery` now applies the same `_MIN_HTML_BYTES_FOR_LOW_DENSITY`
-  threshold: a complete sub-3000B document with empty extraction is accepted
-  as `COMPLETE_SHORT_PAGE` with an explanation note; larger documents keep
-  the browser escalation (a big empty shell IS the JS-rendered case).
-  Measured: example.org route latency 1400–3100ms → 243–260ms stable across
+  returned the identical 577 bytes the fetch already held.
+- The discriminator between "complete page the extractor misjudged" and "JS
+  shell that must be rendered" is the **visible text inside the markup**,
+  not document size (a first-cut size gate was caught by CI:
+  `test_empty_extraction_does_escalate`'s tiny `<div id=root></div>` stub is
+  a legitimate escalation case at any size). `classify_recovery` now strips
+  script/style/tags with three regexes and counts what a reader would see:
+  ≥50 visible chars → accept as `COMPLETE_SHORT_PAGE` with an explanation
+  note (example.org strips to 84); fewer → keep the browser escalation
+  (an empty root div strips to ~3 — the browser is the only way content
+  appears).
+  Measured: example.org route latency 1400–3100ms → 243–295ms stable across
   calls; on the 60-URL corpus, browser recoveries dropped 5/60 → 1/60, p50
   1185 → 899ms (−32% cumulative with the store fix), fast-path P95
   2906 → 2214ms. Verified the flaky extractor separately: same bytes,
