@@ -115,7 +115,19 @@ def test_unskip_is_reported_separately(bench):
 
 def test_unchanged_verdicts_produce_nothing(bench):
     diff = _diff(bench, _run(a="pass", b="degraded"), _run(a="pass", b="degraded"))
-    assert not any(diff[key] for key in diff)
+    # Only the behavioural buckets say whether anything moved. `egress` and
+    # `egress_mismatch` are descriptive additions, so `any(diff)` would always be true.
+    behavioural = (
+        "regressions",
+        "contract_breaks",
+        "recoveries",
+        "flapping",
+        "newly_skipped",
+        "unskipped",
+        "appeared",
+        "disappeared",
+    )
+    assert not any(diff[key] for key in behavioural), {k: diff[k] for k in behavioural if diff[k]}
 
 
 def test_new_and_missing_scenarios_are_reported(bench):
