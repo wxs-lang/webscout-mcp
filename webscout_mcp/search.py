@@ -31,6 +31,35 @@ from .search_health import SearchHealthManager
 log = get_logger(__name__)
 
 
+def _decode_bing_redirect(href: str) -> str:
+    """Return the destination behind a Bing `ck/a` redirect, or `href` unchanged.
+
+    Measured: 5 of 20 results from bing were `https://www.bing.com/ck/a?...&u=a1<base64url>`.
+    The `href` starts with `http`, so a caller gets an opaque expiring token instead of the
+    page. The `u` parameter decodes to the real URL - verified on six live results, all of
+    which resolved to their actual sites.
+
+    Anything that does not decode is returned as-is: an opaque redirect is still better than
+    a dropped result, and dropping would change the count a caller sees.
+    """
+    if "bing.com/ck/a" not in href:
+        return href
+    import base64
+    import urllib.parse
+
+    try:
+        query = urllib.parse.parse_qs(urllib.parse.urlparse(href).query)
+        payload = (query.get("u") or [""])[0]
+        if not payload.startswith("a1"):
+            return href
+        raw = payload[2:]
+        raw += "=" * (-len(raw) % 4)
+        decoded = base64.urlsafe_b64decode(raw).decode("utf-8", "replace")
+        return decoded if decoded.startswith("http") else href
+    except Exception:  # noqa: BLE001 - a malformed token must not fail the search
+        return href
+
+
 @dataclass
 class SearchResult:
     """A single search result."""
@@ -197,7 +226,11 @@ class BingBackend(SearchBackend):
                 if not link:
                     continue
                 title = cls._clean_text(link.get_text(strip=True))
-                url = link.get("href", "")
+                url = _decode_bing_redirect(link.get("href", ""))
+                # Measured: 5 of 20 bing results were https://www.bing.com/ck/a?... tokens
+                # whose `u` parameter decodes to the destination. They start with http, so the
+                # check below accepted them and callers got expiring opaque links instead of
+                # the page.
                 if not url.startswith("http"):
                     continue
                 snippet = ""
