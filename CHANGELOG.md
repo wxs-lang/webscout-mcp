@@ -5,6 +5,87 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v2.7.0 (2026-11-13)
+
+A 16th tool, and a real defect found while building it.
+
+### Added
+
+- **`web_extract_schema(url, schema)`** - describe the data you want, not where it lives.
+  The equivalent of Firecrawl's `formats: [{type: "json", schema}]`, **derived rather than
+  LLM-backed**: no API key, no per-call cost, deterministic.
+
+  Each field is resolved from the best available source, in this order:
+
+  | source | meaning |
+  |---|---|
+  | `json-ld` | the page's own structured data - nothing inferred |
+  | `meta` | OpenGraph / Twitter cards |
+  | `semantic-html` | `<h1>`, `<time>`, `itemprop`, narrow class hints |
+
+  Measured on real pages:
+
+  ```
+  wikipedia   title='Web scraping'                [json-ld]
+              author='Contributors to Wikimedia'  [json-ld]
+              date='2005-09-17T18:57:30Z'         [json-ld]
+  docs.python title, description                  [meta]
+  mozilla     title, description                  [meta]
+  ```
+
+  The response carries `sources` per field and lists `missing` explicitly. **The honest
+  limit is documented rather than hidden**: a field this cannot place comes back `null` with
+  an empty source. Returning the nearest plausible value would look correct and be wrong, so
+  `sources` exists to let a caller tell stated from inferred.
+
+  Stability: **beta** - the resolution order and response shape are stable; the hint tables
+  will keep changing as pages are measured.
+
+### Fixed
+
+- **`metadata_extract` returned empty metadata for every page.** `FetchResponse` carries two
+  bodies and they are not interchangeable:
+
+  ```
+  content    18979 chars - the processed body, no <head>, no <title>
+  raw_html   81061 chars - the document as served, with <head>
+
+  via content    title=''   og_title=''   json_ld=0
+  via raw_html   title='3. An Informal Introduction to Python — Python 3.15.2'
+  ```
+
+  Metadata lives in `<head>` by definition, so `content` can never be the right source. The
+  old expression also inverted the fallback: it reached `raw_html` only when `content` was
+  falsy - the opposite of when it is needed.
+
+  Nothing caught this because no test asserted on a *populated* field; the existing metadata
+  tests checked structure, not content. `test_metadata_source.py` now asserts the populated
+  case and pins the ordering at source level, so a refactor cannot reverse it silently.
+
+### Compatibility
+
+**16 tools.** `web_extract` is unchanged in name and schema; `web_extract_schema` is new. The
+tool-count guard exists in 12 places (11 test files plus the Docker workflow) and all were
+updated after `COMPATIBILITY.md` gained the entry with parameters and a stability level -
+which is what the guard's own docstring asks for before the number moves.
+
+### Verified
+
+- 19 tests for the extractor (source precedence, nested JSON-LD lifting, type coercion,
+  unresolvable-field honesty), 6 for the metadata source
+- real-site extraction confirmed on wikipedia / docs.python / mozilla
+- CI 25 checks green; ruff, format and generated docs clean
+
+### Note on the published 2.6.0
+
+Two days of production telemetry before this release: 20 workflow runs, zero failures,
+**99.12% success across 684 sampled operations**, and 2539 downloads in the last month.
+Two things that data says are worth following up, recorded here rather than acted on:
+
+- all 6 failures read `Failed after 3 retries` with no indication of which layer failed
+- search used a single backend (bing) across all 190 samples, so multi-backend fallback has
+  never actually been exercised in production
+
 ## v2.6.0 (2026-11-10)
 
 Three product fixes about *saying what happened*, plus the CI work that surfaced them.
