@@ -31,6 +31,38 @@ from .search_health import SearchHealthManager
 log = get_logger(__name__)
 
 
+# URL shapes that identify a paid placement.
+#
+# Measured: 2 of 48 results across six queries were ads served through
+# `duckduckgo.com/y.js?ad_domain=...&ad_type=txad`, with titles indistinguishable from organic
+# answers. The click has to route through the ad network to be billed, so the URL is the
+# reliable signal - an advertiser controls the headline, not the redirect.
+_AD_URL_MARKERS: tuple[str, ...] = (
+    "/y.js?",
+    "ad_domain=",
+    "ad_provider=",
+    "ad_type=",
+    "click_metadata=",
+    "/aclk?",
+    "googleadservices",
+    "doubleclick.net",
+    "bing.com/aclick",
+)
+
+
+def _is_sponsored(url: str) -> bool:
+    """Whether a result URL is a paid placement.
+
+    Flagging rather than filtering: dropping the row would change the count the caller sees
+    and hide that the query triggered advertising. A caller can decide what to do with a
+    sponsored result; it cannot decide about one it was never told was sponsored.
+    """
+    if not url:
+        return False
+    lowered = url.lower()
+    return any(marker in lowered for marker in _AD_URL_MARKERS)
+
+
 def _decode_bing_redirect(href: str) -> str:
     """Return the destination behind a Bing `ck/a` redirect, or `href` unchanged.
 

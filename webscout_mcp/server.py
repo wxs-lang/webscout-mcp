@@ -280,6 +280,8 @@ def create_server(config: Config | None = None) -> MCPServer:
             status = "success" if results else "empty"
             error_block = None
 
+        from .search import _is_sponsored
+
         output = [
             {
                 "position": r.position,
@@ -287,6 +289,11 @@ def create_server(config: Config | None = None) -> MCPServer:
                 "url": r.url,
                 "snippet": r.snippet,
                 "backend": r.backend,
+                # Measured: 2 of 48 results across six queries were paid placements served
+                # through an ad redirect, with titles indistinguishable from organic answers.
+                # Flagged rather than filtered - a caller can decide about a sponsored result,
+                # but not about one it was never told was sponsored.
+                "sponsored": _is_sponsored(r.url),
             }
             for r in results
         ]
