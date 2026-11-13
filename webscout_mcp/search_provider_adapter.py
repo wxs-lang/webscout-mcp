@@ -128,6 +128,27 @@ class SearchBackendAdapter(SearchProvider):
                 pass
             cause = getattr(cause, "__cause__", None)
 
+        # Missing dependency or unusable local configuration.
+        #
+        # Measured: a machine with a SOCKS proxy configured but no `socksio` installed fails
+        # every search with "Using SOCKS proxy, but the 'socksio' package is not installed",
+        # and that was reported as PROVIDER - the same bucket as an upstream outage. The
+        # reader is sent to check the network when the message already names the remedy.
+        #
+        # `ImportError` is checked structurally; the phrases are for when the error has been
+        # wrapped in something generic and only its text survives. Both are narrow on
+        # purpose: an installation problem says so, and little else does.
+        if isinstance(exc, ImportError):
+            return StandardErrorCode.SEARCH_BACKEND_FAILED, SearchFailureKind.CONFIG
+        text = str(exc).lower()
+        # Unambiguous phrases - they name an installation action.
+        if any(marker in text for marker in ("pip install", "no module named", "missing dependency")):
+            return StandardErrorCode.SEARCH_BACKEND_FAILED, SearchFailureKind.CONFIG
+        # "not installed" alone is too broad - "the service is not installed correctly" is a
+        # server-side problem. Paired with a package/module word it is a local dependency.
+        if "not installed" in text and any(word in text for word in ("package", "module", "socksio", "dependency")):
+            return StandardErrorCode.SEARCH_BACKEND_FAILED, SearchFailureKind.CONFIG
+
         # Generic backend failure.
         return StandardErrorCode.SEARCH_BACKEND_FAILED, SearchFailureKind.PROVIDER
 
