@@ -576,7 +576,12 @@ def create_server(config: Config | None = None) -> MCPServer:
         """
         try:
             # Fetch page content
-            result = await fetcher.fetch(url=url, extract=True, output_format="text", max_chars=50000)
+            # `markdown`, not `text`: the plain-text format collapses blank lines, and the
+            # analyzer splits paragraphs on them. Measured on a real article - text gave 0
+            # double-newlines and a paragraph_count of 1; markdown gave 79 and 80. Word count
+            # was identical (4015) in both, so the structural metric was silently wrong next
+            # to a correct-looking one. Same for the fetch above.
+            result = await fetcher.fetch(url=url, extract=True, output_format="markdown", max_chars=50000)
             text = result.content if hasattr(result, "content") else result.text
             html_result = await fetcher.fetch(url=url, extract=False, output_format="html", max_chars=200000)
             html = html_result.content if hasattr(html_result, "content") else html_result.raw_html
