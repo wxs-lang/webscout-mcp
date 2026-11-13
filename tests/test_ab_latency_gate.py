@@ -158,11 +158,7 @@ def _pair_with_recovery(
     for i in range(n_fast):
         obs.append(ArmObservation(f"p{i}", "pipeline", True, 5000, fast_ms))
     for i in range(n_recovery):
-        obs.append(
-            ArmObservation(
-                f"r{i}", "pipeline", True, 5000, recovery_ms, recovery_used=True
-            )
-        )
+        obs.append(ArmObservation(f"r{i}", "pipeline", True, 5000, recovery_ms, recovery_used=True))
     return obs
 
 

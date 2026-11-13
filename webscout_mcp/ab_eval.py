@@ -622,9 +622,18 @@ def render_markdown(result: ABResult) -> str:
     lines.append("|---|---|---|")
     p, b = result.pipeline.to_dict(), result.baseline.to_dict()
     keys = (
-        "cases", "ok", "usable", "usable_rate", "error_rate", "truncated",
-        "mean_chars", "p50_ms", "p95_ms", "p95_excluding_recovery_ms",
-        "recovery_used", "recovery_rate",
+        "cases",
+        "ok",
+        "usable",
+        "usable_rate",
+        "error_rate",
+        "truncated",
+        "mean_chars",
+        "p50_ms",
+        "p95_ms",
+        "p95_excluding_recovery_ms",
+        "recovery_used",
+        "recovery_rate",
     )
     for key in keys:
         lines.append(f"| {key} | {p[key]} | {b[key]} |")
