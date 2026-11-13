@@ -472,8 +472,18 @@ def create_server(config: Config | None = None) -> MCPServer:
                 outcomes = getattr(search_service, "provider_outcomes", None) or {}
                 actions = getattr(search_service, "recovery_actions", None) or {}
                 reasons = getattr(search_service, "recovery_reasons", None) or {}
+                # Count the counters by name.
+                #
+                # Summing `stats.values()` treated every entry as a count, so adding
+                # `last_failure_kind` made `int('provider')` raise ValueError. The
+                # surrounding except swallowed it and this section silently became an error
+                # object - but only once a real failure had been recorded, which is why the
+                # tests (run before any search) stayed green.
+                counters = ("success", "empty", "error")
                 total = sum(
-                    sum(int(v) for v in stats.values()) for stats in outcomes.values() if isinstance(stats, dict)
+                    sum(int(stats.get(k, 0) or 0) for k in counters)
+                    for stats in outcomes.values()
+                    if isinstance(stats, dict)
                 )
                 unified_report["provider_activity"] = {
                     "per_provider": {name: dict(stats) for name, stats in outcomes.items()},

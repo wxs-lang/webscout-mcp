@@ -274,9 +274,24 @@ class SearchService:
         outcome_decisions: list[SearchRecoveryDecision] = []
         provider_map = {p.name: p for p in self.providers}
 
-        def _record_outcome(provider: str, kind: str) -> None:
+        def _record_outcome(
+            provider: str,
+            kind: str,
+            failure_kind: str = "",
+            failure_message: str = "",
+        ) -> None:
             bucket = self.provider_outcomes.setdefault(provider, {"success": 0, "empty": 0, "error": 0})
             bucket[kind] += 1
+            # Keep the last failure's reason, bounded to one entry.
+            #
+            # Measured: with both backends unreachable the caller sees
+            # 'All 2 providers failed' and `recovery_reasons {'PROVIDER_ERROR': 2}` - two
+            # providers failed, no statement of why either did. PROVIDER_ERROR is one bucket
+            # for a DNS failure, a timeout and a parser fault alike, and they call for
+            # different responses.
+            if kind == "error" and (failure_kind or failure_message):
+                bucket["last_failure_kind"] = failure_kind
+                bucket["last_failure_message"] = failure_message[:200]
 
         def _record_recovery(decision: SearchRecoveryDecision) -> None:
             outcome_decisions.append(decision)
@@ -363,7 +378,20 @@ class SearchService:
                 return
             # All hard-failure reasons: record provider failure.
             self.health_manager.record_failure(provider_name, reason.value)
-            _record_outcome(provider_name, "error")
+            # Carry the decision's own detail through.
+            #
+            # `classify_search_recovery` puts the most specific fact it has into
+            # `details` - `failure_kind`, else `error_type` - and `_apply_health` used to
+            # drop it here, so the outcome record kept counts with no reason and the caller
+            # could only be told "All 2 providers failed". Recorded as it is: `provider` is
+            # a coarse kind, and naming it honestly is better than inventing `network`.
+            detail = decision.details or {}
+            _record_outcome(
+                provider_name,
+                "error",
+                failure_kind=str(detail.get("failure_kind") or detail.get("error_type") or ""),
+                failure_message=str(detail.get("message") or ""),
+            )
             if self.router is not None:
                 self.router.record_result(provider_name, False, latency_ms, _router_error_label(reason))
 

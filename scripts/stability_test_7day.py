@@ -19,7 +19,6 @@ Usage:
 
 import argparse
 import json
-import os
 import sys
 import time
 import traceback
@@ -194,7 +193,6 @@ class StabilityTestRunner:
     def run_search_test(self, query: str) -> dict[str, Any]:
         """Run a single search test."""
         import asyncio
-        from pathlib import Path
         from webscout_mcp.config import Config
         from webscout_mcp.cache import Cache
         from webscout_mcp.search_service import create_search_service_from_config, SearchRequest
@@ -230,6 +228,7 @@ class StabilityTestRunner:
             # SearchResponse.success is a classmethod, NOT a property.
             # Use status field to determine success.
             from webscout_mcp.search_provider import SearchStatus
+
             result["success"] = response.status == SearchStatus.SUCCESS
             result["results_count"] = len(response.results) if response.results else 0
             result["provider"] = response.provider
@@ -237,21 +236,23 @@ class StabilityTestRunner:
             if result["success"]:
                 self.search_latencies.append(latency_ms)
                 if response.provider:
-                    self.provider_counts[response.provider] = (
-                        self.provider_counts.get(response.provider, 0) + 1
-                    )
+                    self.provider_counts[response.provider] = self.provider_counts.get(response.provider, 0) + 1
             else:
                 result["error_type"] = response.error_type or "unknown"
-                self.error_types[result["error_type"]] = (
-                    self.error_types.get(result["error_type"], 0) + 1
-                )
+                # Keep the sentence, not just the category.
+                #
+                # The exception path below already records error_message; this one did not,
+                # and this is the path every ordinary failure takes. Measured across 684
+                # sampled operations, six failures were stored as
+                # {'Failed after 3 retries: ': 6} - a category with no evidence under it,
+                # which cannot distinguish a DNS failure from a rate limit or a parser fault.
+                result["error_message"] = response.error_message or ""
+                self.error_types[result["error_type"]] = self.error_types.get(result["error_type"], 0) + 1
 
         except Exception as e:
             result["error_type"] = type(e).__name__
             result["error_message"] = str(e)
-            self.error_types[result["error_type"]] = (
-                self.error_types.get(result["error_type"], 0) + 1
-            )
+            self.error_types[result["error_type"]] = self.error_types.get(result["error_type"], 0) + 1
             self.log(f"Search test failed for '{query}': {e}", "ERROR")
 
         return result
@@ -259,7 +260,6 @@ class StabilityTestRunner:
     def run_fetch_test(self, url: str) -> dict[str, Any]:
         """Run a single fetch test."""
         import asyncio
-        from pathlib import Path
         from webscout_mcp.config import Config
         from webscout_mcp.cache import Cache
         from webscout_mcp.fetcher import Fetcher
@@ -299,16 +299,12 @@ class StabilityTestRunner:
                 self.fetch_latencies.append(latency_ms)
             else:
                 result["error_type"] = response.error or f"HTTP_{response.status_code}"
-                self.error_types[result["error_type"]] = (
-                    self.error_types.get(result["error_type"], 0) + 1
-                )
+                self.error_types[result["error_type"]] = self.error_types.get(result["error_type"], 0) + 1
 
         except Exception as e:
             result["error_type"] = type(e).__name__
             result["error_message"] = str(e)
-            self.error_types[result["error_type"]] = (
-                self.error_types.get(result["error_type"], 0) + 1
-            )
+            self.error_types[result["error_type"]] = self.error_types.get(result["error_type"], 0) + 1
             self.log(f"Fetch test failed for '{url}': {e}", "ERROR")
 
         return result
@@ -317,9 +313,17 @@ class StabilityTestRunner:
         """Test that MCP tool is registered (simplified - no server creation needed)."""
         # Known MCP tools - verified by CI MCP E2E tests
         known_tools = {
-            "web_search", "web_fetch", "web_crawl", "web_extract",
-            "cache_stats", "cache_clear", "search_health",
-            "metadata_extract", "rss_parse", "content_quality", "broken_links"
+            "web_search",
+            "web_fetch",
+            "web_crawl",
+            "web_extract",
+            "cache_stats",
+            "cache_clear",
+            "search_health",
+            "metadata_extract",
+            "rss_parse",
+            "content_quality",
+            "broken_links",
         }
 
         result = {
@@ -392,8 +396,14 @@ class StabilityTestRunner:
                 self.hourly_failed += 1
 
         # Calculate cycle summary
-        cycle_total = len(cycle_result["search_tests"]) + len(cycle_result["fetch_tests"]) + len(cycle_result["mcp_tool_tests"])
-        cycle_passed = sum(1 for t in cycle_result["search_tests"] if t["success"]) + sum(1 for t in cycle_result["fetch_tests"] if t["success"]) + sum(1 for t in cycle_result["mcp_tool_tests"] if t["success"])
+        cycle_total = (
+            len(cycle_result["search_tests"]) + len(cycle_result["fetch_tests"]) + len(cycle_result["mcp_tool_tests"])
+        )
+        cycle_passed = (
+            sum(1 for t in cycle_result["search_tests"] if t["success"])
+            + sum(1 for t in cycle_result["fetch_tests"] if t["success"])
+            + sum(1 for t in cycle_result["mcp_tool_tests"] if t["success"])
+        )
         cycle_result["summary"] = {
             "total": cycle_total,
             "passed": cycle_passed,
@@ -402,8 +412,7 @@ class StabilityTestRunner:
         }
 
         self.log(
-            f"Test cycle complete: {cycle_passed}/{cycle_total} passed "
-            f"({cycle_result['summary']['success_rate']}%)"
+            f"Test cycle complete: {cycle_passed}/{cycle_total} passed ({cycle_result['summary']['success_rate']}%)"
         )
 
         # Save raw result (use default=str to handle non-serializable objects)
@@ -426,11 +435,7 @@ class StabilityTestRunner:
         report_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         report_file = self.daily_reports_dir / f"day_{day}_{report_date}.md"
 
-        success_rate = (
-            round(self.passed_tests / self.total_tests * 100, 2)
-            if self.total_tests > 0
-            else 0
-        )
+        success_rate = round(self.passed_tests / self.total_tests * 100, 2) if self.total_tests > 0 else 0
 
         report = f"""# 7-Day Stability Test - Day {day} Report
 
@@ -448,7 +453,7 @@ class StabilityTestRunner:
 - Total Searches: {len(self.search_latencies)}
 - P50 Latency: {self.calculate_percentile(self.search_latencies, 50):.1f}ms
 - P95 Latency: {self.calculate_percentile(self.search_latencies, 95):.1f}ms
-- Average Latency: {sum(self.search_latencies)/len(self.search_latencies):.1f}ms if self.search_latencies else 0
+- Average Latency: {sum(self.search_latencies) / len(self.search_latencies):.1f}ms if self.search_latencies else 0
 
 ## Fetch Performance
 - Total Fetches: {len(self.fetch_latencies)}
@@ -465,7 +470,7 @@ class StabilityTestRunner:
         for provider, count in sorted(self.provider_counts.items(), key=lambda x: x[1], reverse=True):
             report += f"- {provider}: {count}\n"
 
-        report += f"\n## Elapsed Time\n"
+        report += "\n## Elapsed Time\n"
         elapsed = datetime.now(timezone.utc) - self.start_time
         report += f"- Elapsed: {elapsed}\n"
         report += f"- Remaining: {self.end_time - datetime.now(timezone.utc)}\n"
@@ -478,11 +483,7 @@ class StabilityTestRunner:
 
     def save_summary(self):
         """Save current summary to JSON."""
-        success_rate = (
-            round(self.passed_tests / self.total_tests * 100, 2)
-            if self.total_tests > 0
-            else 0
-        )
+        success_rate = round(self.passed_tests / self.total_tests * 100, 2) if self.total_tests > 0 else 0
 
         summary = {
             "start_time": self.start_time.isoformat(),
@@ -521,7 +522,7 @@ class StabilityTestRunner:
         self.log("7-Day Continuous Stability Test Starting")
         self.log("=" * 70)
         self.log(f"Duration: {self.duration_days} days")
-        self.log(f"Interval: {self.interval_seconds} seconds ({self.interval_seconds/3600:.1f} hours)")
+        self.log(f"Interval: {self.interval_seconds} seconds ({self.interval_seconds / 3600:.1f} hours)")
         self.log(f"Start: {self.start_time}")
         self.log(f"End: {self.end_time}")
         self.log(f"Single-cycle mode: {single_cycle}")
@@ -581,11 +582,7 @@ class StabilityTestRunner:
             self.save_summary()
 
             # Print final statistics
-            success_rate = (
-                round(self.passed_tests / self.total_tests * 100, 2)
-                if self.total_tests > 0
-                else 0
-            )
+            success_rate = round(self.passed_tests / self.total_tests * 100, 2) if self.total_tests > 0 else 0
             self.log(f"Total Tests: {self.total_tests}")
             self.log(f"Passed: {self.passed_tests}")
             self.log(f"Failed: {self.failed_tests}")
