@@ -5,6 +5,49 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v2.8.1 (2026-11-13)
+
+The GOAL_REVIEW step-3 A/B retest finally ran (2026-10-23's conclusion was unverifiable
+for three weeks because the original harness was lost). The retest closed the Phase 4
+verification gap and found one real environment-failure mode on the way.
+
+### Verified
+
+- **The −7.3pp usable-rate regression did not reproduce.** 60-URL fetch corpus
+  (`c8727fe919369f66`): pipeline 54/60 usable vs baseline 55/60 (−1.67pp, inside
+  tolerance). G1 and G2 PASS. The extraction-quality fixes from v2.5–v2.8 (nested-name
+  title handling, paragraph counting, empty-fetch explanations) held up end-to-end.
+  Full report: `docs/AB_RETEST_20261113.md`; raw evidence:
+  `.webscout-eval/ab-retest-fixed2/`.
+
+### Found (needs a fix)
+
+- **httpx 0.28.x silently dies on `NO_PROXY` entries containing `[::1]`** —
+  `normalize_port` parses the literal as an authority and raises
+  `InvalidURL: Invalid port ':1]'`; `HTTPFetchProvider` swallowed it into a
+  `status_code=0`, `content=''`, `error=None` FetchResponse. Every fetch returned
+  empty while both A/B arms agreed, so all gates passed green over a fully broken
+  environment — the "both arms same failure" blind spot GOAL_REVIEW defect 1
+  predicted, observed live. Two guards are needed:
+  1. a startup check that every `NO_PROXY` entry parses, warning (not crashing)
+     on the unparseable ones;
+  2. a provider-level rule that `status 0 + empty content + no error` is a config
+     error, not a success — the same "an empty fetch says why" principle v2.8.0
+     applied to tools, extended to the one layer that still hides it.
+- **The gates need a both-arms-dead circuit breaker**: when pipeline and baseline
+  usable counts are both 0, the verdict should be BLOCKED, not PASS.
+
+### Measurement notes
+
+- G3 (P95 ratio ≤ 1.3) FAILED (×3.12) but the attribution shows the cost is the
+  recovery machinery doing its job: 6 browser recoveries (3.0–6.7 s each, all
+  `browser_success`) land in the tail, plus ~0.3 s/request of decision-store
+  sqlite fsync. Median-side comparison and per-reason breakdown in the report.
+  The threshold as written penalizes any healthy recovery arm; revising it to a
+  layered criterion (median ratio, recovery trigger rate, recovery success rate)
+  is the follow-up.
+- G4 (search latency) is not covered by the fetch corpus; still pending.
+
 ## v2.8.0 (2026-11-13)
 
 Twelve commits: two capabilities, ten fixes. The fixes are the substance - most were values
