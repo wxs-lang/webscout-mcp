@@ -30,6 +30,7 @@ Mapping summary (recommendation only):
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
@@ -400,6 +401,46 @@ def classify_recovery(response: FetchResponse) -> RecoveryDecision:
         return _d(RecoveryReason.AMBIGUOUS, RecoveryAction.NONE, 0.4, **details)
 
     if unextracted_html:
+        # Empty extraction on markup has two very different meanings, and a
+        # browser launch only pays off for one of them:
+        #
+        #   1. The markup itself carries the visible content (example.org: a
+        #      577B page whose tags strip to 84 chars of real text). The
+        #      fetch holds the COMPLETE page; a chromium launch would
+        #      re-download those bytes and re-run the same failing
+        #      extractor. Measured 2026-11-14: trafilatura rejects this page
+        #      29/30 runs on identical input, and the browser returned the
+        #      identical 577 bytes — a full playwright launch per fetch for
+        #      nothing.
+        #   2. The markup is a JS shell (<div id=root></div> — no visible
+        #      text at all). The real content only exists after rendering.
+        #      The test fixture test_empty_extraction_does_escalate pins
+        #      exactly this case, and it is right: escalate.
+        #
+        # The discriminator is the visible text INSIDE the markup: strip
+        # script/style/tags with three regexes and count what a reader
+        # would see. Sub-50 visible chars means the browser must render;
+        # anything more is a complete page the extractor misjudged.
+        _visible = re.sub(
+            r"<(script|style)[^>]*>.*?</\1>",
+            " ",
+            _raw_html or (response.content or ""),
+            flags=re.DOTALL | re.IGNORECASE,
+        )
+        _visible = re.sub(r"<[^>]+>", " ", _visible)
+        _visible = re.sub(r"\s+", " ", _visible).strip()
+        if len(_visible) >= 50:
+            details.update(
+                text_len=len(response.content or ""),
+                html_len=len(_raw_html),
+                extraction_status=_extraction_status,
+                visible_text_chars=len(_visible),
+                note=(
+                    "markup carries visible text the extractor misjudged; serving the "
+                    "raw markup — a browser render would return the same bytes"
+                ),
+            )
+            return _d(RecoveryReason.COMPLETE_SHORT_PAGE, RecoveryAction.ACCEPT, 0.8, **details)
         # The body exists but is markup, not text: we downloaded the page and
         # could not read it. That is the content-poor case B2 describes, not a
         # complete short page and not a longer article to continue into.
