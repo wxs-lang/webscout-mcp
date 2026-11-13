@@ -85,6 +85,29 @@ def _schedule_startup_check() -> None:
     _startup_task = loop.create_task(_startup_check.run_all())
 
 
+def _empty_fetch_reason(result: object) -> str:
+    """Why a fetch produced no content, from what the response already carries.
+
+    Three tools returned a bare "Failed to fetch page content" while the object in hand held
+    `status_code`, `error` and `recovery_outcome`. A caller cannot act on "it failed" - a 403
+    and a DNS error need different responses.
+    """
+    parts: list[str] = []
+    status = getattr(result, "status_code", None)
+    if status:
+        parts.append(f"status={status}")
+    error = getattr(result, "error", None)
+    if error:
+        parts.append(f"error={error}")
+    outcome = getattr(result, "recovery_outcome", None)
+    if outcome:
+        parts.append(f"recovery={outcome}")
+    grade = getattr(result, "extraction_status", None)
+    if grade and grade not in ("ok", None):
+        parts.append(f"extraction={grade}")
+    return "; ".join(parts) if parts else "the fetch returned an empty body"
+
+
 def create_server(config: Config | None = None) -> MCPServer:
     """Create and configure the MCP server."""
     setup_logging()
@@ -421,7 +444,14 @@ def create_server(config: Config | None = None) -> MCPServer:
         # been processed by this point and no longer contains the head.
         html = getattr(result, "raw_html", "") or getattr(result, "content", "")
         if not html:
-            return json.dumps({"error": "Failed to fetch page content", "url": url}, ensure_ascii=False)
+            return json.dumps(
+                {
+                    "error": "Failed to fetch page content",
+                    "reason": _empty_fetch_reason(result),
+                    "url": url,
+                },
+                ensure_ascii=False,
+            )
 
         base_url = getattr(result, "final_url", None) or url
         extracted = extract_by_schema(html, parsed, base_url)
@@ -547,7 +577,14 @@ def create_server(config: Config | None = None) -> MCPServer:
             # metadata for every page that had a usable head.
             html = getattr(result, "raw_html", "") or getattr(result, "content", "")
             if not html:
-                return json.dumps({"error": "Failed to fetch page content", "url": url}, ensure_ascii=False)
+                return json.dumps(
+                    {
+                        "error": "Failed to fetch page content",
+                        "reason": _empty_fetch_reason(result),
+                        "url": url,
+                    },
+                    ensure_ascii=False,
+                )
             # Use final_url (post-redirect) as base for resolving relative URLs;
             # fall back to original url if final_url is unavailable.
             base_url = getattr(result, "final_url", None) or url
@@ -594,7 +631,14 @@ def create_server(config: Config | None = None) -> MCPServer:
             html = html_result.content if hasattr(html_result, "content") else html_result.raw_html
 
             if not text:
-                return json.dumps({"error": "Failed to fetch page content", "url": url}, ensure_ascii=False)
+                return json.dumps(
+                    {
+                        "error": "Failed to fetch page content",
+                        "reason": _empty_fetch_reason(result),
+                        "url": url,
+                    },
+                    ensure_ascii=False,
+                )
 
             # Analyze content quality
             metrics = content_quality_analyzer.analyze(text, html=html or "")
@@ -624,7 +668,16 @@ def create_server(config: Config | None = None) -> MCPServer:
                     ensure_ascii=False,
                 )
             if not html:
-                return json.dumps({"error": "Failed to fetch page content", "url": url}, ensure_ascii=False)
+                # The fetch_error branch above carries a reason; an empty body without one
+                # left the caller unable to tell a block from an empty page.
+                return json.dumps(
+                    {
+                        "error": "Failed to fetch page content",
+                        "reason": "the page returned no HTML (status or body was empty)",
+                        "url": url,
+                    },
+                    ensure_ascii=False,
+                )
 
             # Resolve relative links against the final URL after any safe redirects.
             report = checker.check_page(html, base_url=final_url or url)
