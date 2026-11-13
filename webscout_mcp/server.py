@@ -459,6 +459,36 @@ def create_server(config: Config | None = None) -> MCPServer:
             except Exception as exc:
                 unified_report["search_service"] = {"error": f"Failed to get service health: {exc}"}
 
+            # The service keeps its own per-request accounting; `get_health_report()` reads a
+            # different counter set and reports `observed: false` until that one is touched.
+            # Measured: after two searches the service had
+            # `{'bing': {'error': 2}, 'duckduckgo': {'error': 2}}` and
+            # `{'TRY_NEXT_PROVIDER': 4}` while the report showed zero requests.
+            #
+            # Surfacing it answers the question the report cannot: whether a second backend
+            # was ever reached. On CI, 190 searches were all served by bing with no way to
+            # distinguish "fallback never needed" from "fallback never fired".
+            try:
+                outcomes = getattr(search_service, "provider_outcomes", None) or {}
+                actions = getattr(search_service, "recovery_actions", None) or {}
+                reasons = getattr(search_service, "recovery_reasons", None) or {}
+                total = sum(
+                    sum(int(v) for v in stats.values()) for stats in outcomes.values() if isinstance(stats, dict)
+                )
+                unified_report["provider_activity"] = {
+                    "per_provider": {name: dict(stats) for name, stats in outcomes.items()},
+                    "recovery_actions": dict(actions),
+                    "recovery_reasons": dict(reasons),
+                    "outcome_events": total,
+                    "providers_contacted": sorted(name for name, stats in outcomes.items() if any(stats.values())),
+                    "note": (
+                        "Counts from the live search path. An empty map means no search has "
+                        "run in this process yet, not that the backends are unused."
+                    ),
+                }
+            except Exception as exc:  # noqa: BLE001 - reporting must not break the report
+                unified_report["provider_activity"] = {"error": f"Failed to read activity: {exc}"}
+
         # Secondary: legacy SearchEngine health (fallback reference)
         try:
             engine_report = search_engine.get_health_report()
