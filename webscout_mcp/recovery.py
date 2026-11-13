@@ -36,6 +36,7 @@ from typing import Any
 
 from .core.errors import StandardErrorCode
 from .fetch_escalation import (
+    _MIN_HTML_BYTES_FOR_LOW_DENSITY,
     _NON_HTML_PREFIXES,
     EscalationReason,
     FetchEscalationDecision,
@@ -400,6 +401,31 @@ def classify_recovery(response: FetchResponse) -> RecoveryDecision:
         return _d(RecoveryReason.AMBIGUOUS, RecoveryAction.NONE, 0.4, **details)
 
     if unextracted_html:
+        # Small unextracted documents cannot be JS shells: a sub-3KB HTML
+        # file (the same threshold should_escalate_to_browser uses to define
+        # "big enough to be a SPA shell") carries no script payload worth
+        # rendering. The fetch already holds the COMPLETE page — every byte
+        # of it — and a chromium launch would re-download those same bytes
+        # and re-run the same failing extraction. Measured 2026-11-14:
+        # example.org (577B) paid a full playwright launch per call because
+        # trafilatura rejects barebones pages 29/30 times, purely by
+        # heuristic; the browser returned the identical 577 bytes. Accept
+        # the raw markup as the complete short page instead: the agent can
+        # read small HTML directly, and the fetch was a 200 with the whole
+        # document in hand. Larger documents keep the browser escalation —
+        # a 3000B+ shell with empty extraction IS the JS-rendered case.
+        if len(response.content or "") < _MIN_HTML_BYTES_FOR_LOW_DENSITY:
+            details.update(
+                text_len=len(response.content or ""),
+                html_len=len(_raw_html),
+                extraction_status=_extraction_status,
+                note=(
+                    "page is a complete small document; extraction found no article "
+                    "text, serving the raw markup — a browser render would return "
+                    "the same bytes"
+                ),
+            )
+            return _d(RecoveryReason.COMPLETE_SHORT_PAGE, RecoveryAction.ACCEPT, 0.8, **details)
         # The body exists but is markup, not text: we downloaded the page and
         # could not read it. That is the content-poor case B2 describes, not a
         # complete short page and not a longer article to continue into.
