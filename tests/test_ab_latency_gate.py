@@ -136,3 +136,80 @@ def test_delta_bound_can_be_tightened():
     assert _g3(evaluate(obs)).passed
     strict = _g3(evaluate(obs, max_p95_delta_ms=200.0))
     assert not strict.passed, "a 256ms delta must fail a 200ms bound"
+
+
+# --- Layered form: recovery must not read as a latency regression ------
+# The 2026-11-13 retest failed the old raw-P95 gate at x3.12 while every
+# recovery succeeded; whether a 3-7s playwright launch lands in the 95th
+# percentile is a property of the corpus, not the code.
+
+
+def _pair_with_recovery(
+    fast_ms: float,
+    baseline_ms: float,
+    recovery_ms: float,
+    n_fast: int = 19,
+    n_recovery: int = 1,
+    n: int = 20,
+) -> list[ArmObservation]:
+    obs: list[ArmObservation] = []
+    for i in range(n):
+        obs.append(ArmObservation(f"c{i}", "baseline", True, 5000, baseline_ms))
+    for i in range(n_fast):
+        obs.append(ArmObservation(f"p{i}", "pipeline", True, 5000, fast_ms))
+    for i in range(n_recovery):
+        obs.append(
+            ArmObservation(
+                f"r{i}", "pipeline", True, 5000, recovery_ms, recovery_used=True
+            )
+        )
+    return obs
+
+
+def test_recovery_in_the_tail_does_not_fail_the_fast_path():
+    """The exact retest shape: 19 fast cases ~550ms, 1 recovery 6600ms.
+
+    Raw P95 of the pipeline arm IS the recovery case, x12 the baseline. The
+    layered gate measures the fast path (550 vs 500, x1.10) and passes.
+    """
+    obs = _pair_with_recovery(550.0, 500.0, 6600.0)
+    gate = _g3(evaluate(obs))
+    assert gate.passed, gate.detail
+    assert "recovery 1/20" in gate.detail
+
+
+def test_recovery_rate_above_bound_fails():
+    """Recovering on 3 of 6 cases means the fast path is broken, not that
+    recovery works. Default bound is 25%."""
+    obs = _pair_with_recovery(550.0, 500.0, 6600.0, n_fast=3, n_recovery=3, n=6)
+    gate = _g3(evaluate(obs))
+    assert not gate.passed
+    assert "FAIL: recovery rate" in gate.detail
+
+
+def test_recovery_that_produces_nothing_fails():
+    """Paying the playwright launch cost and returning <200 chars is a defect."""
+    obs: list[ArmObservation] = []
+    for i in range(20):
+        obs.append(ArmObservation(f"c{i}", "baseline", True, 5000, 500.0))
+    for i in range(19):
+        obs.append(ArmObservation(f"p{i}", "pipeline", True, 5000, 550.0))
+    obs.append(ArmObservation("r0", "pipeline", True, 100, 6600.0, recovery_used=True))
+    gate = _g3(evaluate(obs))
+    assert not gate.passed
+    assert "FAIL: recovery produced no usable content" in gate.detail
+
+
+def test_zero_recoveries_apply_the_plain_rule():
+    """No recovery cases -> gate reduces to the historical ratio/delta rule."""
+    obs = _pair(796.0, 540.0)  # x1.474 +256ms: the old pass-by-delta shape
+    gate = _g3(evaluate(obs))
+    assert gate.passed, gate.detail
+    assert "recovery" not in gate.detail
+
+
+def test_recovery_bound_can_be_tightened():
+    obs = _pair_with_recovery(550.0, 500.0, 6600.0, n_fast=18, n_recovery=2)
+    assert _g3(evaluate(obs)).passed, "2/20 = 10% is inside the default 25%"
+    strict = _g3(evaluate(obs, max_recovery_rate=0.05))
+    assert not strict.passed, "a 5% bound must reject a 10% recovery rate"

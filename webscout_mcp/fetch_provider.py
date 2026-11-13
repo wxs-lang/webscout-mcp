@@ -99,6 +99,21 @@ class FetchResponse:
         """
         error = getattr(result, "error", None)
         status_code = getattr(result, "status_code", 0)
+        content = getattr(result, "content", "") or ""
+        # "status 0 + empty content + no error" is a configuration failure,
+        # not a success. It happened for real: httpx <0.29 raises InvalidURL
+        # while building its proxy mounts when NO_PROXY contains "[::1]", and
+        # the exception path here produced exactly this shape, so every fetch
+        # in the process returned a clean-looking empty response (observed
+        # 2026-11-13: a full A/B run, 60/60 empty, all gates green). The same
+        # "an empty fetch says why" rule v2.8.0 applied to tools now applies
+        # to the transport layer.
+        if error is None and status_code == 0 and not content:
+            error = (
+                "transport produced no status and no content without an error; "
+                "this indicates a client/environment configuration failure "
+                "(e.g. unparsable proxy environment variables), not an empty page"
+            )
         error_code = None
         retryable = False
         if error is not None or status_code >= 400:
@@ -109,7 +124,7 @@ class FetchResponse:
             status_code=status_code,
             provider=provider,
             title=getattr(result, "title", ""),
-            content=getattr(result, "content", ""),
+            content=content,
             content_type=getattr(result, "content_type", ""),
             extracted=getattr(result, "extracted", False),
             cached=getattr(result, "cached", False),
@@ -158,6 +173,10 @@ def _map_fetch_error(status_code: int, error: str | None) -> tuple[StandardError
     if status_code >= 400:
         return StandardErrorCode.FETCH_FAILED, False
     if error is not None:
+        if "configuration failure" in error.lower():
+            # Environment/config failure: retrying inside the same process
+            # cannot help while the bad environment persists.
+            return StandardErrorCode.FETCH_FAILED, False
         if "dns" in error.lower():
             return StandardErrorCode.FETCH_DNS_ERROR, True
         if "connect" in error.lower():

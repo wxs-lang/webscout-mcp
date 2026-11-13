@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 The GOAL_REVIEW step-3 A/B retest finally ran (2026-10-23's conclusion was unverifiable
 for three weeks because the original harness was lost). The retest closed the Phase 4
-verification gap and found one real environment-failure mode on the way.
+verification gap, found one real environment-failure mode, and reshaped the latency gate.
 
 ### Verified
 
@@ -19,34 +19,58 @@ verification gap and found one real environment-failure mode on the way.
   title handling, paragraph counting, empty-fetch explanations) held up end-to-end.
   Full report: `docs/AB_RETEST_20261113.md`; raw evidence:
   `.webscout-eval/ab-retest-fixed2/`.
+- **G4 (search latency) closed**: 43/43 queries with rows, 0 errors; p50 533ms /
+  p95 922ms, in line with the historical live baseline (p50 560 / p95 881). The
+  ×1.2 ratio vs a bare provider fails on the same structural ground as fetch G3 —
+  the routing layer's fixed ~180ms cost — so G4 adopts the same absolute-SLO
+  criterion. Report: `docs/AB_SEARCH_RETEST_20261113.md`.
 
-### Found (needs a fix)
+### Fixed
 
 - **httpx 0.28.x silently dies on `NO_PROXY` entries containing `[::1]`** —
-  `normalize_port` parses the literal as an authority and raises
-  `InvalidURL: Invalid port ':1]'`; `HTTPFetchProvider` swallowed it into a
-  `status_code=0`, `content=''`, `error=None` FetchResponse. Every fetch returned
-  empty while both A/B arms agreed, so all gates passed green over a fully broken
-  environment — the "both arms same failure" blind spot GOAL_REVIEW defect 1
-  predicted, observed live. Two guards are needed:
-  1. a startup check that every `NO_PROXY` entry parses, warning (not crashing)
-     on the unparseable ones;
-  2. a provider-level rule that `status 0 + empty content + no error` is a config
-     error, not a success — the same "an empty fetch says why" principle v2.8.0
-     applied to tools, extended to the one layer that still hides it.
-- **The gates need a both-arms-dead circuit breaker**: when pipeline and baseline
-  usable counts are both 0, the verdict should be BLOCKED, not PASS.
+  `get_environment_proxies` fails its `is_ipv6_hostname` check on the brackets, builds
+  the mount key `all://*[::1]`, and `URL()` raises `InvalidURL: Invalid port ':1]'`
+  when the AsyncClient constructs its mount table — before any network I/O.
+  `HTTPFetchProvider` swallowed that into a `status_code=0`, `content=''`,
+  `error=None` response: every fetch returned a clean-looking empty result, and both
+  A/B arms agreed, so all gates passed green over a fully broken environment (a full
+  60-URL run, observed live). Two guards now:
+  1. `_sanitize_no_proxy()` (fetcher.py) rewrites the env vars in place before the
+     first AsyncClient is built, dropping exactly the entries httpx cannot turn into
+     a mount pattern (bracketed IPv6; the unbracketed `::1` form parses and is kept)
+     and logging the substitution once. Side effect observed in the test suite: 11
+     previously failing tests on this machine (`test_crawl4ai_backend.test_close`,
+     searxng `close_clients`, the decompression client suite, benchmark/SSRF suites)
+     now pass, because their clients no longer inherit the poisoned env.
+  2. `FetchResponse.from_fetch_result` refuses to render `status 0 + empty content +
+     no error` as a success — it now carries an explicit configuration-failure error.
+     The same "an empty fetch says why" rule v2.8.0 applied to tools now reaches the
+     transport layer.
+- **A/B gate G0 circuit breaker**: when both arms return zero usable cases, the
+  verdict now carries a failing `G0_both_arms_produced_content` gate instead of a
+  green PASS with an advisory. A relative-only measurement over a dead environment is
+  not a pass — it is an unusable measurement, and the verdict says so.
 
-### Measurement notes
+### Changed
 
-- G3 (P95 ratio ≤ 1.3) FAILED (×3.12) but the attribution shows the cost is the
-  recovery machinery doing its job: 6 browser recoveries (3.0–6.7 s each, all
-  `browser_success`) land in the tail, plus ~0.3 s/request of decision-store
-  sqlite fsync. Median-side comparison and per-reason breakdown in the report.
-  The threshold as written penalizes any healthy recovery arm; revising it to a
-  layered criterion (median ratio, recovery trigger rate, recovery success rate)
-  is the follow-up.
-- G4 (search latency) is not covered by the fetch corpus; still pending.
+- **G3 latency gate is layered.** The raw-P95 ×1.3 ratio failed the retest at ×3.12
+  while every recovery succeeded: whether a 3–7s playwright launch lands in the 95th
+  percentile is a property of the corpus, not the code. The gate now evaluates:
+  1. **fast path** (recovery cases excluded) against the historical
+     ratio/ceiling/delta rule — a regression here is a real regression;
+  2. **recovery rate** bounded at 25% — recovering on most requests means the fast
+     path is broken, not that recovery works;
+  3. **recovery payoff** — every recovery case must have produced usable content;
+     paying the launch cost for nothing is a defect.
+  Observations now carry `recovery_used` (jsonl round-trip included), and the report
+  shows `p95_excluding_recovery_ms`, `recovery_used`, `recovery_rate` per arm.
+  Replayed layered verdict on the retest run: fast path 5/60 recoveries (8%), payoff
+  100% usable; the remaining FAIL is genuine fast-path tail (decision-store fsync
+  ~0.3s/request), which is now visible as its own problem instead of being blended
+  with recovery.
+- **G4 search gate**: success-rate no-loss plus absolute SLO (p50 ≤ 600ms,
+  p95 ≤ 1200ms) instead of a ratio against an arm without routing. Rationale recorded
+  in `docs/AB_SEARCH_RETEST_20261113.md`.
 
 ## v2.8.0 (2026-11-13)
 

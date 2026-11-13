@@ -284,18 +284,29 @@ def test_recorded_observations_can_be_rescored_after_a_threshold_change():
     assert loose.pipeline.usable == 10
 
 
-def test_both_arms_empty_still_passes_but_says_so():
-    """The gates are relative, so equal-and-empty passes. That needs saying.
+def test_both_arms_empty_fires_g0_circuit_breaker():
+    """Equal-and-empty is not a PASS: the environment is the prime suspect.
 
-    A PASS must not be read as "quality is fine" when neither arm returned
-    anything; the absolute floor belongs to the SLO, not to this comparison.
+    This happened for real (2026-11-13): a broken NO_PROXY entry killed every
+    fetch before any network I/O, both arms returned empty, all relative gates
+    passed green, and only an advisory hinted at the problem. The verdict now
+    carries a failing G0 so the run cannot be quoted as a pass.
     """
     result = evaluate(_arm_pair(10, 0, 0))
-    assert result.passed, "relative comparison of two equal arms"
-    assert result.advisories, "but the emptiness must be called out"
+    assert not result.passed, "a dead environment must not read as a pass"
+    g0 = [g for g in result.gates if g.name == "G0_both_arms_produced_content"]
+    assert g0 and not g0[0].passed, "G0 circuit breaker must fire and fail"
     assert any("no usable content" in a for a in result.advisories)
+    assert any("circuit breaker" in a for a in result.advisories)
     assert "Advisories" in render_markdown(result)
     assert result.to_dict()["advisories"]
+
+
+def test_both_arms_producing_keeps_g0_silent():
+    """A normal run (both arms produce) must not carry the G0 gate."""
+    result = evaluate(_arm_pair(10, 5000, 4500))
+    assert not [g for g in result.gates if g.name == "G0_both_arms_produced_content"]
+    assert result.passed
 
 
 def test_missing_arm_triggers_an_advisory():
@@ -322,6 +333,7 @@ def test_jsonl_never_contains_content_or_urls():
         "latency_ms",
         "pre_limit_chars",
         "escaped_error",
+        "recovery_used",
     }
 
 

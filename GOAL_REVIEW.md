@@ -412,7 +412,7 @@ with httpx.Client(
 |---|---|---|---|
 | **1** | 审查并合入 PR #83（`broken_links` SSRF） | D1 / D3 | ✅ **已完成 2026-10-25**（main `6517ffc`） |
 | **2** | 确认 Phase 4 归属：content sufficiency **已合入**（PR #54），只需补 A/B 复测 | G1 / G2 | ⚠️ 已澄清，待复测 |
-| **3** | 跑 A/B 复测，用 G1/G3/G4 验收 | G1 / G3 / G4 | ✅ **fetch 部分已完成 2026-11-13**（G1/G2 PASS，−7.3pp 未复现；G3 FAIL 归因为恢复机制代价而非抓取退化，判据需修订；G4 search 未测。报告：[docs/AB_RETEST_20261113.md](docs/AB_RETEST_20261113.md)） |
+| **3** | 跑 A/B 复测，用 G1/G3/G4 验收 | G1 / G3 / G4 | ✅ **已完成 2026-11-13**（fetch：G1/G2 PASS，−7.3pp 未复现，G3 分层化后可见恢复机制健康 + fast-path 尾延迟单列；search G4：43/43、p50 533ms 不劣于历史基线，判据改为绝对 SLO。报告：[docs/AB_RETEST_20261113.md](docs/AB_RETEST_20261113.md) + [docs/AB_SEARCH_RETEST_20261113.md](docs/AB_SEARCH_RETEST_20261113.md)） |
 | **4** | `content_quality` / `broken_links` 移出 Core | F1 / 5.3 | ✅ **已完成**（v2.5–v2.6 期间移入 `extras/`，MCP 工具面冻结兼容） |
 | **5** | Phase 5：自愈策略收敛成可观测策略表 | 5.4 | 🔄 进行中 —— v2.8.0 `provider_activity` 已落地第一块 |
 | **6** | 清理未合并分支 + 修正 `REFACTOR_PLAN.md` 勾选 + 统一进度口径 | 4.2 / 4.3 / 5.4 | ✅ **已完成 2026-10-25** |
@@ -444,3 +444,4 @@ with httpx.Client(
 | 2026-10-25 | v1.1 | **勘误**：缺陷 4 原判断（content-sufficiency 未合入）有误 → 实际 PR #54 已于 2026-09-20 合入，Phase 4 已完成。缺陷 4 重定义为"阶段记账体系缺失"。同步修正总评、执行顺序、结论；补记 PR #83 已合并事实 |
 | 2026-10-25 | v1.2 | 新增缺陷 5：支撑全部质量结论的 A/B 脚手架从未入库，验收链断裂。G 组改为以线上指标为验收方式，新增 G5（内容质量可观测，已达成）。补第 5 条硬约束：评测脚手架必须入库 |
 | 2026-11-13 | v1.3 | **执行顺序第 3 步完成**：A/B 复测（60 URL fetch 语料）G1/G2 PASS，2026-10-23 的 −7.3pp 可用率退化未复现（实测 −1.67pp，容差内）。G3 FAIL 归因：browser 恢复 6 次（正常工作）+ 决策记录 ~0.3s/次，属恢复机制代价，×1.3 阈值对带恢复臂过严，判据待修订。副产品：发现 httpx 0.28.x 对 NO_PROXY 含 `[::1]` 静默崩溃的盲区（双臂同坏 gate 仍绿灯），建议升级为硬约束。报告与原始证据：`docs/AB_RETEST_20261113.md` + `.webscout-eval/ab-retest-fixed2/` |
+| 2026-11-13 | v1.4 | **判据修订落地（v2.8.1）**：G0 断路器（双臂零可用 → FAIL 而非 PASS）、G3 分层化（fast-path 比值 + 恢复率 ≤25% + 恢复收益 100%）、G4 改绝对 SLO 并以 43/43、p50 533ms 实测闭合。httpx NO_PROXY 盲区修复（`_sanitize_no_proxy` + 空响应守卫），顺带修复本机 11 个预存测试失败。G 组判据至此全部可测且已测 |

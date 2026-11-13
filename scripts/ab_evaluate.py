@@ -128,6 +128,10 @@ async def _run_live(limit: int, per_request_timeout: float, run_id: str) -> list
             else:
                 served = route.final_response.content or route.primary_response.content or ""
                 meta = route.final_response.metadata or {}
+                # Recovery fired when the route escalated to the browser or
+                # fell back to an alternate provider. Feeds G3's layered
+                # verdict: the fast path is measured without these cases.
+                recovery = bool(route.browser_attempted or route.fallback_used)
                 observations.append(
                     ArmObservation(
                         case_id=case_id,
@@ -136,6 +140,7 @@ async def _run_live(limit: int, per_request_timeout: float, run_id: str) -> list
                         returned_chars=len(served),
                         latency_ms=pipeline_ms,
                         pre_limit_chars=meta.get("pre_limit_content_chars"),
+                        recovery_used=recovery,
                     )
                 )
 

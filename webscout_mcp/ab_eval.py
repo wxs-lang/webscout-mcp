@@ -78,6 +78,14 @@ class ArmObservation:
     """Set when the arm raised. Kept as the exception type, never a message
     (messages can carry URLs)."""
 
+    recovery_used: bool = False
+    """Pipeline arm only: the fetch route ran browser/provider recovery.
+
+    Recovery is the product doing its job, but it costs seconds (a playwright
+    launch is 3-7s), so recoveries land in the P95 tail by construction. A
+    plain ratio gate reads that as a latency regression; G3's layered form
+    separates the recoveries from the fast path instead."""
+
     def usable(self, threshold: int = USABLE_CONTENT_CHARS) -> bool:
         return self.ok and self.returned_chars >= threshold
 
@@ -92,6 +100,44 @@ class ArmSummary:
     total_chars: int
     errors: dict[str, int] = field(default_factory=dict)
     latencies: list[float] = field(default_factory=list)
+    recovery_used: int = 0
+    """Count of pipeline cases whose route ran recovery. Baseline: always 0."""
+    recovery_usable: int = 0
+    """Recovery cases whose final content was usable. The payoff check."""
+    _recovery_latencies: set[int] = field(default_factory=set, repr=False)
+    """Indices into latencies of samples that involved recovery."""
+
+    @property
+    def recovery_rate(self) -> float:
+        if self.cases == 0:
+            return 0.0
+        return self.recovery_used / self.cases
+
+    @property
+    def recovery_payoff(self) -> float:
+        """Share of recovery cases that produced usable content.
+
+        1.0 = every recovery bought content; 0.0 = every launch was wasted.
+        Undefined (0.0) when nothing recovered.
+        """
+        if self.recovery_used == 0:
+            return 0.0
+        return self.recovery_usable / self.recovery_used
+
+    @property
+    def p95_excluding_recovery(self) -> float:
+        """P95 over cases that did NOT trigger recovery.
+
+        The fast path's own tail. Recovery cases are removed rather than
+        winsorized: a 3-7s playwright launch is not a slow fetch, it is a
+        different operation, and averaging it into the fast path hides both.
+        """
+        fast = [v for i, v in enumerate(self.latencies) if i not in self._recovery_latencies]
+        if not fast:
+            return 0.0
+        s = sorted(fast)
+        k = max(0, min(len(s) - 1, round(0.95 * (len(s) - 1))))
+        return s[k]
 
     @property
     def usable_rate(self) -> float:
@@ -148,6 +194,9 @@ class ArmSummary:
             "mean_chars": round(self.total_chars / self.cases, 1) if self.cases else 0.0,
             "p50_ms": round(self.p50_ms, 1),
             "p95_ms": round(self.p95_ms, 1),
+            "p95_excluding_recovery_ms": round(self.p95_excluding_recovery, 1),
+            "recovery_used": self.recovery_used,
+            "recovery_rate": round(self.recovery_rate, 4),
             "latency_denominator": self.latency_denominator,
         }
 
@@ -171,14 +220,20 @@ def summarize(
     for o in rows:
         if o.ok:
             summary.ok += 1
+            if o.recovery_used:
+                summary._recovery_latencies.add(len(summary.latencies))
             summary.latencies.append(float(o.latency_ms))
         else:
             key = o.escaped_error or "unknown"
             summary.errors[key] = summary.errors.get(key, 0) + 1
         if o.usable(threshold_chars):
             summary.usable += 1
+            if o.recovery_used:
+                summary.recovery_usable += 1
         if o.pre_limit_chars is not None and o.pre_limit_chars > o.returned_chars:
             summary.truncated += 1
+        if o.recovery_used:
+            summary.recovery_used += 1
         summary.total_chars += max(0, o.returned_chars)
     return summary
 
@@ -261,6 +316,7 @@ def evaluate(
     max_p95_ratio: float = 1.30,
     max_p95_ratio_ceiling: float = 2.00,
     max_p95_delta_ms: float = 300.0,
+    max_recovery_rate: float = 0.25,
     case_tolerance: int = 1,
 ) -> ABResult:
     """Score both arms and apply the quality gates.
@@ -282,10 +338,20 @@ def evaluate(
         A pipeline that is thrifty with content but drops requests is worse
         than one that answers thinly. Same slack as G1, for the same reason.
 
-    G3 p95 latency must stay within a ratio
+    G3 latency, layered
         Directional. The arms do different work, so this catches gross
-        regressions only, not small ones. Ratio rather than absolute ms so the
-        gate survives a slower or faster machine.
+        regressions only. The 2026-11-13 retest showed why a single ratio on
+        the raw P95 cannot work for an arm with recovery: a 3-7s playwright
+        launch is the recovery mechanism succeeding, and whether any such case
+        lands in the 95th percentile is a property of the corpus, not of the
+        code. Three layers instead:
+          1. the fast path (recovery cases excluded) must not regress beyond
+             the plain ratio/ceiling/delta rule, and
+          2. the recovery rate must stay bounded (recovering on most requests
+             would mean the fast path is broken, not that recovery works), and
+          3. where recovery did run, it must have produced content - paying
+             the launch cost for nothing is a defect.
+        A run with zero recoveries simply applies (1) to the whole arm.
     """
     obs = list(observations)
     pipeline = summarize(obs, "pipeline", threshold_chars=threshold_chars)
@@ -334,11 +400,23 @@ def evaluate(
     # Compare p95 only when both arms have samples; an empty arm means the
     # comparison is not meaningful and the gate must not silently pass.
     #
-    # Two ways to pass, because a ratio alone measures the network as much as the
-    # pipeline. Across ten runs the pipeline added a stable +39 to +179ms (median
-    # +80ms) of extraction and classification while the ratio swung 1.26-2.77,
-    # entirely because the baseline moved between 78ms and 175ms. A ratio-only
-    # gate punishes the pipeline hardest when the network is fastest.
+    # Layered form (2026-11-13). The raw P95 of an arm with recovery is a
+    # property of the corpus - whether a recovery case happens to land in the
+    # 95th percentile - not of the code. The gate therefore separates:
+    #
+    #   layer 1 (fast path): the ratio/ceiling/delta rule, applied to cases
+    #     that did NOT trigger recovery. Zero recoveries -> whole arm.
+    #   layer 2 (recovery rate): bounded, default 25%. A recovery on most
+    #     requests means the fast path is broken, not that recovery works.
+    #   layer 3 (recovery payoff): every recovery case must have produced
+    #     usable content - paying the launch cost for nothing is a defect.
+    #
+    # Two ways for layer 1 to pass, because a ratio alone measures the network
+    # as much as the pipeline. Across ten runs the pipeline added a stable +39
+    # to +179ms (median +80ms) of extraction and classification while the
+    # ratio swung 1.26-2.77, entirely because the baseline moved between 78ms
+    # and 175ms. A ratio-only gate punishes the pipeline hardest when the
+    # network is fastest.
     #
     #   1. ratio within bounds                     -> pass outright
     #   2. ratio within a ceiling AND delta bounded -> the fixed cost is fine
@@ -348,21 +426,48 @@ def evaluate(
     # observed maximum (unreliable host excluded), so it leaves headroom while
     # still catching a doubling.
     if pipeline.latencies and baseline.latencies and baseline.p95_ms > 0:
-        ratio = pipeline.p95_ms / baseline.p95_ms
-        delta_ms = pipeline.p95_ms - baseline.p95_ms
+        fast_p95 = pipeline.p95_excluding_recovery or pipeline.p95_ms
+        ratio = fast_p95 / baseline.p95_ms
+        delta_ms = fast_p95 - baseline.p95_ms
         ratio_ok = ratio <= max_p95_ratio
         delta_ok = ratio <= max_p95_ratio_ceiling and delta_ms <= max_p95_delta_ms
+        fast_ok = ratio_ok or delta_ok
+
+        recovery_rate = pipeline.recovery_rate
+        rate_ok = recovery_rate <= max_recovery_rate
+        # Recovery cases that produced nothing usable: the launch cost bought
+        # nothing. Counted over recovery cases only.
+        recovery_payoff_ok = True
+        if pipeline.recovery_used:
+            recovery_payoff_ok = pipeline.recovery_payoff >= 1.0
+
+        passed = fast_ok and rate_ok and recovery_payoff_ok
+        detail = (
+            f"fast-path P95 {fast_p95:.0f}ms vs baseline {baseline.p95_ms:.0f}ms "
+            f"(x{ratio:.2f}, delta {delta_ms:+.0f}ms; ratio <= {max_p95_ratio} or "
+            f"ratio <= {max_p95_ratio_ceiling} with delta <= {max_p95_delta_ms:.0f}ms)"
+        )
+        if pipeline.recovery_used:
+            detail += (
+                f"; recovery {pipeline.recovery_used}/{pipeline.cases} "
+                f"({recovery_rate * 100:.0f}%, limit {max_recovery_rate * 100:.0f}%), "
+                f"payoff {pipeline.recovery_payoff * 100:.0f}% usable"
+            )
+        if not fast_ok:
+            detail += "; FAIL: fast-path latency"
+        elif not rate_ok:
+            detail += f"; FAIL: recovery rate exceeds {max_recovery_rate * 100:.0f}%"
+        elif not recovery_payoff_ok:
+            detail += "; FAIL: recovery produced no usable content"
+        else:
+            detail += "; PASS"
         gates.append(
             GateVerdict(
                 name="G3_p95_latency_ratio",
-                passed=ratio_ok or delta_ok,
+                passed=passed,
                 actual=round(ratio, 3),
                 threshold=max_p95_ratio,
-                detail=(
-                    f"pipeline P95 {pipeline.p95_ms:.0f}ms vs baseline {baseline.p95_ms:.0f}ms "
-                    f"(x{ratio:.2f}, delta {delta_ms:+.0f}ms); passes if ratio <= {max_p95_ratio}, "
-                    f"or ratio <= {max_p95_ratio_ceiling} with delta <= {max_p95_delta_ms:.0f}ms"
-                ),
+                detail=detail,
             )
         )
     else:
@@ -378,10 +483,38 @@ def evaluate(
 
     advisories: list[str] = []
     if case_count > 0 and pipeline.usable == 0 and baseline.usable == 0:
+        # Circuit breaker, not advisory. This shape happened for real
+        # (2026-11-13): a broken NO_PROXY entry made httpx raise before any
+        # network I/O, both arms returned 60/60 empty results, all gates
+        # passed green over a dead environment, and only this advisory hinted
+        # at it. A relative-only verdict with zero signal from both arms is
+        # not a PASS - it is an unusable measurement, and it must say so in
+        # the verdict itself.
+        gates.append(
+            GateVerdict(
+                name="G0_both_arms_produced_content",
+                passed=False,
+                actual=0,
+                threshold=1,
+                detail=(
+                    "both arms returned 0 usable cases; the environment is "
+                    "likely broken (proxy config, egress, corpus) and the "
+                    "relative gates cannot be trusted. Fix the environment "
+                    "and rerun before reading G1-G3."
+                ),
+            )
+        )
         advisories.append(
-            "Both arms returned no usable content. The gates compare the pipeline "
-            "against the baseline, so they cannot fail here, but this is not a "
-            "statement that quality is acceptable - check the SLO usable-content "
+            "G0 circuit breaker fired: both arms returned no usable content, so "
+            "the environment (not the pipeline) is the prime suspect. G1-G3 "
+            "verdicts above are measured over a dead environment and must not "
+            "be quoted."
+        )
+    if case_count > 0 and pipeline.usable > 0 and baseline.usable == 0:
+        advisories.append(
+            "The baseline arm returned no usable content while the pipeline did. "
+            "G1's tolerance makes this an automatic pass, but a dead baseline "
+            "usually means a broken environment; check the SLO usable-content "
             "rate separately."
         )
     if pipeline.cases == 0 or baseline.cases == 0:
@@ -433,6 +566,7 @@ def observations_to_jsonl(observations: Iterable[ArmObservation]) -> str:
                     "latency_ms": round(float(o.latency_ms), 2),
                     "pre_limit_chars": o.pre_limit_chars,
                     "escaped_error": o.escaped_error,
+                    "recovery_used": o.recovery_used,
                 },
                 ensure_ascii=False,
                 sort_keys=True,
@@ -457,6 +591,7 @@ def observations_from_jsonl(text: str) -> list[ArmObservation]:
                 latency_ms=float(d["latency_ms"]),
                 pre_limit_chars=d.get("pre_limit_chars"),
                 escaped_error=d.get("escaped_error"),
+                recovery_used=bool(d.get("recovery_used", False)),
             )
         )
     return out
@@ -486,7 +621,12 @@ def render_markdown(result: ABResult) -> str:
     lines.append("| Metric | pipeline | baseline |")
     lines.append("|---|---|---|")
     p, b = result.pipeline.to_dict(), result.baseline.to_dict()
-    for key in ("cases", "ok", "usable", "usable_rate", "error_rate", "truncated", "mean_chars", "p50_ms", "p95_ms"):
+    keys = (
+        "cases", "ok", "usable", "usable_rate", "error_rate", "truncated",
+        "mean_chars", "p50_ms", "p95_ms", "p95_excluding_recovery_ms",
+        "recovery_used", "recovery_rate",
+    )
+    for key in keys:
         lines.append(f"| {key} | {p[key]} | {b[key]} |")
 
     lines += [
