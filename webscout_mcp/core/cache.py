@@ -6,6 +6,7 @@ import hashlib
 import sqlite3
 import time
 from collections import OrderedDict
+from contextlib import closing
 from pathlib import Path
 
 
@@ -99,7 +100,7 @@ class Cache:
 
     def _init_db(self) -> None:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS cache (
                     key TEXT PRIMARY KEY,
@@ -135,7 +136,7 @@ class Cache:
             }
 
         # Fall back to SQLite
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn:
             row = conn.execute(
                 "SELECT value, content_type, created_at, expires_at FROM cache WHERE key = ?",
                 (key,),
@@ -178,7 +179,7 @@ class Cache:
         self._memory.set(key, value, content_type, now, expires_at)
 
         # Write to SQLite
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn:
             conn.execute(
                 """
                 INSERT OR REPLACE INTO cache (key, value, content_type, size, created_at, expires_at)
@@ -194,21 +195,21 @@ class Cache:
         """Remove an entry from both memory and disk cache."""
         key = self._make_key(url)
         self._memory.delete(key)
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn:
             conn.execute("DELETE FROM cache WHERE key = ?", (key,))
             conn.commit()
 
     def clear(self) -> int:
         """Clear all cache entries.  Returns the number deleted from disk."""
         self._memory.clear()
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn:
             cur = conn.execute("DELETE FROM cache")
             conn.commit()
             return cur.rowcount
 
     def stats(self) -> dict:
         """Return cache statistics including memory cache hit rate."""
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn:
             row = conn.execute("SELECT COUNT(*), COALESCE(SUM(size), 0) FROM cache").fetchone()
         count, total_size = row
         return {
@@ -228,7 +229,7 @@ class Cache:
 
     def _prune_if_needed(self) -> None:
         """Evict oldest entries if cache exceeds max size."""
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn:
             total = conn.execute("SELECT COALESCE(SUM(size), 0) FROM cache").fetchone()[0]
             if total <= self.max_size_bytes:
                 return
