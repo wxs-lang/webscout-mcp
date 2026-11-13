@@ -58,7 +58,13 @@ _JSON_LD_ALIASES: dict[str, tuple[str, ...]] = {
     "price": ("price", "lowPrice", "highPrice"),
     "currency": ("priceCurrency",),
     "author": ("author", "creator"),
+    # `date` is the published date on purpose: modification time changes on every edit and
+    # would make the field useless for age comparisons. Callers that want the edit time ask
+    # for `modified` explicitly.
     "date": ("datePublished", "dateCreated", "uploadDate"),
+    "published": ("datePublished", "dateCreated", "uploadDate"),
+    "modified": ("dateModified",),
+    "keywords": ("keywords",),
     "image": ("image", "thumbnailUrl"),
     "url": ("url", "@id"),
     "rating": ("ratingValue", "reviewRating"),
@@ -73,6 +79,11 @@ _META_ALIASES: dict[str, tuple[str, ...]] = {
     "image": ("og:image", "twitter:image"),
     "url": ("og:url",),
     "date": ("article:published_time", "article:modified_time"),
+    # Measured: `published` used to fall through to semantic HTML even when the page stated
+    # it, so `date` and `published` came back at different precisions for the same fact.
+    "published": ("article:published_time", "og:article:published_time"),
+    "modified": ("article:modified_time", "og:updated_time", "og:article:modified_time"),
+    "keywords": ("keywords", "article:tag"),
     "author": ("article:author", "twitter:creator"),
     "site_name": ("og:site_name",),
 }
