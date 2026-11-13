@@ -942,6 +942,14 @@ def _diff_verdicts(previous: dict, before_previous: dict, current: dict) -> dict
     `degraded` -> `fail` is surfaced separately: a contract break is more serious than a
     capability boundary, even though a site can cause both.
     """
+    # A comparison across egress classes answers a different question than the one asked:
+    # measured, amazon passes 5/5 from a residential connection and fails repeatedly from a
+    # datacenter runner. When the two records disagree on where they ran, say so and treat
+    # the transition as not-comparable rather than as a change in the code.
+    current_egress = ((current.get("context") or {}).get("egress") or "").strip()
+    previous_egress = ((previous.get("context") or {}).get("egress") or "").strip()
+    egress_mismatch = bool(current_egress and previous_egress and current_egress != previous_egress)
+
     before = _verdict_map(previous)
     after = _verdict_map(current)
     regressions: list[dict] = []
@@ -983,9 +991,23 @@ def _diff_verdicts(previous: dict, before_previous: dict, current: dict) -> dict
         elif new_rank < old_rank:
             recoveries.append({"name": name, "from": old, "to": verdict})
 
+    if egress_mismatch:
+        # Reclassified, not dropped: the reader still sees what moved, with the reason it
+        # cannot be attributed to the code.
+        for item in regressions:
+            item["reason"] = f"egress {previous_egress} -> {current_egress}"
+            flapping.append(item)
+        regressions = []
+        for item in contract_breaks:
+            item["reason"] = f"egress {previous_egress} -> {current_egress}"
+            flapping.append(item)
+        contract_breaks = []
+
     return {
         "regressions": regressions,
         "flapping": flapping,
+        "egress": {"previous": previous_egress, "current": current_egress},
+        "egress_mismatch": egress_mismatch,
         "contract_breaks": contract_breaks,
         "recoveries": recoveries,
         "newly_skipped": newly_skipped,
@@ -1032,6 +1054,40 @@ def _print_history(diff: dict, previous: dict, current_label: str) -> None:
         print(f"  new         {name}")
     for name in diff["disappeared"]:
         print(f"  gone        {name}")
+
+
+def _egress_context() -> dict[str, str]:
+    """What this process can observe about where it is running.
+
+    Two environments produce different live verdicts for identical code - measured on
+    amazon: 5/5 pass from a residential connection, repeated failures from a CI runner. A
+    record that cannot say which one produced it turns that difference into an apparent
+    regression.
+
+    A heuristic, and named as one: no network call, because adding an IP lookup to the path
+    under measurement would fail on exactly the runs worth keeping.
+    """
+    import os
+
+    known_ci = (
+        "GITHUB_ACTIONS",
+        "GITLAB_CI",
+        "CIRCLECI",
+        "BUILDKITE",
+        "TF_BUILD",
+        "JENKINS_URL",
+    )
+    in_ci = any(os.environ.get(name) for name in known_ci)
+    runner = (
+        os.environ.get("RUNNER_NAME")
+        or os.environ.get("CI_RUNNER_ID")
+        or os.environ.get("GITLAB_RUNNER_DESCRIPTION")
+        or ""
+    )
+    return {
+        "egress": "datacenter" if in_ci else "local",
+        "runner": runner[:64],
+    }
 
 
 def _utc_now() -> str:
@@ -1164,6 +1220,7 @@ def main() -> int:
             "live": bool(args.live),
             "python": sys.version.split()[0],
             "platform": sys.platform,
+            **_egress_context(),
         }
         previous, before_previous = _record_run(args.history, data, context)
         if previous:
