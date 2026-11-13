@@ -135,6 +135,148 @@ class KnowledgeGraph:
         return "\n".join(lines)
 
 
+# Function words that cannot be the subject of a knowledge graph.
+#
+# Measured: without this, `The`, `This`, `If`, `In`, `But`, `It` were 13 of 50 entities on a
+# real page, and the heaviest relationship in the whole graph was `the -> in` with count 524.
+#
+# Kept narrow on purpose. Words that are genuinely ambiguous once capitalised - `Can`, `Will`,
+# `May`, `Bill`, `Rose` - are deliberately absent: as capitalised tokens in prose they are
+# far more likely to be names than function words.
+_STOPWORD_ENTITIES: frozenset[str] = frozenset(
+    {
+        "a",
+        "an",
+        "the",
+        "and",
+        "or",
+        "but",
+        "nor",
+        "so",
+        "yet",
+        "if",
+        "then",
+        "than",
+        "that",
+        "this",
+        "these",
+        "those",
+        "there",
+        "here",
+        "in",
+        "on",
+        "at",
+        "of",
+        "to",
+        "from",
+        "by",
+        "with",
+        "without",
+        "for",
+        "as",
+        "into",
+        "onto",
+        "over",
+        "under",
+        "about",
+        "between",
+        "through",
+        "during",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "has",
+        "have",
+        "had",
+        "do",
+        "does",
+        "did",
+        "it",
+        "its",
+        "they",
+        "them",
+        "their",
+        "we",
+        "our",
+        "you",
+        "your",
+        "he",
+        "she",
+        "his",
+        "her",
+        "i",
+        "not",
+        "no",
+        "yes",
+        "also",
+        "however",
+        "therefore",
+        "because",
+        "while",
+        "when",
+        "which",
+        "who",
+        "whom",
+        "whose",
+        "what",
+        "where",
+        "why",
+        "how",
+        "all",
+        "any",
+        "both",
+        "each",
+        "few",
+        "more",
+        "most",
+        "other",
+        "some",
+        "such",
+        "only",
+        "own",
+        "same",
+        "too",
+        "very",
+        "just",
+        "now",
+        "once",
+    }
+)
+
+# Leading articles that glue onto a name at the start of a sentence.
+_LEADING_ARTICLES: tuple[str, ...] = ("a ", "an ", "the ")
+
+
+def _strip_leading_article(name: str) -> str:
+    """Drop a sentence-initial article from a candidate name.
+
+    "The Rust" is one capitalised span in the source text, so the article became part of the
+    name and produced a separate `the_rust` node alongside `rust` and `the`.
+    """
+    lowered = name.lower()
+    for article in _LEADING_ARTICLES:
+        if lowered.startswith(article):
+            stripped = name[len(article) :].strip()
+            if stripped:
+                return stripped
+    return name
+
+
+def _is_stopword_name(name: str) -> bool:
+    """True when the whole name, or its first word, is a function word."""
+    lowered = name.strip().lower()
+    if not lowered:
+        return True
+    if lowered in _STOPWORD_ENTITIES:
+        return True
+    first = lowered.split(" ", 1)[0]
+    return first in _STOPWORD_ENTITIES
+
+
 class KnowledgeGraphBuilder:
     """Build knowledge graphs from text.
 
@@ -246,9 +388,15 @@ class KnowledgeGraphBuilder:
         capitalized_pattern = r"\b(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b"
         for match in re.finditer(capitalized_pattern, text):
             name = match.group().strip()
+            # A sentence-initial article is part of the match, not part of the name.
+            name = _strip_leading_article(name)
             words = name.split()
 
             if len(words) < 1 or len(name) < self.min_entity_length:
+                continue
+            # Function words cannot be entities. Measured without this: 13 of 50 entities on
+            # a real page were `The`/`This`/`If`/`In`, and `the -> in` was the heaviest edge.
+            if _is_stopword_name(name):
                 continue
 
             entity_type = self._classify_capitalized_entity(name, words)
