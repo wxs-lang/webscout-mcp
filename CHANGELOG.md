@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Performance
+
+- **decision_store: record_event 8.16ms → 5.92ms per record (−27%), with the
+  per-record path now fully accounted.** Two overheads measured and removed:
+  1. `_init_schema` ran migrations + executescript + commit on **every** store
+     operation via `_conn()` (~1.5ms measured) for work whose result cannot
+     change between calls on the same file. Memoised per resolved path;
+     `configure()` discards the memo when the store moves, so fresh-file
+     recreation still gets a fresh schema run.
+  2. `_enforce_size_cap` checkpointed the WAL and scanned page_count on
+     **every** record (~1.8ms measured) to enforce a disk-space bound that
+     changes over minutes. Now gated behind an `os.stat` of the DB files
+     (microseconds): the full checkpoint/scan/VACUUM path runs only when
+     on-disk size crosses 80% of the cap, so the bound itself (asserted by
+     `TestSizeCapRealOverCap`) is unchanged.
+- The remaining ~5ms per record is the per-connection schema load on fresh
+  sqlite connections (statement compile + schema parse, measured 5.4ms
+  independently of DB size and WAL state on Windows/HDD). Removing it needs
+  a persistent connection, which conflicts with the store's
+  no-leaked-handles contract (test_store_closes_handles: directory removal
+  must succeed after any operation) — the same trade cache.py resolved by
+  keeping per-call connections. Documented as the accepted cost of the
+  current design; revisit only with an explicit `store.close()` API decision.
+- Measured on the 60-URL fetch A/B corpus: route p50 improved 1185ms →
+  1059ms (−11%) with the store fix in place (`ab-post-opt` run).
+- Investigation artifacts for the residual route-latency question
+  (~1.2s between route entry and provider.fetch return, unattributed by
+  function-level profiling): `.webscout-eval/diag50-84.py`. Needs py-spy or
+  a dedicated instrumentation pass; not a regression — present in all
+  measured versions.
+
 ## v2.8.1 (2026-11-13)
 
 The GOAL_REVIEW step-3 A/B retest finally ran (2026-10-23's conclusion was unverifiable

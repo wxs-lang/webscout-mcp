@@ -147,8 +147,19 @@ def configure(db_path: str | Path | None = None) -> Path:
     global _db_path
     _db_path = Path(db_path) if db_path else _default_db_path()
     _db_path.parent.mkdir(parents=True, exist_ok=True)
+    # A new path invalidates the schema-initialised memo (the memo is keyed
+    # to the resolved path, so a fresh file gets a fresh schema run).
+    _initialised.discard(str(_db_path))
     _init_schema(_db_path)
     return _db_path
+
+
+# Paths whose schema has been initialised this process. _init_schema runs
+# migrations + executescript + commit (~1.5ms measured) and was called on
+# EVERY store operation via _conn(); per operation that was pure overhead —
+# the schema does not change between calls on the same file. Memoised per
+# resolved path; discarded by configure() when the store moves.
+_initialised: set[str] = set()
 
 
 def _conn() -> sqlite3.Connection:
@@ -183,6 +194,14 @@ def _conn_ctx():
 
 
 def _init_schema(path: Path) -> None:
+    # Memoised per resolved path: this ran on EVERY store operation (~1.5ms
+    # measured: migrations scan + executescript + commit) for work whose
+    # result cannot change between calls on the same file. configure()
+    # discards the memo when the store moves; tests that delete and recreate
+    # the file go through configure() too, so staleness is not a hazard.
+    key = str(path)
+    if key in _initialised:
+        return
     try:
         # Migrations FIRST: existing DBs gain new columns before the schema
         # script (which creates indexes over them) runs. Fresh DBs: table
@@ -192,6 +211,7 @@ def _init_schema(path: Path) -> None:
         with closing(sqlite3.connect(str(path), timeout=5.0)) as c:
             c.executescript(_SCHEMA_BASE)
             c.commit()
+        _initialised.add(key)
     except Exception:
         log.warning("decision_events schema init failed", exc_info=True)
 
@@ -357,11 +377,32 @@ def record_event(
             )
             inserted = cur.rowcount > 0
             c.commit()
-            _enforce_size_cap(c, max_db_size_mb, _db_path or _default_db_path())
+            _maybe_enforce_size_cap(c, max_db_size_mb)
             return inserted
     except Exception:
         log.warning("decision_events record failed", exc_info=True)
         return False
+
+
+def _maybe_enforce_size_cap(conn: sqlite3.Connection, max_db_size_mb: int) -> None:
+    """Gate the size-cap work behind a cheap file-size stat.
+
+    _enforce_size_cap checkpoints the WAL and scans page_count (~1.8ms
+    measured per record) to enforce a disk-space bound. The bound itself is
+    observable in microseconds via os.stat on the DB files, so the expensive
+    path runs only when the store is actually near the cap: stat first, and
+    only checkpoint/scan when the on-disk size crosses ~80% of the cap (the
+    pruning + VACUUM path needs headroom to bring the file back under).
+    The per-record cost drops to a stat; the guarantee — size stays bounded
+    within the margin the size-cap tests assert — is unchanged, because any
+    record that pushes the file over the trigger runs the full enforcement
+    on that very record.
+    """
+    path = _db_path or _default_db_path()
+    trigger = int(max_db_size_mb * 1024 * 1024 * 0.8)
+    if _total_db_size(path) <= trigger:
+        return
+    _enforce_size_cap(conn, max_db_size_mb, path)
 
 
 def record_replay_case(case: Any, retention_days: int = DEFAULT_RETENTION_DAYS) -> bool:
@@ -417,7 +458,7 @@ def record_replay_case(case: Any, retention_days: int = DEFAULT_RETENTION_DAYS) 
                 ),
             )
             c.commit()
-            _enforce_size_cap(c, DEFAULT_MAX_DB_SIZE_MB, _db_path or _default_db_path())
+            _maybe_enforce_size_cap(c, DEFAULT_MAX_DB_SIZE_MB)
             return True
     except Exception:
         log.warning("replay_cases record failed", exc_info=True)
