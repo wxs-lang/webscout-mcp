@@ -26,6 +26,7 @@ import os
 import sqlite3
 import threading
 import time
+from contextlib import closing, contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -113,7 +114,7 @@ def _run_migrations(path: Path) -> None:
     missing table simply means "fresh DB, skip".
     """
     try:
-        with sqlite3.connect(str(path), timeout=5.0) as c:
+        with closing(sqlite3.connect(str(path), timeout=5.0)) as c:
             existing_tables = {row[0] for row in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
             for table, column, ddl in _MIGRATIONS:
                 if table not in existing_tables:
@@ -162,6 +163,25 @@ def _conn() -> sqlite3.Connection:
     return c
 
 
+@contextmanager
+def _conn_ctx():
+    """Open a connection that commits on success and always closes.
+
+    `sqlite3.Connection` as a context manager commits or rolls back but never closes; every
+    call site leaked a handle until this wrapper existed. Measured on Windows: the handle
+    keeps the DB file open, so removing the data directory fails with WinError 32.
+    """
+    c = _conn()
+    try:
+        yield c
+        c.commit()
+    except Exception:
+        c.rollback()
+        raise
+    finally:
+        c.close()
+
+
 def _init_schema(path: Path) -> None:
     try:
         # Migrations FIRST: existing DBs gain new columns before the schema
@@ -169,7 +189,7 @@ def _init_schema(path: Path) -> None:
         # does not exist yet, migrations are skipped, CREATE TABLE below
         # includes the columns already.
         _run_migrations(path)
-        with sqlite3.connect(str(path), timeout=5.0) as c:
+        with closing(sqlite3.connect(str(path), timeout=5.0)) as c:
             c.executescript(_SCHEMA_BASE)
             c.commit()
     except Exception:
@@ -298,7 +318,7 @@ def record_event(
     try:
         if max_db_size_mb is None:
             max_db_size_mb = DEFAULT_MAX_DB_SIZE_MB
-        with _lock, _conn() as c:
+        with _lock, _conn_ctx() as c:
             _prune_old(c, retention_days)
             req = json.dumps(_scrub_dict(event.request_features), ensure_ascii=False)
             out = json.dumps(_scrub_dict(event.outcome_features), ensure_ascii=False)
@@ -372,7 +392,7 @@ def record_replay_case(case: Any, retention_days: int = DEFAULT_RETENTION_DAYS) 
         if label_time is not None:
             label_time = float(label_time)
 
-        with _lock, _conn() as c:
+        with _lock, _conn_ctx() as c:
             _prune_old(c, retention_days)
             c.execute(
                 """INSERT OR REPLACE INTO replay_cases (
@@ -411,7 +431,7 @@ def load_events(
 ) -> list[dict[str, Any]]:
     """Load recent DecisionEvents as dicts (JSON fields parsed)."""
     try:
-        with _lock, _conn() as c:
+        with _lock, _conn_ctx() as c:
             if domain:
                 rows = c.execute(
                     "SELECT * FROM decision_events WHERE domain = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
@@ -447,7 +467,7 @@ def load_events_for_run(run_id: str, limit: int = 10000) -> list[dict[str, Any]]
     if not run_id:
         return []
     try:
-        with _lock, _conn() as c:
+        with _lock, _conn_ctx() as c:
             rows = c.execute(
                 "SELECT * FROM decision_events WHERE run_id = ? ORDER BY created_at ASC LIMIT ?",
                 (run_id, limit),
@@ -476,7 +496,7 @@ def load_replay_cases(domain: str | None = None, run_id: str | None = None, limi
     optional domain filter).
     """
     try:
-        with _lock, _conn() as c:
+        with _lock, _conn_ctx() as c:
             where: list[str] = []
             params: list[Any] = []
             if domain:
@@ -509,7 +529,7 @@ def load_replay_cases(domain: str | None = None, run_id: str | None = None, limi
 
 def count_events(domain: str | None = None) -> int:
     try:
-        with _lock, _conn() as c:
+        with _lock, _conn_ctx() as c:
             if domain:
                 row = c.execute("SELECT COUNT(*) FROM decision_events WHERE domain = ?", (domain,)).fetchone()
             else:
@@ -523,7 +543,7 @@ def summary() -> dict[str, Any]:
     """Aggregate summary for decision-report CLI."""
     try:
         # Collect all decision DB data inside the lock.
-        with _lock, _conn() as c:
+        with _lock, _conn_ctx() as c:
             total = c.execute("SELECT COUNT(*) FROM decision_events").fetchone()[0]
             fetch_count = c.execute("SELECT COUNT(*) FROM decision_events WHERE domain='fetch'").fetchone()[0]
             search_count = c.execute("SELECT COUNT(*) FROM decision_events WHERE domain='search'").fetchone()[0]
@@ -612,7 +632,7 @@ def update_replay_label(
     try:
         label_source = _validate_label_source(source)
         notes_clean = _scrub_text(notes)
-        with _lock, _conn() as c:
+        with _lock, _conn_ctx() as c:
             c.execute(
                 "UPDATE replay_cases SET expected_label=?, label_source=?, label_confidence=?, label_time=?, notes=? WHERE case_id=?",
                 (label, label_source.value, confidence, time.time(), notes_clean, case_id),
@@ -663,7 +683,7 @@ def join_report(run_id: str | None = None) -> dict[str, Any]:
             "fetch": {"all": set(), "eligible": set(), "enabled_eligible": set()},
             "search": {"all": set(), "eligible": set(), "enabled_eligible": set()},
         }
-        with _lock, _conn() as c:
+        with _lock, _conn_ctx() as c:
             decision_sql = (
                 "SELECT DISTINCT run_id, trace_id, domain, metadata "
                 "FROM decision_events WHERE run_id != '' AND trace_id != ''"
@@ -702,7 +722,7 @@ def join_report(run_id: str | None = None) -> dict[str, Any]:
         jev_db = jev_db_path()
         if jev_db.exists():
             try:
-                with sqlite3.connect(str(jev_db), timeout=5.0) as jc:
+                with closing(sqlite3.connect(str(jev_db), timeout=5.0)) as jc:
                     jc.row_factory = sqlite3.Row
                     jev_sql = (
                         "SELECT DISTINCT run_id, trace_id, operation FROM jev_records "
