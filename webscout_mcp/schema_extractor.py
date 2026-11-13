@@ -132,29 +132,38 @@ def _flatten_json_ld(items: list[dict]) -> dict[str, Any]:
     """
     flat: dict[str, Any] = {}
 
-    def walk(node: Any) -> None:
+    def walk(node: Any, nested: bool = False) -> None:
         if isinstance(node, dict):
             for key, value in node.items():
                 if key == "@graph" and isinstance(value, list):
                     for entry in value:
-                        walk(entry)
+                        # @graph entries are siblings of the root, not children of a field.
+                        walk(entry, nested=False)
                     continue
                 if key not in flat and not isinstance(value, (dict, list)):
+                    # A nested object's own keys must not become top-level properties.
+                    #
+                    # Measured: an article's `author: {name: "Leodanis Pozo Ramos"}` wrote
+                    # that name to `flat["name"]`, and `title`'s aliases include `name`, so
+                    # the title resolved to the author. The value the caller wants is already
+                    # on `flat["author"]`; the bare `name` is noise once it is nested.
+                    if nested and key in ("name", "url", "@type"):
+                        continue
                     flat[key] = value
                 elif isinstance(value, dict):
-                    # Nested objects commonly carry `name`; lift it for alias lookup.
+                    # Nested objects commonly carry `name`; lift it onto their own key.
                     inner = value.get("name")
                     if inner is not None and key not in flat:
                         flat[key] = inner
-                    walk(value)
+                    walk(value, nested=True)
                 elif isinstance(value, list) and value:
                     first = value[0]
                     if isinstance(first, dict) and "name" in first and key not in flat:
                         flat[key] = first["name"]
-                    walk(first)
+                    walk(first, nested=True)
         elif isinstance(node, list):
             for entry in node:
-                walk(entry)
+                walk(entry, nested=nested)
 
     for item in items:
         walk(item)
