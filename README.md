@@ -235,7 +235,7 @@ Add to your MCP client config:
 webscout-mcp search "python web scraping" --max-results 10
 
 # Fetch a page
-webscout-mcp fetch https://example.com --extract --format markdown
+webscout-mcp fetch https://example.com --format markdown
 
 # Crawl a site
 webscout-mcp crawl https://example.com --depth 2 --pages 50

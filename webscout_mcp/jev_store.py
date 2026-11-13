@@ -13,6 +13,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import threading
+from contextlib import closing, contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -117,8 +118,27 @@ _V2_COLUMNS: list[tuple[str, str]] = [
 ]
 
 
+@contextmanager
+def _conn_ctx():
+    """Open a connection that commits on success and always closes.
+
+    `sqlite3.Connection` as a context manager commits or rolls back but never closes; every
+    call site leaked a handle until this wrapper existed. Measured on Windows: the handle
+    keeps the DB file open, so removing the data directory fails with WinError 32.
+    """
+    c = _conn()
+    try:
+        yield c
+        c.commit()
+    except Exception:
+        c.rollback()
+        raise
+    finally:
+        c.close()
+
+
 def _init_schema(path: Path) -> None:
-    with sqlite3.connect(str(path), timeout=5.0) as c:
+    with closing(sqlite3.connect(str(path), timeout=5.0)) as c:
         c.executescript(_SCHEMA_BASE)
         # Idempotent v1 -> v2 migration: ALTER TABLE only for missing columns.
         existing = {row[1] for row in c.execute("PRAGMA table_info(jev_records)")}
@@ -133,7 +153,7 @@ def _init_schema(path: Path) -> None:
 def append_record(rec: dict[str, Any]) -> None:
     """Insert one shadow record. Best-effort; never raises."""
     try:
-        with _lock, _conn() as c:
+        with _lock, _conn_ctx() as c:
             c.execute(
                 """INSERT INTO jev_records (
                     timestamp, trace_id, operation, jev_question,
@@ -252,7 +272,7 @@ def load_recent(
         sql += " WHERE " + " AND ".join(where)
     sql += " ORDER BY timestamp DESC LIMIT ?"
     params.append(limit)
-    with _conn() as c:
+    with _conn_ctx() as c:
         rows = c.execute(sql, params).fetchall()
     return _rows_to_dicts(rows)
 
@@ -275,7 +295,7 @@ def load_disagreements(
         params.append(schema_version)
     sql += " ORDER BY timestamp DESC LIMIT ?"
     params.append(limit)
-    with _conn() as c:
+    with _conn_ctx() as c:
         rows = c.execute(sql, params).fetchall()
     return _rows_to_dicts(rows)
 
@@ -293,7 +313,7 @@ def load_errors(
         params.append(schema_version)
     sql += " ORDER BY timestamp DESC LIMIT ?"
     params.append(limit)
-    with _conn() as c:
+    with _conn_ctx() as c:
         rows = c.execute(sql, params).fetchall()
     return _rows_to_dicts(rows)
 
@@ -322,7 +342,7 @@ def load_summary(
         params.append(run_id)
     where = (" WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
 
-    with _conn() as c:
+    with _conn_ctx() as c:
         total = c.execute(f"SELECT COUNT(*) AS n FROM jev_records{where}", params).fetchone()["n"]  # nosec B608
         success = c.execute(
             f"SELECT COUNT(*) AS n FROM jev_records{where} AND (jev_error IS NULL OR jev_error = '')"  # nosec B608
