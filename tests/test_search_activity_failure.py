@@ -52,7 +52,12 @@ async def test_activity_survives_a_recorded_failure():
 
 @pytest.mark.asyncio
 async def test_outcome_events_counts_only_the_counters():
-    """`last_failure_kind` is descriptive and must not be summed."""
+    """`last_failure_kind` is descriptive and must not be summed.
+
+    The count is `>= 1`, not `>= 2`: whether a second provider is contacted depends on
+    whether the first succeeded. Locally both fail so two are tried; on CI bing answers and
+    one is enough. An earlier version asserted two and failed on CI for that reason alone.
+    """
     from webscout_mcp.server import create_server
 
     server = create_server()
@@ -60,13 +65,16 @@ async def test_outcome_events_counts_only_the_counters():
     activity = _payload(await server.call_tool("search_health", {}))["provider_activity"]
 
     assert isinstance(activity["outcome_events"], int)
-    # One search touching two providers produces exactly two outcome events.
-    assert activity["outcome_events"] >= 2
+    assert activity["outcome_events"] >= 1, "a search contacts at least one provider"
 
 
 @pytest.mark.asyncio
-async def test_per_provider_records_carry_a_reason_after_failure():
-    """The whole point: a failed provider says more than "error"."""
+async def test_a_failed_provider_records_a_kind():
+    """When a provider fails, its record says more than "error".
+
+    Conditional rather than assumed: on a healthy network the search succeeds and there is
+    nothing to assert. The point is the shape of a failure record, not that failure happens.
+    """
     from webscout_mcp.server import create_server
 
     server = create_server()
@@ -74,7 +82,9 @@ async def test_per_provider_records_carry_a_reason_after_failure():
     per_provider = _payload(await server.call_tool("search_health", {}))["provider_activity"]["per_provider"]
 
     failed = {n: s for n, s in per_provider.items() if s.get("error")}
-    assert failed, "the search was expected to fail on this machine and record a reason"
+    if not failed:
+        pytest.skip("no provider failed here; nothing to assert about failure shape")
+
     for name, stats in failed.items():
         assert "last_failure_kind" in stats, (
             f"{name} recorded an error with no kind; the decision detail is being dropped"
