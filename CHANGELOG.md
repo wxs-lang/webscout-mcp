@@ -5,6 +5,130 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v2.8.0 (2026-11-13)
+
+Twelve commits: two capabilities, ten fixes. The fixes are the substance - most were values
+that looked plausible and were wrong, which is harder to catch than an empty result because
+nothing prompts the caller to check.
+
+### Added
+
+- **`provider_activity` in `search_health`** - what the live search path actually observed:
+  per-provider outcomes, recovery actions, and the list of providers contacted. It answers the
+  question the old report could not: whether a second backend was ever reached.
+  Measured before/after on the same process:
+
+  ```
+  before a search   outcome_events=0  providers_contacted=[]
+  after  a search   outcome_events=2  providers_contacted=['bing','duckduckgo']
+                    recovery_actions={'TRY_NEXT_PROVIDER': 2, 'RETURN_ERROR': 1}
+  ```
+
+  Production telemetry had shown 190 searches all served by bing, with no way to tell
+  "fallback never needed" from "fallback never fired". An empty map carries a note saying it
+  means "no search in this process yet", not "these backends are unused".
+
+- **`sponsored` flag on search results** - six queries returned 48 results, 2 of them paid
+  placements served through `duckduckgo.com/y.js?ad_domain=...` with titles indistinguishable
+  from organic answers and the same `backend` label. The consumer is an agent, so an unflagged
+  ad is a paid claim it may quote as a finding. The URL is the signal: an advertiser writes
+  its own headline, but the click must route through the ad network to be billed. Flagged
+  rather than filtered, because dropping the row would change the count and hide that the
+  query triggered advertising. End-to-end: 32 results, 2 flagged, 0 missed.
+
+- **Egress class in benchmark history** - live verdicts depend on the network, not only the
+  code: measured, amazon passes 5/5 from a residential connection and fails repeatedly from a
+  datacenter runner. Records now carry `egress` (`local` / `datacenter`), and a cross-egress
+  change is reclassified as flapping with the reason attached rather than reported as a
+  regression. Records predating the field compare as before.
+
+### Fixed
+
+- **`cache` held every SQLite handle open.** `with sqlite3.connect(...)` commits the
+  transaction and **does not close**. Measured on Windows 3.12.10: removing the cache
+  directory afterwards raises `PermissionError WinError 32`, while an explicit close
+  succeeds. Seven sites in `core/cache.py`; CI runs on Linux where the same code happens to
+  work, so the failing path was never exercised. The user-visible consequence matches the test
+  consequence - clearing app data hits a sharing violation.
+
+- **A nested `name` became the document title.** `web_extract_schema` on a real article
+  returned `title='Leodanis Pozo Ramos'` - the author - while `author` held the same string and
+  the real headline was nowhere. `author: {name: X}` was lifted onto `flat["author"]`
+  correctly, then the recursion wrote `X` to `flat["name"]`, and `title` aliases `name`.
+  The 19 existing tests missed it because no fixture had a nested name beside a root title -
+  the shape article JSON-LD usually takes.
+
+- **`content_quality` reported `paragraph_count: 1` for every page.** It requested
+  `output_format="text"`, which collapses blank lines, and the analyzer splits paragraphs on
+  `\n\n`. Measured on a 4015-word article: text gave 0 double-newlines and 1 paragraph;
+  markdown gave 79 and 80. `word_count` was identical in both - the number a reader checks
+  first was right and the structural metric beside it was not. The metric also feeds the
+  scoring path, so structure was silently dropped from every score.
+
+- **`published` and `modified` did not resolve as separate facts.** The alias tables knew one
+  date concept, so `modified` mapped to nothing despite pages declaring `dateModified`, and
+  `published` fell through to semantic HTML even when JSON-LD stated it - the same fact at two
+  precisions (`2026-10-24T14:00:00+00:00` beside `2026-10-24`). `date` still prefers
+  `datePublished`: modification time changes on every edit and would make the field useless
+  for age comparisons.
+
+- **`web_knowledge_graph` ranked grammar as its top result.** The heaviest relationship was
+  `the -> in` with weight 1.0 and count 524 - on two real pages, 13 and 8 of 50 entities were
+  function words and every relationship touched one. Two causes: no stopword filtering at all,
+  and a sentence-initial article gluing onto the next word, which produced three nodes for
+  Rust from one sentence. After: zero on both counts, and the heaviest edges are real
+  concepts. The stopword set stays narrow on purpose - `Will`, `Can`, `May`, `Bill` are
+  capitalised names far more often than function words in prose.
+
+- **Bing redirect URLs were returned as if they were destinations.** 5 of 20 results were
+  `www.bing.com/ck/a?...&u=a1<base64url>` tokens. They start with `http`, so the existing
+  filter - which only skipped `google.com` - accepted them, and a caller got an expiring
+  opaque link instead of the page. The `u` parameter decodes to the destination; verified on
+  six live results. Undecodable tokens pass through rather than being dropped.
+
+- **An empty fetch reported the same message for every cause.** `"Failed to fetch page
+  content"` appeared nine times in `server.py` and four sites omitted the reason, while the
+  response object held `status_code`, `error` and `recovery_outcome` - `metadata_extract` read
+  that very object on the next line. `broken_links` was the clearest case: four lines apart,
+  the same function answered the same question two ways. A 403, a DNS failure and a login wall
+  now read differently.
+
+- **A missing dependency was reported as a provider outage.** With a SOCKS proxy configured
+  but no `socksio` installed, every search failed with a message naming the remedy, and the
+  failure kind was `PROVIDER` - the same bucket as a genuine upstream outage. `ImportError` is
+  now classified `CONFIG` structurally; wrapped errors need `"not installed"` plus a
+  package/module word, so a server-side "installed correctly" is not swallowed.
+
+- **Provider failure recorded a count but never a reason.** `_apply_health` reduced the
+  classifier's own detail to `_record_outcome(provider, "error")`. Each provider now carries
+  `last_failure_kind`, the finest grain the classifier actually has. The stability script
+  likewise recorded `error_type` but not `error_message` on the response path - the one every
+  ordinary failure takes - so six failures read `Failed after 3 retries: ` with nothing after
+  the colon.
+
+### Compatibility
+
+**16 tools, unchanged.** All changes are additive fields or corrections to values that were
+wrong. `web_search` results gain `sponsored`; `search_health` gains `provider_activity`;
+`web_extract_schema` gains `published` / `modified` / `keywords` as recognised field names.
+
+Two behaviour changes worth naming:
+
+- `content_quality.paragraph_count` now reports the real count. Every previously published
+  number was 1.
+- A cross-egress benchmark transition is now `flapping` rather than `regression`.
+
+### Verified
+
+- 12 commits, each with tests that fail when the fix is reverted
+- 87 cache tests; 53 search; 43 schema; 26 knowledge-graph; 15 sponsored
+- CI 25 checks green per change
+
+### Note
+
+`decision_store.py` (4 sites) and `jev_store.py` (2 sites) have the same unclosed-connection
+pattern as `core/cache.py`. Left for a follow-up rather than bundled into a change about the
+cache.
 ## v2.7.0 (2026-11-13)
 
 A 16th tool, and a real defect found while building it.
