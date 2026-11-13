@@ -431,6 +431,53 @@ def build_parser() -> argparse.ArgumentParser:
     decision_join_parser.add_argument("--json", action="store_true", help="Output as JSON")
     decision_join_parser.set_defaults(func=_cmd_decision_join_report)
 
+    setup_parser = subparsers.add_parser(
+        "setup",
+        help="One-click setup: install optional extras and generate a starter config",
+    )
+    setup_parser.add_argument(
+        "--playwright",
+        dest="install_playwright",
+        action="store_true",
+        default=True,
+        help="Install the Playwright browser backend (default: enabled)",
+    )
+    setup_parser.add_argument(
+        "--no-playwright",
+        dest="install_playwright",
+        action="store_false",
+        help="Skip the Playwright browser backend",
+    )
+    setup_parser.add_argument(
+        "--ollama",
+        dest="install_ollama",
+        action="store_true",
+        help="Install an Ollama local model for the optional Jev shadow evaluator",
+    )
+    setup_parser.add_argument(
+        "--ollama-model",
+        default="qwen2.5:7b",
+        help="Ollama model to pull when --ollama is given (default: qwen2.5:7b)",
+    )
+    setup_parser.add_argument(
+        "--vector-store",
+        dest="install_vector_store",
+        action="store_true",
+        help="Install the vector-store extra and set the embedding model",
+    )
+    setup_parser.add_argument(
+        "--embedding-model",
+        default="BAAI/bge-small-zh-v1.5",
+        help="Embedding model for the vector-store extra (default: BAAI/bge-small-zh-v1.5)",
+    )
+    setup_parser.add_argument(
+        "--no-config",
+        dest="generate_config",
+        action="store_false",
+        help="Skip writing the starter config file",
+    )
+    setup_parser.set_defaults(func=_cmd_setup)
+
     return parser
 
 
@@ -789,6 +836,26 @@ async def _cmd_decision_join_report(args: argparse.Namespace) -> None:
                 f"joined={stats.get('joined_enabled_eligible', 0)}, "
                 f"coverage={stats.get('join_coverage', 0.0):.2%}"
             )
+
+
+def _cmd_setup(args) -> None:
+    """Run the one-click setup flow (installs optional extras, writes a starter config)."""
+    from .setup import run_setup
+
+    print("Starting webscout-mcp setup...")
+    result = run_setup(
+        install_playwright=args.install_playwright,
+        install_ollama=args.install_ollama,
+        ollama_model=args.ollama_model,
+        install_vector_store=args.install_vector_store,
+        embedding_model=args.embedding_model,
+        generate_config=args.generate_config,
+        verbose=True,
+    )
+    print("Setup finished.")
+    if isinstance(result, dict):
+        for key, value in result.items():
+            print(f"  {key}: {value}")
 
 
 def main() -> None:
