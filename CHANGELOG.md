@@ -5,6 +5,73 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v2.8.1 (2026-11-13)
+
+The GOAL_REVIEW step-3 A/B retest finally ran (2026-10-23's conclusion was unverifiable
+for three weeks because the original harness was lost). The retest closed the Phase 4
+verification gap, found one real environment-failure mode, and reshaped the latency gate.
+
+### Verified
+
+- **The −7.3pp usable-rate regression did not reproduce.** 60-URL fetch corpus
+  (`c8727fe919369f66`): pipeline 54/60 usable vs baseline 55/60 (−1.67pp, inside
+  tolerance). G1 and G2 PASS. The extraction-quality fixes from v2.5–v2.8 (nested-name
+  title handling, paragraph counting, empty-fetch explanations) held up end-to-end.
+  Full report: `docs/AB_RETEST_20261113.md`; raw evidence:
+  `.webscout-eval/ab-retest-fixed2/`.
+- **G4 (search latency) closed**: 43/43 queries with rows, 0 errors; p50 533ms /
+  p95 922ms, in line with the historical live baseline (p50 560 / p95 881). The
+  ×1.2 ratio vs a bare provider fails on the same structural ground as fetch G3 —
+  the routing layer's fixed ~180ms cost — so G4 adopts the same absolute-SLO
+  criterion. Report: `docs/AB_SEARCH_RETEST_20261113.md`.
+
+### Fixed
+
+- **httpx 0.28.x silently dies on `NO_PROXY` entries containing `[::1]`** —
+  `get_environment_proxies` fails its `is_ipv6_hostname` check on the brackets, builds
+  the mount key `all://*[::1]`, and `URL()` raises `InvalidURL: Invalid port ':1]'`
+  when the AsyncClient constructs its mount table — before any network I/O.
+  `HTTPFetchProvider` swallowed that into a `status_code=0`, `content=''`,
+  `error=None` response: every fetch returned a clean-looking empty result, and both
+  A/B arms agreed, so all gates passed green over a fully broken environment (a full
+  60-URL run, observed live). Two guards now:
+  1. `_sanitize_no_proxy()` (fetcher.py) rewrites the env vars in place before the
+     first AsyncClient is built, dropping exactly the entries httpx cannot turn into
+     a mount pattern (bracketed IPv6; the unbracketed `::1` form parses and is kept)
+     and logging the substitution once. Side effect observed in the test suite: 11
+     previously failing tests on this machine (`test_crawl4ai_backend.test_close`,
+     searxng `close_clients`, the decompression client suite, benchmark/SSRF suites)
+     now pass, because their clients no longer inherit the poisoned env.
+  2. `FetchResponse.from_fetch_result` refuses to render `status 0 + empty content +
+     no error` as a success — it now carries an explicit configuration-failure error.
+     The same "an empty fetch says why" rule v2.8.0 applied to tools now reaches the
+     transport layer.
+- **A/B gate G0 circuit breaker**: when both arms return zero usable cases, the
+  verdict now carries a failing `G0_both_arms_produced_content` gate instead of a
+  green PASS with an advisory. A relative-only measurement over a dead environment is
+  not a pass — it is an unusable measurement, and the verdict says so.
+
+### Changed
+
+- **G3 latency gate is layered.** The raw-P95 ×1.3 ratio failed the retest at ×3.12
+  while every recovery succeeded: whether a 3–7s playwright launch lands in the 95th
+  percentile is a property of the corpus, not the code. The gate now evaluates:
+  1. **fast path** (recovery cases excluded) against the historical
+     ratio/ceiling/delta rule — a regression here is a real regression;
+  2. **recovery rate** bounded at 25% — recovering on most requests means the fast
+     path is broken, not that recovery works;
+  3. **recovery payoff** — every recovery case must have produced usable content;
+     paying the launch cost for nothing is a defect.
+  Observations now carry `recovery_used` (jsonl round-trip included), and the report
+  shows `p95_excluding_recovery_ms`, `recovery_used`, `recovery_rate` per arm.
+  Replayed layered verdict on the retest run: fast path 5/60 recoveries (8%), payoff
+  100% usable; the remaining FAIL is genuine fast-path tail (decision-store fsync
+  ~0.3s/request), which is now visible as its own problem instead of being blended
+  with recovery.
+- **G4 search gate**: success-rate no-loss plus absolute SLO (p50 ≤ 600ms,
+  p95 ≤ 1200ms) instead of a ratio against an arm without routing. Rationale recorded
+  in `docs/AB_SEARCH_RETEST_20261113.md`.
+
 ## v2.8.0 (2026-11-13)
 
 Twelve commits: two capabilities, ten fixes. The fixes are the substance - most were values
