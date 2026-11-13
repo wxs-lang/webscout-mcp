@@ -191,15 +191,15 @@ and vector/AI/browser extras are available separately."
 
 ---
 
-## 3. 当前进度快照（2026-11-13，v2.7.0）
+## 3. 当前进度快照（2026-11-13，v2.8.0）
 
 ### 3.1 发布状态
 
 | 项 | 值 |
 |---|---|
-| 最新版本 | **v2.7.0** |
+| 最新版本 | **v2.8.0** |
 | 发布时间 | 2026-11-01 (+08) |
-| `main` HEAD | v2.7.0 tag |
+| `main` HEAD | v2.8.0 tag |
 | Releases 总数 | 16 |
 | MCP 工具数 | **15**（v1.x 冻结时为 11，v2.0.0 起扩充，见 COMPATIBILITY.md）|
 | PyPI / Docker | 均已发布 |
