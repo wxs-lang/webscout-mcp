@@ -7,7 +7,7 @@
 # covers underscore-private names tests reference directly, with zero list
 # maintenance. See observability/__init__.py for the pattern rationale.
 from . import mcp_server as _impl
-from . import mcp_server as _mcp_server
+from . import mcp_server as mcp_server  # noqa: F401 — legacy attr path
 from .mcp_server import *  # noqa: F401,F403
 
 # Private helper some tests patch directly; import * skips it.

@@ -178,14 +178,14 @@ ignore = [
 "webscout_mcp/health.py" = ["F401", "F841"]
 "webscout_mcp/data_exporter.py" = ["F401", "F841", "I001"]
 "webscout_mcp/api_server.py" = ["F401", "F841", "F402"]
-"webscout_mcp/pdf_processor.py" = ["F401", "F841", "F402"]
-"webscout_mcp/vector_store.py" = ["F401", "F841"]
-"webscout_mcp/search_optimizer.py" = ["F401", "I001", "F841"]
+"webscout_mcp/services/pdf_processor.py" = ["F401", "F841", "F402"]
+"webscout_mcp/services/vector_store.py" = ["F401", "F841"]
+"webscout_mcp/services/search_optimizer.py" = ["F401", "I001", "F841"]
 "webscout_mcp/data_cleaner.py" = ["F401", "F841", "I001"]
 "webscout_mcp/browser_fetcher.py" = ["F401", "F841"]
-"webscout_mcp/tls_fetcher.py" = ["F401"]
+"webscout_mcp/providers/tls_fetcher.py" = ["F401"]
 "webscout_mcp/setup.py" = ["F401", "F841"]
-"webscout_mcp/server.py" = ["F841"]
+"webscout_mcp/server/mcp_server.py" = ["F841"]
 
 # Monitoring/utility scripts - async file IO is acceptable for these scripts
 "scripts/*.py" = [
