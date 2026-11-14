@@ -533,8 +533,8 @@ def _tool_text(out):
 def _make_server(search_svc, legacy):
     """Build an MCPServer with injected search_service / legacy engine."""
     with (
-        patch("webscout_mcp.server.create_search_service_from_config", return_value=search_svc),
-        patch("webscout_mcp.server.SearchEngine", return_value=legacy),
+        patch("webscout_mcp.server.mcp_server.create_search_service_from_config", return_value=search_svc),
+        patch("webscout_mcp.server.mcp_server.SearchEngine", return_value=legacy),
     ):
         from webscout_mcp.config import Config
         from webscout_mcp.server import create_server
@@ -608,8 +608,10 @@ async def test_server_unexpected_exception_safe_error_no_legacy():
 async def test_server_none_search_service_uses_legacy():
     legacy = _FakeLegacyEngine()
     with (
-        patch("webscout_mcp.server.create_search_service_from_config", side_effect=RuntimeError("init fail")),
-        patch("webscout_mcp.server.SearchEngine", return_value=legacy),
+        patch(
+            "webscout_mcp.server.mcp_server.create_search_service_from_config", side_effect=RuntimeError("init fail")
+        ),
+        patch("webscout_mcp.server.mcp_server.SearchEngine", return_value=legacy),
     ):
         from webscout_mcp.config import Config
         from webscout_mcp.server import create_server
@@ -707,7 +709,7 @@ async def test_empty_query_via_mcp_returns_invalid_query():
     from webscout_mcp.server import create_server
 
     legacy = _FakeLegacyEngine()
-    with patch("webscout_mcp.server.SearchEngine", return_value=legacy):
+    with patch("webscout_mcp.server.mcp_server.SearchEngine", return_value=legacy):
         server = create_server(Config())
     out = await server.call_tool("web_search", {"query": ""})
     data = json.loads(_tool_text(out))

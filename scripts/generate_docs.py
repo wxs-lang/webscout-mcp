@@ -402,7 +402,7 @@ def main() -> int:
     """Main entry point for documentation generation."""
     parser = argparse.ArgumentParser(description="Generate webscout-mcp documentation")
     parser.add_argument("--check", action="store_true", help="Only check if docs are up-to-date")
-    parser.add_argument("--server-path", type=Path, default=Path("webscout_mcp/server.py"))
+    parser.add_argument("--server-path", type=Path, default=Path("webscout_mcp/server/mcp_server.py"))
     parser.add_argument("--output-dir", type=Path, default=Path("."))
     args = parser.parse_args()
 

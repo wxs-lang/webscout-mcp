@@ -44,20 +44,20 @@ except ImportError:
     # MCP 1.x: use FastMCP
     from mcp.server.fastmcp import FastMCP as MCPServer
 
-from .core.cache import Cache
-from .core.config import Config
-from .crawler import Crawler
-from .extractor import DataExtractor, ExtractionRule
-from .extras.content_quality import ContentQualityAnalyzer
-from .fetcher import Fetcher
-from .logging_config import get_logger, setup_logging
-from .metadata_extractor import MetadataExtractor
-from .robots import RobotsChecker
-from .rss_parser import fetch_and_parse_feed
-from .schema_extractor import extract_by_schema
-from .search import SearchEngine
-from .search_service import create_search_service_from_config
-from .startup_check import StartupSelfCheck
+from ..core.cache import Cache
+from ..core.config import Config
+from ..crawler import Crawler
+from ..extractor import DataExtractor, ExtractionRule
+from ..extras.content_quality import ContentQualityAnalyzer
+from ..fetcher import Fetcher
+from ..logging_config import get_logger, setup_logging
+from ..metadata_extractor import MetadataExtractor
+from ..robots import RobotsChecker
+from ..rss_parser import fetch_and_parse_feed
+from ..schema_extractor import extract_by_schema
+from ..search import SearchEngine
+from ..search_service import create_search_service_from_config
+from ..startup_check import StartupSelfCheck
 
 log = get_logger(__name__)
 
@@ -132,9 +132,9 @@ def create_server(config: Config | None = None) -> MCPServer:
     # Provider registry: single source of truth for provider state.
     # Search providers are registered by the factory; the HTTP fetch
     # provider is registered here since it wraps this server's fetcher.
-    from .fetch_provider import HTTPFetchProvider
-    from .provider_registry import ProviderRegistry
-    from .provider_router import ProviderCapability, ProviderCostTier
+    from ..fetch_provider import HTTPFetchProvider
+    from ..provider_registry import ProviderRegistry
+    from ..provider_router import ProviderCapability, ProviderCostTier
 
     registry = ProviderRegistry()
     try:
@@ -156,7 +156,7 @@ def create_server(config: Config | None = None) -> MCPServer:
     # Optional browser-fetch sidecar (Crawl4AI). Wired in only when
     # CRAWL4AI_BASE_URL + CRAWL4AI_ENABLED are set; otherwise the
     # web_fetch fast path is unchanged from v1.2.1.
-    from .crawl4ai_backend import Crawl4AIBrowserBackend
+    from ..crawl4ai_backend import Crawl4AIBrowserBackend
 
     browser_backend = Crawl4AIBrowserBackend(cfg)
     browser_registered = False
@@ -178,7 +178,7 @@ def create_server(config: Config | None = None) -> MCPServer:
         # the [browser] extra. Without this the only escalation target was a
         # Docker container, and measured real-world usability stayed at 8/16.
         try:
-            from .local_browser_backend import LocalBrowserBackend
+            from ..local_browser_backend import LocalBrowserBackend
 
             local_backend = LocalBrowserBackend()
             if local_backend.is_available:
@@ -203,7 +203,7 @@ def create_server(config: Config | None = None) -> MCPServer:
 
     # Phase 2: FetchService owns fast-fetch selection + browser escalation.
     # server.py no longer makes routing decisions.
-    from .fetch_service import FetchService
+    from ..fetch_service import FetchService
 
     fetch_service = FetchService(registry=registry, config=cfg)
 
@@ -252,7 +252,7 @@ def create_server(config: Config | None = None) -> MCPServer:
         calls. No API key required for the default HTML providers.
         """
         max_results = max(1, min(max_results, 25))
-        from .search_provider import SearchRequest
+        from ..search_provider import SearchRequest
 
         # Phase 3 cutover: SearchService is the sole production authority when
         # initialized. EMPTY / ERROR / STOP are final outcomes — we do NOT call
@@ -305,7 +305,7 @@ def create_server(config: Config | None = None) -> MCPServer:
             status = "success" if results else "empty"
             error_block = None
 
-        from .search import _is_sponsored
+        from ..search import _is_sponsored
 
         output = [
             {
@@ -352,7 +352,7 @@ def create_server(config: Config | None = None) -> MCPServer:
         or browser). Stop when ``has_more`` is false. You do not need to read the
         whole page unless the task requires it.
         """
-        from .fetch_provider import FetchRequest
+        from ..fetch_provider import FetchRequest
 
         route = await fetch_service.fetch(
             FetchRequest(
@@ -609,7 +609,7 @@ def create_server(config: Config | None = None) -> MCPServer:
         reading the classifier source.
         """
         try:
-            from .recovery_policy import build_policy_table, render_markdown
+            from ..recovery_policy import build_policy_table, render_markdown
 
             table = build_policy_table()
             return json.dumps(
@@ -686,7 +686,7 @@ def create_server(config: Config | None = None) -> MCPServer:
         and returns a report with broken links, redirects, and link statistics.
         """
         try:
-            from .extras.broken_link_checker import BrokenLinkChecker
+            from ..extras.broken_link_checker import BrokenLinkChecker
 
             checker = BrokenLinkChecker(timeout=timeout)
 
@@ -744,8 +744,8 @@ def create_server(config: Config | None = None) -> MCPServer:
             )
 
         try:
-            from .extras.knowledge_graph import KnowledgeGraphBuilder
-            from .fetch_provider import FetchRequest
+            from ..extras.knowledge_graph import KnowledgeGraphBuilder
+            from ..fetch_provider import FetchRequest
 
             source = "text"
             source_url = None
@@ -885,8 +885,8 @@ def create_server(config: Config | None = None) -> MCPServer:
             )
 
         try:
-            from .extras.rag_optimizer import RAGOptimizer
-            from .fetch_provider import FetchRequest
+            from ..extras.rag_optimizer import RAGOptimizer
+            from ..fetch_provider import FetchRequest
 
             source = "text"
             source_url = None
@@ -1002,11 +1002,11 @@ def create_server(config: Config | None = None) -> MCPServer:
             )
 
         try:
-            from .extras.competitor_analyzer import compare_sites
-            from .extras.content_quality import analyze_content_quality
-            from .extras.performance_analyzer import analyze_performance
-            from .extras.seo_metrics import extract_seo_metrics
-            from .fetch_provider import FetchRequest
+            from ..extras.competitor_analyzer import compare_sites
+            from ..extras.content_quality import analyze_content_quality
+            from ..extras.performance_analyzer import analyze_performance
+            from ..extras.seo_metrics import extract_seo_metrics
+            from ..fetch_provider import FetchRequest
 
             sites: list[dict] = []
             failures: list[dict] = []
@@ -1153,8 +1153,8 @@ def create_server(config: Config | None = None) -> MCPServer:
             return json.dumps({"error": "Provide a 'url' to check"}, ensure_ascii=False)
 
         try:
-            from .extras.monitor import MonitorConfig, WebMonitor
-            from .fetch_provider import FetchRequest
+            from ..extras.monitor import MonitorConfig, WebMonitor
+            from ..fetch_provider import FetchRequest
 
             config_kwargs: dict = {
                 "monitor_text": True,
@@ -1183,7 +1183,7 @@ def create_server(config: Config | None = None) -> MCPServer:
             # than inside the monitor keeps extraction and comparison separate, which is
             # how changedetection.io structures the same problem.
             if json_path:
-                from .json_select import SelectError, available_languages, extract
+                from ..json_select import SelectError, available_languages, extract
 
                 langs = available_languages()
                 if not langs["jsonpath"] and not langs["jq"]:
@@ -1239,7 +1239,7 @@ def create_server(config: Config | None = None) -> MCPServer:
                     """Serve the already-selected value; the monitor never hits the network."""
 
                     def fetch(self, _url, **_kwargs):
-                        from .monitor_adapter import MonitorFetchResult
+                        from ..monitor_adapter import MonitorFetchResult
 
                         return MonitorFetchResult(content=selected, html=selected)
 
@@ -1250,7 +1250,7 @@ def create_server(config: Config | None = None) -> MCPServer:
                 # browser escalation and recovery classification. Without this the
                 # monitor does its own HTTP and a page needing either of those returns
                 # "no change" forever, because the fetch itself never succeeds.
-                from .monitor_adapter import FetchServiceAdapter
+                from ..monitor_adapter import FetchServiceAdapter
 
                 config = MonitorConfig(**config_kwargs)
                 monitor = WebMonitor(config=config, fetcher=FetchServiceAdapter(fetch_service))
@@ -1260,7 +1260,7 @@ def create_server(config: Config | None = None) -> MCPServer:
             notification_targets: list[str] = list(notify or [])
             notification_errors: list[dict] = []
             if notification_targets:
-                from .extras.alert_targets import build_channel
+                from ..extras.alert_targets import build_channel
 
                 for target in notification_targets:
                     try:
