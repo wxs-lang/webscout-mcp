@@ -44,75 +44,31 @@ class EscalationReason(str, Enum):
     LOW_QUALITY = "LOW_QUALITY"  # analyzer marked the extracted content low quality
 
 
-# Markers that almost always mean a real browser is required.
-_CHALLENGE_MARKERS = (
-    "cloudflare",
-    "attention required",
-    "checking your browser",
-    "just a moment",
-    "captcha",
-    "are you a human",
-    "cf-browser-verification",
-    "challenge-platform",
-    # Non-English interstitials. Measured against three legitimate short Chinese
-    # pages (about / login / product): these hit the challenge and none of them.
-    # Deliberately narrow - broader phrases like 请耐心等待 appear in normal copy,
-    # and 验证码 / 人机验证 appear on legitimate login flows.
-    "安全检测",
-    "检测当前网络环境",
-    "火山引擎",
-    # Generic human-verification wording, which the vendor-specific markers above miss.
-    #
-    # Measured: reddit.com serves a 240-char page reading "Prove your humanity ... not for
-    # bots ... complete the challenge ... a real person" and matched none of the entries
-    # above, so a challenge page was treated as ordinary thin content and reported
-    # browser_success. The verdict was right by accident of size, not by recognising it.
-    "prove your humanity",
-    "not for bots",
-    "complete the challenge",
-    "verify you are human",
-    "verify you are a human",
-    "human verification",
+# Markers and thresholds are single-sourced in recovery_policy (the
+# inspectable table); these module-level aliases keep the private-name
+# convention for existing callers and tests. A threshold or marker change
+# is one edit in recovery_policy, visible in the rendered policy table.
+from .recovery_policy import (
+    CHALLENGE_MARKERS as _CHALLENGE_MARKERS,
 )
-
-_JS_PLACEHOLDER_MARKERS = (
-    "enable javascript",
-    "javascript is required",
-    "please enable javascript",
-    "you need to enable javascript",
-    "<noscript>",
+from .recovery_policy import (
+    JS_PLACEHOLDER_MARKERS as _JS_PLACEHOLDER_MARKERS,
 )
-
-# Content types that have their own parsers and should never go to a browser.
-# Single source of truth: recovery.py imports this rather than keeping a second
-# copy, because two copies agreeing today is not the same as one definition.
-_NON_HTML_PREFIXES = (
-    "application/pdf",
-    "application/json",
-    "application/rss",
-    "application/xml",
-    "text/xml",
-    "image/",
+from .recovery_policy import (
+    LOW_DENSITY_SCRIPT_RATIO as _LOW_DENSITY_SCRIPT_RATIO,
 )
-
-# Thresholds. Tuned conservatively so we only escalate when we are fairly
-# confident the fast fetch missed the real content.
-_MIN_HTML_BYTES_FOR_LOW_DENSITY = 3000
-_MIN_TEXT_CHARS_FOR_REAL_PAGE = 200
-_MIN_PAGE_BYTES_FOR_LOW_QUALITY = 2000
-# Script-to-total ratio that marks an SPA shell inside the low-density rule.
-#
-# This is a DIFFERENT decision from recovery._HIGH_SCRIPT_RATIO (0.15), not a
-# drifted copy of it. The two rules differ in every dimension:
-#
-#   recovery thin_shell   html > 20000, text < 1500, ratio > 0.15 -> NOT escalated
-#   escalation low_density html >  3000, text <  200, ratio > 0.20 -> escalated
-#
-# Different document sizes, different text floors, and opposite actions. They
-# share the word "script ratio" and nothing else; unifying the numbers would
-# change behaviour in one direction or the other. Named anyway, because a bare
-# 0.2 inside the rule was invisible to the policy table.
-_LOW_DENSITY_SCRIPT_RATIO = 0.2
+from .recovery_policy import (
+    MIN_HTML_BYTES_FOR_LOW_DENSITY as _MIN_HTML_BYTES_FOR_LOW_DENSITY,
+)
+from .recovery_policy import (
+    MIN_PAGE_BYTES_FOR_LOW_QUALITY as _MIN_PAGE_BYTES_FOR_LOW_QUALITY,
+)
+from .recovery_policy import (
+    MIN_TEXT_CHARS_FOR_REAL_PAGE as _MIN_TEXT_CHARS_FOR_REAL_PAGE,
+)
+from .recovery_policy import (
+    NON_HTML_PREFIXES as _NON_HTML_PREFIXES,
+)
 
 
 @dataclass

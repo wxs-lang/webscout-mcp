@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- **`recovery_policy` MCP tool (17th)** — the fetch recovery policy table as
+  data: thresholds, marker sets, reason→action rules, classification stages,
+  rendered markdown plus drift warnings. Completes Phase 5's observability
+  step: "why did this request escalate?" is now answerable from the tool
+  surface without reading classifier source. See COMPATIBILITY.md §Health &
+  Monitoring (stability: beta).
+
+### Changed
+
+- **Thresholds and marker sets are single-sourced in `recovery_policy`.**
+  Previously the table *described* values that lived as private constants in
+  `recovery.py` / `fetch_escalation.py` (drift tests asserted equality).
+  Now the modules **bind** the table's objects (identity-tested, both
+  directions): a threshold change is one edit in `THRESHOLDS`/`MARKER_SETS`,
+  visible in the rendered table and the `recovery_policy` tool in the same
+  commit. Two previously unregistered thresholds
+  (`EXTRACTION_COLLAPSE_MIN_HTML`, `EXTRACTION_COLLAPSE_RATIO`) are now in
+  the table. `recovery_policy` imports nothing from the classifier modules
+  at module level, so the import graph stays acyclic; `build_policy_table`
+  imports them locally for its validation pass. Zero behaviour change — the
+  bound values equal the old literals, and the full A/B corpus verdict is
+  unaffected.
+
 ### Fixed
 
 - **Extraction now falls back to visible text for small pages it cannot

@@ -14,6 +14,8 @@ Cache Management:
 
 Health & Monitoring:
 - ``search_health`` - Get health report for all search backends (circuit breaker status).
+- ``recovery_policy`` - Get the fetch recovery policy table (thresholds, marker sets,
+  reason→action rules) as data, with drift warnings.
 
 Content Analysis:
 - ``metadata_extract`` - Extract page metadata (JSON-LD, OpenGraph, Twitter Cards).
@@ -593,6 +595,35 @@ def create_server(config: Config | None = None) -> MCPServer:
         except Exception as exc:
             log.error("metadata_extract failed", extra={"url": url, "error": str(exc)})
             return json.dumps({"error": f"Metadata extraction failed: {exc}", "url": url}, ensure_ascii=False)
+
+    @mcp.tool()
+    def recovery_policy() -> str:
+        """Get the fetch recovery policy table: thresholds, marker sets,
+        reason→action rules, and classification stages, as data.
+
+        This is the single source the recovery classifier is bound to (the
+        modules import their thresholds from this table, enforced by identity
+        tests). Returns the rendered markdown table plus any drift warnings
+        found while assembling it. Read-only, zero-arg — use it to answer
+        "why did this request escalate?" or to review the policy without
+        reading the classifier source.
+        """
+        try:
+            from .recovery_policy import build_policy_table, render_markdown
+
+            table = build_policy_table()
+            return json.dumps(
+                {
+                    "policy_markdown": render_markdown(table),
+                    "warnings": list(table.warnings),
+                    "status": "ok",
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        except Exception as exc:
+            log.error("recovery_policy report failed", error=str(exc))
+            return json.dumps({"error": f"policy report failed: {exc}"}, ensure_ascii=False)
 
     @mcp.tool()
     async def rss_parse(url: str, max_entries: int = 20) -> str:

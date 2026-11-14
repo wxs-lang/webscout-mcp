@@ -50,33 +50,33 @@ from .fetch_provider import FetchResponse
 # already promises not to keep a second copy of those markers, and a duplicate
 # tuple could drift with nothing to notice. Kept importable from here because
 # existing callers and tests reference recovery._NON_HTML_PREFIXES.
-
-# A genuinely small rendered page is at most this many extracted chars AND
-# must live on a small HTML document (see _complete_short_page).
-_SHORT_PAGE_TEXT_CHARS = 2000
-# Below this much extracted text on a large script-heavy document we cannot
-# confirm completeness even though the strict escalation rule does not fire.
-_THIN_SHELL_TEXT_CHARS = 1500
-_LARGE_HTML_CHARS = 20_000
-_HIGH_SCRIPT_RATIO = 0.15
-
-# A large page whose extraction kept almost none of it did not extract - it failed.
-#
-# Measured across seven reachable sites, body/raw ratio:
-#   medium 0.0026 (134 chars from 52 KB - content discarded),
-#   mozilla 0.0132 (thin but usable), wikipedia 0.0684, docs.python 0.2488.
-# 0.005 sits below every working site and above the broken one.
-#
-# Needed because script_ratio measures script *bytes*: medium's 52 KB is mostly markup and
-# style, so 17 <script> tags still left the ratio under the thin_shell threshold.
-_EXTRACTION_COLLAPSE_RATIO = 0.005
-_EXTRACTION_COLLAPSE_MIN_HTML = 20_000
-
-# A 403 that returned at least this many bytes of HTML body is treated as a
-# UA-level soft block (the server rejected our client fingerprint but serves
-# real markup to a real browser). Below this, there is no evidence a browser
-# would help, so we stay conservative.
-_MIN_403_HTML_BYTES = 256
+# Numeric thresholds are single-sourced in recovery_policy (the inspectable
+# table); the names here keep the module's private-alias convention for
+# existing callers and tests. Rationale strings live on each Threshold.
+from .recovery_policy import (
+    EXTRACTION_COLLAPSE_MIN_HTML as _EXTRACTION_COLLAPSE_MIN_HTML,
+)
+from .recovery_policy import (
+    EXTRACTION_COLLAPSE_RATIO as _EXTRACTION_COLLAPSE_RATIO,
+)
+from .recovery_policy import (
+    HIGH_SCRIPT_RATIO as _HIGH_SCRIPT_RATIO,
+)
+from .recovery_policy import (
+    LARGE_HTML_CHARS as _LARGE_HTML_CHARS,
+)
+from .recovery_policy import (
+    LOGIN_WALL_MARKERS as _LOGIN_WALL_MARKERS_table,
+)
+from .recovery_policy import (
+    MIN_403_HTML_BYTES as _MIN_403_HTML_BYTES,
+)
+from .recovery_policy import (
+    SHORT_PAGE_TEXT_CHARS as _SHORT_PAGE_TEXT_CHARS,
+)
+from .recovery_policy import (
+    THIN_SHELL_TEXT_CHARS as _THIN_SHELL_TEXT_CHARS,
+)
 
 # Strong login-wall markers. A 403 page that explicitly demands
 # authentication is NOT a browser-recoverable soft block: a browser cannot
@@ -92,32 +92,7 @@ _MIN_403_HTML_BYTES = 256
 # rendered its UI has done so within this slice.
 LOGIN_WALL_SCAN_CHARS = 48_000
 
-_LOGIN_WALL_MARKERS = (
-    "please log in",
-    "please sign in",
-    "log in to view",
-    "sign in to view",
-    "login required",
-    "sign in required",
-    "must be logged in",
-    "please login",
-    "需要登录",
-    "请登录",
-    "登录后查看",
-    "登录后才能",
-    "请先登录",
-    # Login *forms* rather than login *demands*. The markers above catch a page telling you
-    # to sign in; these catch one showing you the controls. Measured: zhihu.com serves a
-    # login page using this vocabulary and matched none of the markers above.
-    "验证码登录",
-    "登录/注册",
-    "忘记密码",
-    "获取短信验证码",
-    "自动登录",
-    "login / register",
-    "forgot password",
-    "send code",
-)
+_LOGIN_WALL_MARKERS = _LOGIN_WALL_MARKERS_table  # single-sourced: recovery_policy.MARKER_SETS
 
 
 class RecoveryReason(str, Enum):

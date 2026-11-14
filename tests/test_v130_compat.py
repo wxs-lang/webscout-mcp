@@ -36,6 +36,10 @@ def test_mcp_tool_count_unchanged():
             # Same rule applies - COMPATIBILITY.md carries its parameters and a stability
             # level, and docs/tools.md is generated.
             "web_extract_schema",
+            # Phase 5: the recovery policy as data. Read-only, zero-arg; the
+            # classifier modules import their thresholds from this table, so
+            # the tool reports what the code is actually bound to.
+            "recovery_policy",
         ]
     )
     assert names == expected, names
