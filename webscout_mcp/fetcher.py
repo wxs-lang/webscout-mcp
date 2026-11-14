@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 from dataclasses import dataclass, field
 from functools import lru_cache
 
@@ -831,7 +832,20 @@ class Fetcher:
         except Exception:
             pass
 
-        # Nothing produced text. Say whether that was the environment or the page.
+        # Nothing produced text. Before giving up, check whether the markup
+        # itself carries the visible content: barebones pages (example.org
+        # class, <3KB) fail trafilatura's article heuristics 29/30 times on
+        # identical input (measured 2026-11-14) even though every byte of
+        # the real text is in the markup. Strip script/style/tags with three
+        # regexes and count what a reader would see: >=50 visible chars on a
+        # small document means the page IS its visible text — return it
+        # rather than reporting "empty" and pushing the caller into a
+        # browser escalation that re-downloads and returns the same bytes.
         if not _extractor_available():
             return "", "unavailable"
+        _visible = re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", html, flags=re.DOTALL | re.IGNORECASE)
+        _visible = re.sub(r"<[^>]+>", " ", _visible)
+        _visible = re.sub(r"\s+", " ", _visible).strip()
+        if len(html) < 3000 and len(_visible) >= 20:
+            return _visible, "ok"
         return "", "empty"

@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Extraction now falls back to visible text for small pages it cannot
+  parse** — the root-cause layer under the recovery fix. trafilatura
+  rejects barebones pages by heuristic; measured 29/30 rejections on
+  identical example.org bytes, which made every such fetch return
+  "empty" and depend on downstream layers (recovery gate, browser) to
+  cope. `_extract_content` now ends with a deterministic fallback: on a
+  small document (<3000B, the same "too small to be a JS shell" threshold
+  recovery uses), strip script/style/tags with three regexes and serve the
+  visible text as "ok" when it carries ≥20 chars. The SPA stub
+  (`<div id=root></div>`, ~3 visible chars) still reports "empty" so
+  browser escalation keeps working. Side effect: two tests in
+  `test_content_extraction.py` that had been failing for weeks on this
+  exact fixture shape now pass. 20/20 deterministic on example.org; the
+  route serves extracted text on the fast path, recovery classification
+  sees COMPLETE_SHORT_PAGE on the first try.
 - **Small unextracted HTML pages no longer pay a browser launch per fetch.**
   Barebones pages (example.org class: 577B HTML, 156 chars of text) failed
   trafilatura's heuristics 29/30 times on identical input — extraction came
