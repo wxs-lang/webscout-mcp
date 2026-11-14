@@ -96,6 +96,58 @@ def test_duplicated_non_html_prefixes_agree():
     assert recovery._NON_HTML_PREFIXES == fetch_escalation._NON_HTML_PREFIXES
 
 
+# --- Single-sourcing (Phase 5): the modules BIND the table's objects ----
+
+
+@pytest.mark.parametrize(
+    ("table_name", "module", "attr"),
+    [
+        ("SHORT_PAGE_TEXT_CHARS", recovery, "_SHORT_PAGE_TEXT_CHARS"),
+        ("THIN_SHELL_TEXT_CHARS", recovery, "_THIN_SHELL_TEXT_CHARS"),
+        ("LARGE_HTML_CHARS", recovery, "_LARGE_HTML_CHARS"),
+        ("HIGH_SCRIPT_RATIO", recovery, "_HIGH_SCRIPT_RATIO"),
+        ("MIN_403_HTML_BYTES", recovery, "_MIN_403_HTML_BYTES"),
+        ("EXTRACTION_COLLAPSE_RATIO", recovery, "_EXTRACTION_COLLAPSE_RATIO"),
+        ("EXTRACTION_COLLAPSE_MIN_HTML", recovery, "_EXTRACTION_COLLAPSE_MIN_HTML"),
+        ("MIN_TEXT_CHARS_FOR_REAL_PAGE", fetch_escalation, "_MIN_TEXT_CHARS_FOR_REAL_PAGE"),
+        ("MIN_HTML_BYTES_FOR_LOW_DENSITY", fetch_escalation, "_MIN_HTML_BYTES_FOR_LOW_DENSITY"),
+        ("MIN_PAGE_BYTES_FOR_LOW_QUALITY", fetch_escalation, "_MIN_PAGE_BYTES_FOR_LOW_QUALITY"),
+        ("LOW_DENSITY_SCRIPT_RATIO", fetch_escalation, "_LOW_DENSITY_SCRIPT_RATIO"),
+    ],
+)
+def test_threshold_is_bound_to_the_table_object(table_name, module, attr):
+    """Identity, not equality: the module attribute IS the table's value.
+
+    Equality passes even when a module redeclares its own copy that happens
+    to match today; identity fails the moment anyone edits either side. This
+    is the Phase 5 single-sourcing guarantee: THRESHOLDS in recovery_policy
+    is the only place a threshold is defined.
+    """
+    table = _table_by_name()
+    assert table[table_name].value is getattr(module, attr), (
+        f"{module.__name__}.{attr} is no longer bound to the policy-table value "
+        f"for {table_name}; thresholds must be defined only in recovery_policy"
+    )
+
+
+@pytest.mark.parametrize(
+    ("table_name", "live"),
+    [
+        ("CHALLENGE_MARKERS", fetch_escalation._CHALLENGE_MARKERS),
+        ("JS_PLACEHOLDER_MARKERS", fetch_escalation._JS_PLACEHOLDER_MARKERS),
+        ("LOGIN_WALL_MARKERS", recovery._LOGIN_WALL_MARKERS),
+        ("NON_HTML_PREFIXES", recovery._NON_HTML_PREFIXES),
+    ],
+)
+def test_marker_set_is_bound_to_the_table_tuple(table_name, live):
+    """Identity version of test_marker_set_matches_live_tuple (see above)."""
+    table = {m.name: m for m in recovery_policy.MARKER_SETS}
+    assert table[table_name].markers is tuple(live), (
+        f"{table_name} is no longer bound to the policy-table tuple; marker "
+        f"sets must be defined only in recovery_policy"
+    )
+
+
 # --- Reason coverage ----------------------------------------------------
 
 

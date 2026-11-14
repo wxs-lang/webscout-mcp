@@ -12,7 +12,7 @@ v2.0.0. Agents and integrations can rely on these being stable.
 
 ## 1. MCP Tools (Frozen)
 
-The following 16 MCP tools are frozen. Their names, parameter schemas,
+The following 17 MCP tools are frozen. Their names, parameter schemas,
 and return structure will remain backwards-compatible.
 
 ### Core Web Tools
@@ -143,6 +143,18 @@ Get health report for all search backends and dynamic routing.
 - `service_statistics`: Request counts, fallback rate, error rate
 - `dynamic_routing`: Provider scores, success rates, latencies, cost tiers
 - Per-provider circuit breaker status
+
+#### ecovery_policyGet the fetch recovery policy table as data.
+
+**Parameters:** None
+
+**Returns:** JSON string with \policy_markdown\ (the rendered table:
+thresholds, marker sets, reason→action rules, classification stages) and
+\warnings\ (drift findings from assembling it).
+
+**Stability: beta.** The table is the single source the recovery classifier
+modules bind their thresholds to (identity-tested); the rendered shape may
+gain sections as the policy grows.
 
 ### Content Analysis
 

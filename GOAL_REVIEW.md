@@ -414,7 +414,7 @@ with httpx.Client(
 | **2** | 确认 Phase 4 归属：content sufficiency **已合入**（PR #54），只需补 A/B 复测 | G1 / G2 | ⚠️ 已澄清，待复测 |
 | **3** | 跑 A/B 复测，用 G1/G3/G4 验收 | G1 / G3 / G4 | ✅ **已完成 2026-11-13**（fetch：G1/G2 PASS，−7.3pp 未复现，G3 分层化后可见恢复机制健康 + fast-path 尾延迟单列；search G4：43/43、p50 533ms 不劣于历史基线，判据改为绝对 SLO。报告：[docs/AB_RETEST_20261113.md](docs/AB_RETEST_20261113.md) + [docs/AB_SEARCH_RETEST_20261113.md](docs/AB_SEARCH_RETEST_20261113.md)） |
 | **4** | `content_quality` / `broken_links` 移出 Core | F1 / 5.3 | ✅ **已完成**（v2.5–v2.6 期间移入 `extras/`，MCP 工具面冻结兼容） |
-| **5** | Phase 5：自愈策略收敛成可观测策略表 | 5.4 | 🔄 进行中 —— v2.8.0 `provider_activity` 已落地第一块 |
+| **5** | Phase 5：自愈策略收敛成可观测策略表 | 5.4 | ✅ **已完成 2026-11-14**（v2.8.0 `provider_activity` 落地第一块；本步完成收敛：阈值/marker 单源化到 `recovery_policy` + identity 双向断言 + 第 17 个 MCP 工具 `recovery_policy` 暴露策略表与 drift 警告。classifer 读表驱动的重构留给 A/B 验证后的后续变更） |
 | **6** | 清理未合并分支 + 修正 `REFACTOR_PLAN.md` 勾选 + 统一进度口径 | 4.2 / 4.3 / 5.4 | ✅ **已完成 2026-10-25** |
 | 7 | （可选）五层架构重组 | 4.1 | 最后 |
 
@@ -448,3 +448,4 @@ with httpx.Client(
 | 2026-11-13 | v1.5 | **可观测性开销治理（第一步）**：decision_store 记录 8.16ms → 5.92ms/条（−27%）：schema 初始化按路径 memo 化（原每操作 ~1.5ms）+ size-cap 改 os.stat 门控（原每条记录做 WAL checkpoint ~1.8ms，上限保证不变，`TestSizeCapRealOverCap` 仍过）。fetch A/B p50 实测 1185 → 1059ms（−11%）。剩余 ~5ms/条为 Windows/HDD 上每连接 schema 加载，消除需 persistent-conn + store.close() API 决策（与 no-leaked-handles 契约冲突，见 CHANGELOG Unreleased 分析）；route 层残余 ~1.2s 未归因延迟需要 py-spy 级 profiling，另行立项 |
 | 2026-11-14 | v1.6 | **route 层 ~1.2s 未归因延迟破案（py-spy）**：火焰图捕获 playwright worker 线程在 route 内活跃 → 根因是 trafilatura 对 barebones 页面（example.org 类，<3KB）启发式拒绝率 29/30，`unextracted_html` 分支无大小门控，每条都升级 chromium 重读已有完整内容。修复经一轮 CI 校正：大小门控误判迷你 JS 壳（CI 测试 `<div id=root>` 夹具抓到）→ 改为**可见文本门控**（正则剥离 script/style/标签后计数，≥50 可见字符 = 抽取器误判的完整页接受；更少 = 浏览器必须渲染的壳）。实测：example.org 1400-3100ms → 243-295ms 稳定；语料浏览器恢复 5/60 → 1/60；p50 累计 1185 → 899ms（−32%）。268 recovery 测试全过。剩余 fast-path 尾部（docs_spec/js_heavy ~1-3s）与 baseline 同步抬升，为 VPN 出口夜间抖动，非 pipeline 问题 —— 归 egress-class 记录处理 |
 | 2026-11-14 | v1.7 | **根因层收尾**：`_extract_content` 加确定性兜底 —— 小文档（<3000B）抽取全链失败时剥离标签服务可见文本（≥20 字符即 "ok"）。此前每条 barebones 抓取都依赖下游 recovery 门控善后；现在抽取层一次直达，route 首分类即 COMPLETE_SHORT_PAGE。20/20 确定性验证；SPA 壳（~3 可见字符）仍报 "empty" 保持浏览器升级正确性；顺带修复 `test_content_extraction.py` 两个预存失败（同一 fixture 形状） |
+| 2026-11-14 | v1.8 | **Phase 5 完成（自愈策略收敛为数据）**：阈值与 marker 集单源化到 `recovery_policy`（recovery/fetch_escalation 绑定表对象，identity 测试双向断言；EXTRACTION_COLLAPSE 两阈值补登记）；新增第 17 个 MCP 工具 `recovery_policy`（零参只读，返回渲染表 + drift 警告，COMPATIBILITY §Health & Monitoring 稳定性 beta）；`recovery_policy` 顶层不导入分类器模块，导入图无环；`build_policy_table` 本地导入做校验。行为零变化（绑定值等于旧字面量），7 个钉工具数的测试同步 16→17。工具面 16→17 是有意扩容，A/B 语料判定不受影响 |

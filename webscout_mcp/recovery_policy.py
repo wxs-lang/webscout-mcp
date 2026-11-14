@@ -43,13 +43,18 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from .fetch_escalation import EscalationReason
-from .recovery import RecoveryAction, RecoveryReason
+# NOTE: this module deliberately imports NOTHING from recovery or
+# fetch_escalation at the top level. It is the single source of the numeric
+# thresholds and marker sets those modules consume, so it must stay below
+# them in the import graph. build_policy_table() imports the enums locally
+# for its drift-validation pass.
 
 # ---------------------------------------------------------------------------
 # Thresholds
 # ---------------------------------------------------------------------------
-# These mirror the private constants in recovery.py and fetch_escalation.py.
+# These are the LIVE values: recovery.py and fetch_escalation.py import them
+# from here rather than redeclaring private copies. tests/test_policy_table.py
+# asserts the modules' attributes stay bound to these objects.
 # tests/test_policy_table.py asserts they stay equal; if one drifts the test
 # fails rather than the documentation quietly lying.
 
@@ -160,7 +165,54 @@ THRESHOLDS: tuple[Threshold, ...] = (
         ),
         module="fetch_escalation",
     ),
+    Threshold(
+        name="EXTRACTION_COLLAPSE_MIN_HTML",
+        value=20000,
+        unit="chars",
+        rationale=(
+            "An unextracted HTML document at or above this size with a near-zero text/body "
+            "ratio is a page the extractor collapsed on — the medium.com 52KB/134-char shape. "
+            "Extraction failed where a browser might succeed, so escalate."
+        ),
+        module="recovery",
+    ),
+    Threshold(
+        name="EXTRACTION_COLLAPSE_RATIO",
+        value=0.005,
+        unit="ratio",
+        rationale=(
+            "text/body ratio below this on a large unextracted document means extraction "
+            "collapsed (real pages keep at least ~0.5% of their bytes as visible text). "
+            "Companion to EXTRACTION_COLLAPSE_MIN_HTML."
+        ),
+        module="recovery",
+    ),
 )
+
+
+# ---------------------------------------------------------------------------
+# Module-level exports of the live values
+# ---------------------------------------------------------------------------
+# recovery.py and fetch_escalation.py bind these names instead of redeclaring
+# private copies, so a threshold change is one edit in THRESHOLDS above and
+# the drift tests assert the binding identity in both directions.
+SHORT_PAGE_TEXT_CHARS = 2000
+THIN_SHELL_TEXT_CHARS = 1500
+LARGE_HTML_CHARS = 20_000
+HIGH_SCRIPT_RATIO = 0.15
+MIN_403_HTML_BYTES = 256
+EXTRACTION_COLLAPSE_RATIO = 0.005
+EXTRACTION_COLLAPSE_MIN_HTML = 20_000
+MIN_TEXT_CHARS_FOR_REAL_PAGE = 200
+MIN_HTML_BYTES_FOR_LOW_DENSITY = 3000
+MIN_PAGE_BYTES_FOR_LOW_QUALITY = 2000
+LOW_DENSITY_SCRIPT_RATIO = 0.2
+
+# Consistency guard: every registered Threshold must agree with its export.
+for _t in THRESHOLDS:
+    _exported = globals().get(_t.name)
+    assert _exported == _t.value, f"policy export {_t.name}={_exported} disagrees with THRESHOLDS entry {_t.value}"
+del _t, _exported
 
 
 # ---------------------------------------------------------------------------
@@ -274,6 +326,20 @@ MARKER_SETS: tuple[MarkerSet, ...] = (
             "once in fetch_escalation."
         ),
     ),
+)
+
+# Module-level exports of the live marker tuples, bound by
+# fetch_escalation.py and recovery.py (see the threshold exports above).
+CHALLENGE_MARKERS = next(m.markers for m in MARKER_SETS if m.name == "CHALLENGE_MARKERS")
+JS_PLACEHOLDER_MARKERS = next(m.markers for m in MARKER_SETS if m.name == "JS_PLACEHOLDER_MARKERS")
+LOGIN_WALL_MARKERS = next(m.markers for m in MARKER_SETS if m.name == "LOGIN_WALL_MARKERS")
+NON_HTML_PREFIXES = (
+    "application/pdf",
+    "application/json",
+    "application/rss",
+    "application/xml",
+    "text/xml",
+    "image/",
 )
 
 
@@ -635,6 +701,12 @@ def build_policy_table() -> PolicyTable:
     divergences were found while assembling this table and would otherwise have
     stayed buried in the code.
     """
+    # Local imports: the validation pass compares this table against the live
+    # modules, but this module must not depend on them at import time (they
+    # import their constants FROM here).
+    from .fetch_escalation import EscalationReason
+    from .recovery import RecoveryAction, RecoveryReason
+
     warnings: list[str] = []
 
     # 1) Two script-ratio thresholds exist. They are DIFFERENT decisions, not a

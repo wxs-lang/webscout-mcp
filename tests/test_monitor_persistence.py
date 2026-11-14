@@ -209,7 +209,7 @@ def patched_fetcher(monkeypatch):
     return holder
 
 
-def test_tool_registers_and_counts_fifteen():
+def test_tool_registers_and_counts_seventeen():
     import asyncio
 
     from webscout_mcp.server import create_server
@@ -217,7 +217,7 @@ def test_tool_registers_and_counts_fifteen():
     tools = asyncio.run(create_server().list_tools())
     names = {t.name for t in tools}
     assert "web_monitor" in names
-    assert len(names) == 16, f"tool count changed: {sorted(names)}"
+    assert len(names) == 17, f"tool count changed: {sorted(names)}"
 
 
 def test_tool_says_it_does_not_schedule_itself():

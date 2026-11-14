@@ -13,6 +13,8 @@
 | `MIN_HTML_BYTES_FOR_LOW_DENSITY` | 3000 | bytes | fetch_escalation | Low-density escalation requires a non-trivial document. Below this size a page is simply small, and escalating would burn a browser call for nothing. |
 | `MIN_PAGE_BYTES_FOR_LOW_QUALITY` | 2000 | bytes | fetch_escalation | The content-quality signal only counts on documents big enough to judge. |
 | `LOW_DENSITY_SCRIPT_RATIO` | 0.2 | ratio | fetch_escalation | Script ratio that marks an SPA shell inside the low-density rule. NOT the same decision as HIGH_SCRIPT_RATIO, despite sharing a name: that rule applies above 20000 bytes of HTML with under 1500 chars of text and yields a non-escalating AMBIGUOUS verdict, while this one applies above 3000 bytes with under 200 chars and triggers a browser escalation. Unifying the numbers would change behaviour, so the difference is documented rather than removed. |
+| `EXTRACTION_COLLAPSE_MIN_HTML` | 20000 | chars | recovery | An unextracted HTML document at or above this size with a near-zero text/body ratio is a page the extractor collapsed on — the medium.com 52KB/134-char shape. Extraction failed where a browser might succeed, so escalate. |
+| `EXTRACTION_COLLAPSE_RATIO` | 0.005 | ratio | recovery | text/body ratio below this on a large unextracted document means extraction collapsed (real pages keep at least ~0.5% of their bytes as visible text). Companion to EXTRACTION_COLLAPSE_MIN_HTML. |
 
 ## Classification stages (first match wins)
 
