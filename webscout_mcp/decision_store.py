@@ -147,61 +147,111 @@ def configure(db_path: str | Path | None = None) -> Path:
     global _db_path
     _db_path = Path(db_path) if db_path else _default_db_path()
     _db_path.parent.mkdir(parents=True, exist_ok=True)
-    # A new path invalidates the schema-initialised memo (the memo is keyed
-    # to the resolved path, so a fresh file gets a fresh schema run).
-    _initialised.discard(str(_db_path))
+    with _lock:
+        _close_persistent()
     _init_schema(_db_path)
     return _db_path
 
 
-# Paths whose schema has been initialised this process. _init_schema runs
-# migrations + executescript + commit (~1.5ms measured) and was called on
-# EVERY store operation via _conn(); per operation that was pure overhead —
-# the schema does not change between calls on the same file. Memoised per
-# resolved path; discarded by configure() when the store moves.
-_initialised: set[str] = set()
+# Persistent connection lifecycle. The store's data is rebuildable
+# observability state, so synchronous=NORMAL (WAL) trades "lose the last
+# transactions on power loss" for "never block on fsync per commit" —
+# measured 0.63ms vs 5.92ms per record on this machine's HDD. The handle is
+# process-lifetime: deterministic release via close() (aclose_services on
+# shutdown; tests via fixture teardown), which is the contract
+# test_store_closes_handles asserts after that change.
+_persistent_conn: sqlite3.Connection | None = None
+_persistent_conn_path: Path | None = None
+
+
+def _close_persistent() -> None:
+    """Drop the persistent connection, if open. Callers hold _lock."""
+    global _persistent_conn, _persistent_conn_path
+    if _persistent_conn is not None:
+        try:
+            _persistent_conn.commit()  # flush anything uncommitted, best-effort
+        except sqlite3.Error:
+            pass
+        try:
+            _persistent_conn.close()
+        except sqlite3.Error:
+            log.debug("persistent decision conn close failed", exc_info=True)
+    _persistent_conn = None
+    _persistent_conn_path = None
+
+
+def close() -> None:
+    """Release the persistent connection. Production shutdown path
+    (aclose_services) and test teardowns call this; directory removal and
+    other file-lifecycle operations require the handle to be droppable."""
+    with _lock:
+        _close_persistent()
 
 
 def _conn() -> sqlite3.Connection:
-    global _db_path
+    """Return the persistent connection, reopening when needed.
+
+    Reopen triggers: _db_path changed (configure() or a test monkeypatching
+    the module global — the handle is keyed to its path), or the previous
+    handle broke (closed DB raises ProgrammingError on use).
+    """
+    global _db_path, _persistent_conn, _persistent_conn_path
     if _db_path is None:
         _db_path = _default_db_path()
         _db_path.parent.mkdir(parents=True, exist_ok=True)
+    if _persistent_conn is not None and _persistent_conn_path == _db_path:
+        try:
+            _persistent_conn.execute("SELECT 1")
+            return _persistent_conn
+        except sqlite3.ProgrammingError:
+            pass  # handle was closed; reopen below
+        except sqlite3.Error:
+            _close_persistent()
+    if _persistent_conn is not None and _persistent_conn_path != _db_path:
+        _close_persistent()
     _init_schema(_db_path)
     c = sqlite3.connect(str(_db_path), timeout=5.0)
     c.row_factory = sqlite3.Row
     c.execute("PRAGMA journal_mode=WAL")
+    # WAL + NORMAL: commits don't fsync per write; durability is unchanged
+    # against corruption (the WAL is replayed), only the last transactions
+    # can be lost on power loss — acceptable for rebuildable observability
+    # data, and the standard SQLite-recommended setting for WAL mode.
+    c.execute("PRAGMA synchronous=NORMAL")
+    _persistent_conn = c
+    _persistent_conn_path = _db_path
     return c
 
 
 @contextmanager
 def _conn_ctx():
-    """Open a connection that commits on success and always closes.
+    """Yield the persistent connection; commit on success, rollback on error.
 
-    `sqlite3.Connection` as a context manager commits or rolls back but never closes; every
-    call site leaked a handle until this wrapper existed. Measured on Windows: the handle
-    keeps the DB file open, so removing the data directory fails with WinError 32.
+    The handle is process-lifetime and released by close() (called from
+    aclose_services and test teardowns). Earlier revisions opened a fresh
+    connection per operation and closed it in finally — that fix stopped the
+    handle leak, but kept ~5ms of per-connection schema load on the hot path
+    (measured 2026-11-14: 5.92ms/record vs 0.63ms persistent). The contract
+    this wrapper still guarantees: commit on success, rollback on error, and
+    a deterministic release point via close().
     """
     c = _conn()
     try:
         yield c
         c.commit()
     except Exception:
-        c.rollback()
+        try:
+            c.rollback()
+        except sqlite3.Error:
+            log.debug("rollback on broken handle failed", exc_info=True)
         raise
-    finally:
-        c.close()
 
 
 def _init_schema(path: Path) -> None:
-    # Memoised per resolved path: this ran on EVERY store operation (~1.5ms
-    # measured: migrations scan + executescript + commit) for work whose
-    # result cannot change between calls on the same file. configure()
-    # discards the memo when the store moves; tests that delete and recreate
-    # the file go through configure() too, so staleness is not a hazard.
-    key = str(path)
-    if key in _initialised:
-        return
+    # Runs on persistent-connection reopen only (configure / path change /
+    # broken handle) — a handful of times per process, not per operation.
+    # The per-path memo this used to have was for the per-call connection
+    # era and is gone with it.
     try:
         # Migrations FIRST: existing DBs gain new columns before the schema
         # script (which creates indexes over them) runs. Fresh DBs: table
@@ -211,7 +261,6 @@ def _init_schema(path: Path) -> None:
         with closing(sqlite3.connect(str(path), timeout=5.0)) as c:
             c.executescript(_SCHEMA_BASE)
             c.commit()
-        _initialised.add(key)
     except Exception:
         log.warning("decision_events schema init failed", exc_info=True)
 
