@@ -272,5 +272,7 @@ def test_mcp_tool_count_unchanged():
     """
     from pathlib import Path
 
-    server = (Path(__file__).resolve().parents[1] / "webscout_mcp" / "server" / "mcp_server.py").read_text(encoding="utf-8")
+    server = (Path(__file__).resolve().parents[1] / "webscout_mcp" / "server" / "mcp_server.py").read_text(
+        encoding="utf-8"
+    )
     assert server.count("@mcp.tool()") == 17  # 16 since web_extract_schema

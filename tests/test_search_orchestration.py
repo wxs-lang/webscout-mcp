@@ -608,7 +608,9 @@ async def test_server_unexpected_exception_safe_error_no_legacy():
 async def test_server_none_search_service_uses_legacy():
     legacy = _FakeLegacyEngine()
     with (
-        patch("webscout_mcp.server.mcp_server.create_search_service_from_config", side_effect=RuntimeError("init fail")),
+        patch(
+            "webscout_mcp.server.mcp_server.create_search_service_from_config", side_effect=RuntimeError("init fail")
+        ),
         patch("webscout_mcp.server.mcp_server.SearchEngine", return_value=legacy),
     ):
         from webscout_mcp.config import Config
