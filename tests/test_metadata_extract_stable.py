@@ -318,7 +318,7 @@ class TestMCPToolActualInvocation:
             mock_result.final_url = "https://example.com/article-page"
             mock_fetcher_instance.fetch = AsyncMock(return_value=mock_result)
 
-            with patch("webscout_mcp.server.Fetcher", return_value=mock_fetcher_instance):
+            with patch("webscout_mcp.server.mcp_server.Fetcher", return_value=mock_fetcher_instance):
                 server = create_server(cfg)
 
                 # Verify metadata_extract is in the tool list
@@ -374,7 +374,7 @@ class TestMCPToolActualInvocation:
             mock_result.final_url = "https://example.com/empty"
             mock_fetcher_instance.fetch = AsyncMock(return_value=mock_result)
 
-            with patch("webscout_mcp.server.Fetcher", return_value=mock_fetcher_instance):
+            with patch("webscout_mcp.server.mcp_server.Fetcher", return_value=mock_fetcher_instance):
                 server = create_server(cfg)
                 call_result = await server.call_tool(
                     "metadata_extract",
@@ -472,7 +472,7 @@ class TestMetadataExtractErrorHandling:
             mock_fetcher_instance = MagicMock()
             mock_fetcher_instance.fetch = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
 
-            with patch("webscout_mcp.server.Fetcher", return_value=mock_fetcher_instance):
+            with patch("webscout_mcp.server.mcp_server.Fetcher", return_value=mock_fetcher_instance):
                 server = create_server(cfg)
                 call_result = await server.call_tool(
                     "metadata_extract",

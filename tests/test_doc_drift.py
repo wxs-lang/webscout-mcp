@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-SRC = Path(__file__).resolve().parent.parent / "webscout_mcp" / "server.py"
+SRC = Path(__file__).resolve().parent.parent / "webscout_mcp" / "server" / "mcp_server.py"
 DOC = Path(__file__).resolve().parent.parent / "COMPATIBILITY.md"
 
 

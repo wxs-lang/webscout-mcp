@@ -60,7 +60,7 @@ def test_processed_text_yields_nothing():
 
 def test_the_tool_prefers_raw_html():
     """The ordering is the fix; a refactor must not silently reverse it again."""
-    source = (pathlib.Path(__file__).resolve().parents[1] / "webscout_mcp" / "server.py").read_text(encoding="utf-8")
+    source = (pathlib.Path(__file__).resolve().parents[1] / "webscout_mcp" / "server" / "mcp_server.py").read_text(encoding="utf-8")
     start = source.find("async def metadata_extract")
     assert start != -1
     end = source.find("@mcp.tool()", start)
