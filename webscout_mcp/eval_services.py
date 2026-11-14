@@ -227,3 +227,14 @@ async def aclose_services(services: dict[str, Any]) -> None:
             await fetcher.close()
         except Exception:  # pragma: no cover - defensive
             log.debug("eval: fetcher close failed", exc_info=True)
+
+    # Decision store holds a persistent connection (synchronous=NORMAL WAL):
+    # release it here, the same deterministic-shutdown point the Effects
+    # pattern calls drain(). Directory removal and wheel smoke tests depend
+    # on the handle being droppable.
+    from . import decision_store
+
+    try:
+        decision_store.close()
+    except Exception:  # pragma: no cover - defensive
+        log.debug("eval: decision store close failed", exc_info=True)

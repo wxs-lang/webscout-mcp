@@ -16,6 +16,16 @@ fails with WinError 32 - the same failure `core/cache.py` hit before v2.8.0 (7 s
 sites keep their exact `with _lock, _conn_ctx() as c:` shape, so the diff is mechanical.
 
 After the change, writing a record and then removing the store's directory succeeds.
+
+## 2026-11-14 update: persistent connection
+
+record_event measured 5.92ms/record with per-call connections vs 0.63ms on a
+persistent one (per-connection schema load dominates on Windows/HDD). The
+store now holds a process-lifetime handle (synchronous=NORMAL WAL — the data
+is rebuildable observability state) released by `decision_store.close()`,
+which `aclose_services()` calls on shutdown. The rmtree contract moves to
+explicit close(): tests call close() before removing the directory, mirroring
+how cache.py's fix works.
 """
 
 from __future__ import annotations
@@ -66,7 +76,8 @@ def test_jev_append_does_not_hold_the_directory(store_env):
 
 def test_decision_count_does_not_hold_the_directory(store_env):
     decision_store.count_events()
-    assert _can_remove(store_env), "decision_store left the DB file open"
+    decision_store.close()
+    assert _can_remove(store_env), "close() failed to release the DB handle"
 
 
 def test_jev_load_recent_does_not_hold_the_directory(store_env):
@@ -84,14 +95,38 @@ def test_commit_still_happens(store_env):
     assert "test" in serialized, f"the record is missing from the store: {serialized[:120]}"
 
 
-def test_the_connection_manager_closes_on_error():
-    """A failing body must roll back and close, not leave the handle behind."""
+def test_the_connection_manager_rolls_back_on_error(store_env):
+    """A failing body rolls back; the persistent handle survives by design
+    (it is process-lifetime, released by close()).
+
+    Self-contained probe on the store_env tmp DB: create the probe table
+    OUTSIDE the failing block (DDL may auto-commit), INSERT inside it, then
+    verify the row is gone after the exception. No record_event (its own
+    lock+commit would defeat the outer rollback), no count_events (reads
+    through its own context and would be polluted by other tests)."""
+    # Arrange: probe table committed on its own.
+    with decision_store._conn_ctx() as c:
+        c.execute("CREATE TABLE probe_rollback (v INTEGER)")
+
+    # Act: DML insert, then the body raises.
     with pytest.raises(ValueError):
         with decision_store._conn_ctx() as c:
+            c.execute("INSERT INTO probe_rollback VALUES (1)")
             raise ValueError("boom")
-    # The connection is closed: executing on it now raises ProgrammingError.
-    with pytest.raises(sqlite3.ProgrammingError):
-        c.execute("SELECT 1")
+
+    # Assert: the INSERT rolled back; the table still exists (committed earlier).
+    with decision_store._conn_ctx() as c:
+        n = c.execute("SELECT COUNT(*) FROM probe_rollback").fetchone()[0]
+        assert n == 0, "rollback did not happen"
+    decision_store.close()
+
+
+def test_close_releases_the_handle_and_keeps_data(store_env):
+    """The production contract: close() drops the handle; committed data
+    survives; the directory becomes removable."""
+    decision_store.count_events()
+    decision_store.close()
+    assert _can_remove(store_env), "close() did not release the handle"
 
 
 def test_no_call_site_uses_the_raw_factory_as_a_context_manager():
