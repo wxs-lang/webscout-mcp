@@ -219,7 +219,7 @@ class TestServer:
 
 
 class TestURLSecurity:
-    def test_safe_public_url(self):
+    def test_safe_public_url(self, requires_public_dns):
         from webscout_mcp.utils import is_safe_url
 
         is_safe, reason = is_safe_url("https://example.com/page")

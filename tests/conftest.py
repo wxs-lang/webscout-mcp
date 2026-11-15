@@ -347,3 +347,18 @@ def memory_tracker():
             return sum(stat.size_diff for stat in stats)
 
     return MemoryTracker()
+
+
+# ============ Environment-capability fixtures ============
+#
+# pytest only collects fixtures defined in conftest.py (or a plugin), so the
+# fixtures must be declared here even though the detection logic lives in
+# _env_capabilities.py. Tests request them by name to skip when the local
+# environment makes the assertion untestable rather than wrong — see
+# _env_capabilities.py for why each one exists.
+
+from _env_capabilities import (  # noqa: E402
+    posix_modes_available,
+    requires_posix_modes,  # noqa: F401  (re-exported for test modules)
+    requires_public_dns,  # noqa: F401
+)

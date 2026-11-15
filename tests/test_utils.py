@@ -202,7 +202,7 @@ class TestTruncateText:
 class TestIsSafeUrl:
     """Tests for is_safe_url function."""
 
-    def test_safe_public_url(self):
+    def test_safe_public_url(self, requires_public_dns):
         """Test safe public URL."""
         safe, reason = is_safe_url("https://example.com")
         assert safe is True
