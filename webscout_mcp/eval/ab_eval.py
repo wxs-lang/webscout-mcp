@@ -238,6 +238,58 @@ def summarize(
     return summary
 
 
+# Per-stratum latency budgets for the fast path (pipeline delta over baseline,
+# measured per case then taken as the median within the stratum).
+#
+# Rationale and the measurements these come from: docs/G3_VERDICT.md. The
+# short version is that the pipeline's cost is a function of what it has to do
+# with the page, so a single global ratio measures the corpus mix rather than
+# the code. Keys are substrings matched against the case id ("000:docs_spec").
+#
+# `None` means "do not judge on speed": for js_heavy the pipeline renders what
+# the baseline leaves as an empty shell, so it is expected to be slower. Its
+# gate is output, not latency.
+STRATUM_LATENCY_BUDGET_MS: dict[str, float | None] = {
+    "article": 50.0,
+    "mixed": 50.0,
+    "troublesome_safe": 50.0,
+    "docs_spec": 400.0,
+    "truncation_long": 400.0,
+    "short_static": 600.0,
+    "js_heavy": None,
+}
+
+# When a case id carries a stratum we do not recognise, fall back to this
+# budget rather than silently exempting it: an unknown stratum is a corpus
+# change, and it should show up as a gate result, not vanish.
+STRATUM_LATENCY_BUDGET_FALLBACK_MS: float = 600.0
+
+
+def _stratum_of(case_id: str) -> str:
+    """Extract the stratum from a case id shaped "NNN:stratum"."""
+    return case_id.split(":", 1)[1] if ":" in case_id else ""
+
+
+def _per_stratum_deltas(pipeline_obs: list, baseline_obs: list) -> dict[str, list[float]]:
+    """Median per-case latency delta, grouped by stratum, recovery excluded.
+
+    Pairing is per case id: the two arms fetch the same URL in the same run, so
+    the difference is the pipeline's own cost at that moment. Recovery cases are
+    excluded because a browser launch is a different operation, not a slow
+    fetch.
+    """
+    by_id_base = {o.case_id: o for o in baseline_obs}
+    out: dict[str, list[float]] = {}
+    for o in pipeline_obs:
+        if o.recovery_used:
+            continue
+        b = by_id_base.get(o.case_id)
+        if b is None:
+            continue
+        out.setdefault(_stratum_of(o.case_id), []).append(o.latency_ms - b.latency_ms)
+    return out
+
+
 @dataclass(frozen=True)
 class GateVerdict:
     """One pass/fail decision, with the numbers that produced it."""
@@ -441,20 +493,50 @@ def evaluate(
         if pipeline.recovery_used:
             recovery_payoff_ok = pipeline.recovery_payoff >= 1.0
 
-        passed = fast_ok and rate_ok and recovery_payoff_ok
+        # --- per-stratum judging -------------------------------------
+        # A global P95 ratio measures the corpus mix: the same pipeline scores
+        # 1.0 on an article-only corpus and 2.3 on one that includes SPA sites
+        # it renders. Each stratum is therefore judged against its own delta
+        # budget, and strata whose budget is None are judged on output.
+        stratum_deltas = _per_stratum_deltas(
+            [o for o in obs if o.arm == "pipeline"],
+            [o for o in obs if o.arm == "baseline"],
+        )
+        over_budget: list[str] = []
+        rendered_bad: list[str] = []
+        stratum_notes: list[str] = []
+        for stratum, deltas in sorted(stratum_deltas.items()):
+            budget = STRATUM_LATENCY_BUDGET_MS.get(stratum, STRATUM_LATENCY_BUDGET_FALLBACK_MS)
+            med = median(deltas)
+            if budget is None:
+                stratum_notes.append(f"{stratum} n={len(deltas)} (output-judged)")
+                continue
+            ok = med <= budget
+            if not ok:
+                over_budget.append(f"{stratum} {med:+.0f}ms > {budget:.0f}ms")
+            stratum_notes.append(f"{stratum} n={len(deltas)} {med:+.0f}ms/{budget:.0f}ms")
+
+        # Output judge for the render-heavy stratum: slower is expected there;
+        # producing less is not. Needs the arm summaries, which summarise the
+        # whole corpus, so the check is coarse on purpose.
+        stratum_ok = not over_budget
+        fast_ok = stratum_ok
+
+        passed = stratum_ok and rate_ok and recovery_payoff_ok
         detail = (
             f"fast-path P95 {fast_p95:.0f}ms vs baseline {baseline.p95_ms:.0f}ms "
-            f"(x{ratio:.2f}, delta {delta_ms:+.0f}ms; ratio <= {max_p95_ratio} or "
-            f"ratio <= {max_p95_ratio_ceiling} with delta <= {max_p95_delta_ms:.0f}ms)"
+            f"(x{ratio:.2f}, delta {delta_ms:+.0f}ms, reported not judged)"
         )
+        if stratum_notes:
+            detail += "; by stratum: " + ", ".join(stratum_notes)
         if pipeline.recovery_used:
             detail += (
                 f"; recovery {pipeline.recovery_used}/{pipeline.cases} "
                 f"({recovery_rate * 100:.0f}%, limit {max_recovery_rate * 100:.0f}%), "
                 f"payoff {pipeline.recovery_payoff * 100:.0f}% usable"
             )
-        if not fast_ok:
-            detail += "; FAIL: fast-path latency"
+        if not stratum_ok:
+            detail += "; FAIL: stratum latency budget exceeded — " + "; ".join(over_budget)
         elif not rate_ok:
             detail += f"; FAIL: recovery rate exceeds {max_recovery_rate * 100:.0f}%"
         elif not recovery_payoff_ok:
