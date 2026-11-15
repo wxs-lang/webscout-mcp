@@ -369,7 +369,7 @@ class TestFetchAndParseFeedMock:
     """fetch_and_parse_feed with mocked httpx transport."""
 
     @pytest.mark.asyncio
-    async def test_fetch_rss_feed_success(self):
+    async def test_fetch_rss_feed_success(self, requires_public_dns):
         """Successful RSS fetch and parse."""
         mock_response = AsyncMock()
         mock_response.status_code = 200
@@ -393,7 +393,7 @@ class TestFetchAndParseFeedMock:
         assert len(feed.entries) == 2  # max_entries=2
 
     @pytest.mark.asyncio
-    async def test_fetch_html_then_discovery(self):
+    async def test_fetch_html_then_discovery(self, requires_public_dns):
         """HTML page should trigger feed auto-discovery."""
         # First response: HTML page
         html_resp = AsyncMock()
@@ -428,7 +428,7 @@ class TestFetchAndParseFeedMock:
         assert len(feed.entries) == 1
 
     @pytest.mark.asyncio
-    async def test_http_404_raises(self):
+    async def test_http_404_raises(self, requires_public_dns):
         """HTTP 404 should propagate as httpx.HTTPStatusError."""
         mock_response = AsyncMock()
         mock_response.status_code = 404
@@ -450,7 +450,7 @@ class TestFetchAndParseFeedMock:
                 await fetch_and_parse_feed("https://example.com/missing.xml")
 
     @pytest.mark.asyncio
-    async def test_oversize_response_raises(self):
+    async def test_oversize_response_raises(self, requires_public_dns):
         """Response exceeding max_body_bytes should raise ValueError."""
         # Generate 6MB of content
         large_content = (
@@ -705,7 +705,7 @@ class TestBackwardCompatibility:
     """Original API was fetch_and_parse_feed(url, timeout, user_agent)."""
 
     @pytest.mark.asyncio
-    async def test_positional_timeout_and_user_agent(self):
+    async def test_positional_timeout_and_user_agent(self, requires_public_dns):
         """Calling with (url, timeout, user_agent) positionally must work."""
         mock_response = AsyncMock()
         mock_response.status_code = 200
@@ -733,7 +733,7 @@ class TestBackwardCompatibility:
         assert kwargs["user_agent"] == "test-agent/1.0"
 
     @pytest.mark.asyncio
-    async def test_max_entries_keyword_only(self):
+    async def test_max_entries_keyword_only(self, requires_public_dns):
         """max_entries must be passable as keyword-only without breaking."""
         mock_response = AsyncMock()
         mock_response.status_code = 200
@@ -776,7 +776,7 @@ class TestTotalTimeout:
     """Total operation timeout must cover fetch + redirects + auto-discovery."""
 
     @pytest.mark.asyncio
-    async def test_total_timeout_raises(self):
+    async def test_total_timeout_raises(self, requires_public_dns):
         """A slow stream that exceeds total_timeout must raise asyncio.TimeoutError."""
 
         async def _slow_gen():
@@ -805,7 +805,7 @@ class TestTotalTimeout:
                 )
 
     @pytest.mark.asyncio
-    async def test_total_timeout_multi_candidate(self):
+    async def test_total_timeout_multi_candidate(self, requires_public_dns):
         """Total timeout must also cover HTML auto-discovery + multiple candidates."""
         # First response: HTML page (triggers discovery)
         html_resp = AsyncMock()
@@ -909,7 +909,7 @@ class TestMCPToolActualCall:
     """Actually invoke the rss_parse MCP tool through the server, not just check registration."""
 
     @pytest.mark.asyncio
-    async def test_rss_parse_tool_actual_invocation(self):
+    async def test_rss_parse_tool_actual_invocation(self, requires_public_dns):
         """Actually invoke the rss_parse MCP tool through server.call_tool."""
         pytest.importorskip("mcp")
         import tempfile

@@ -1200,7 +1200,7 @@ class TestSizeCapRealOverCap:
 class TestHashKeyAtomicCreation:
     """Hash key must be created atomically with 0600 permissions."""
 
-    def test_atomic_creation_0600(self, tmp_path: Path, monkeypatch):
+    def test_atomic_creation_0600(self, tmp_path: Path, monkeypatch, requires_posix_modes):
         """Key file created with O_EXCL 0600, no write-then-chmod window."""
         import webscout_mcp.decision_event as de
 
@@ -1240,7 +1240,7 @@ class TestHashKeyAtomicCreation:
         assert key == known_key
         assert key_path.read_bytes() == known_key
 
-    def test_in_memory_fallback_when_persist_fails(self, tmp_path: Path, monkeypatch):
+    def test_in_memory_fallback_when_persist_fails(self, tmp_path: Path, monkeypatch, requires_posix_modes):
         """If key cannot be persisted, fall back to in-memory key."""
         import webscout_mcp.decision_event as de
 
