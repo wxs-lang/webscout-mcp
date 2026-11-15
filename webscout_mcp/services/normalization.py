@@ -17,7 +17,6 @@ from typing import Any
 from ..core.metadata_sanitize import sanitize_metadata
 from ..fetch_provider import FetchResponse
 from ..logging_config import get_logger
-from ..providers.search_provider import SearchResponse, SearchStatus
 from ..services.web_result import (
     BACKEND_CRAWL4AI,
     BACKEND_FAST_HTTP,
@@ -25,6 +24,7 @@ from ..services.web_result import (
     WebResult,
     WebResultStatus,
 )
+from .transfer_types import SearchResponse, SearchStatus
 
 log = get_logger(__name__)
 

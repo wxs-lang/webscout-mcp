@@ -27,7 +27,7 @@ import asyncio
 import random
 import time
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
@@ -60,64 +60,6 @@ _MAX_REDIRECTS = 5
 
 
 @dataclass
-class CrawlResult:
-    """Result of a crawl operation."""
-
-    seed_url: str
-    pages_crawled: int = 0
-    pages: list[FetchResult] = field(default_factory=list)
-    errors: list[dict] = field(default_factory=list)
-    links_found: int = 0
-    skipped_robots: int = 0
-    retries: int = 0
-    avg_response_time: float = 0.0
-
-    # --- Stable-hardening additions (backward-compatible; old keys untouched) ---
-    status: str = "success"  # success | partial | failure
-    pages_attempted: int = 0
-    pages_succeeded: int = 0
-    pages_failed: int = 0
-    pages_blocked_robots: int = 0
-    pages_blocked_ssrf: int = 0
-    redirect_loops: int = 0
-    timeouts: int = 0
-    duration_ms: float = 0.0
-    peak_queue_size: int = 0
-    peak_active_workers: int = 0
-    cancelled: bool = False
-    total_timeout_exceeded: bool = False
-    queue_dropped: int = 0
-
-    def to_dict(self) -> dict:
-        return {
-            "seed_url": self.seed_url,
-            "pages_crawled": self.pages_crawled,
-            "links_found": self.links_found,
-            "skipped_robots": self.skipped_robots,
-            "retries": self.retries,
-            "avg_response_time": round(self.avg_response_time, 2),
-            "pages": [p.to_dict() for p in self.pages],
-            "errors": self.errors,
-            # New, backward-compatible metadata block.
-            "status": self.status,
-            "stats": {
-                "pages_attempted": self.pages_attempted,
-                "pages_succeeded": self.pages_succeeded,
-                "pages_failed": self.pages_failed,
-                "pages_blocked_robots": self.pages_blocked_robots,
-                "pages_blocked_ssrf": self.pages_blocked_ssrf,
-                "redirect_loops": self.redirect_loops,
-                "timeouts": self.timeouts,
-                "duration_ms": round(self.duration_ms, 2),
-                "peak_queue_size": self.peak_queue_size,
-                "peak_active_workers": self.peak_active_workers,
-                "cancelled": self.cancelled,
-                "total_timeout_exceeded": self.total_timeout_exceeded,
-                "queue_dropped": self.queue_dropped,
-            },
-        }
-
-
 class Crawler:
     """A concurrent, polite, bounded web crawler with retry and delay support."""
 
@@ -626,3 +568,8 @@ class Crawler:
         except Exception:  # noqa: BLE001
             pass
         return links
+
+
+# CrawlResult moved to services/transfer_types.py (layer direction fix);
+# re-exported here so every existing import site keeps working.
+from ..services.transfer_types import CrawlResult  # noqa: E402,F401

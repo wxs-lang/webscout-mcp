@@ -10,9 +10,9 @@ import io
 import json
 from dataclasses import asdict
 
-from ..providers.crawler import CrawlResult
 from ..services.fetcher import FetchResult
 from ..services.search import SearchResult
+from .transfer_types import CrawlResult
 
 
 class Exporter:
