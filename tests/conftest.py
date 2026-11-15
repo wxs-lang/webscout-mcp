@@ -358,7 +358,8 @@ def memory_tracker():
 # _env_capabilities.py for why each one exists.
 
 from _env_capabilities import (  # noqa: E402
-    posix_modes_available,
-    requires_posix_modes,  # noqa: F401  (re-exported for test modules)
+    posix_semantics_available,
+    requires_outbound_https,  # noqa: F401
+    requires_posix_semantics,  # noqa: F401  (re-exported for test modules)
     requires_public_dns,  # noqa: F401
 )

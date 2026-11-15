@@ -355,7 +355,7 @@ class TestReportOnly:
 
 
 class TestScopedJoin:
-    def test_two_runs_one_db(self, tmp_path, monkeypatch):
+    def test_two_runs_one_db(self, tmp_path, monkeypatch, requires_posix_semantics):
         out_dir = tmp_path / "out"
         # One shared decision.db containing BOTH runs.
         runA_dir = out_dir / "runA"

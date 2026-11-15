@@ -33,7 +33,7 @@ missing:
     def test_fetch_public_page(requires_public_dns):
         ...
 
-    def test_key_file_is_0600(requires_posix_modes):
+    def test_key_file_is_0600(requires_posix_semantics):
         ...
 """
 
@@ -46,8 +46,14 @@ import pytest
 from _dns_probe import dns_is_intercepted
 
 
-def posix_modes_available() -> bool:
-    """True where chmod 0600 is enforceable (not Windows)."""
+def posix_semantics_available() -> bool:
+    """True where POSIX file/permission semantics apply (not Windows).
+
+    Covers more than chmod: on Windows, Path.home() ignores $HOME, and
+    copying a file may attempt to preserve ACLs the process cannot
+    restore (WinError 1314). Tests that assume either behaviour are
+    POSIX tests and should say so.
+    """
     return os.name == "posix" and sys.platform != "win32"
 
 
@@ -63,7 +69,38 @@ def requires_public_dns() -> None:
 
 
 @pytest.fixture
-def requires_posix_modes() -> None:
+def requires_posix_semantics() -> None:
     """Skip on platforms without POSIX permission-bit semantics."""
-    if not posix_modes_available():
+    if not posix_semantics_available():
         pytest.skip("POSIX file-mode semantics (0600) do not exist on this platform")
+
+
+def outbound_https_works() -> bool:
+    """Can this process open an HTTPS connection to a public host?
+
+    Measured on this machine 2026-11-16: HTTP_PROXY/HTTPS_PROXY pointed at
+    127.0.0.1:7890, which had stopped listening, so every provider raised
+    ConnectError while DNS still resolved fine. DNS-based detection cannot see
+    that; a one-request probe can.
+
+    Kept deliberately small: one HEAD to a host that answers cheaply, 5s cap,
+    no retry. This runs at fixture setup, so its cost is paid once per module.
+    """
+    import httpx
+
+    try:
+        with httpx.Client(trust_env=True, timeout=5.0, follow_redirects=True) as c:
+            c.head("https://www.example.com/")
+        return True
+    except Exception:
+        return False
+
+
+@pytest.fixture
+def requires_outbound_https() -> None:
+    """Skip when no outbound HTTPS path exists (dead proxy, offline, blocked)."""
+    if not outbound_https_works():
+        pytest.skip(
+            "no outbound HTTPS path from this process (proxy dead or offline); "
+            "tests that drive live providers cannot run here"
+        )
