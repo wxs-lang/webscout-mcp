@@ -47,6 +47,7 @@ WORKFLOWS = [
 # Logging
 # ============================================================
 
+
 def log(message, level="INFO"):
     """Log message with timestamp."""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -71,13 +72,17 @@ def alert(message, severity="WARNING"):
 # GitHub CI Monitoring
 # ============================================================
 
+
 def github_api_get(endpoint):
     """Make a GET request to GitHub API."""
     url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/{endpoint}"
-    req = urllib.request.Request(url, headers={
-        "Authorization": f"token {GITHUB_TOKEN}",
-        "Accept": "application/vnd.github.v3+json",
-    })
+    req = urllib.request.Request(
+        url,
+        headers={
+            "Authorization": f"token {GITHUB_TOKEN}",
+            "Accept": "application/vnd.github.v3+json",
+        },
+    )
     with urllib.request.urlopen(req, timeout=15) as resp:
         return json.loads(resp.read())
 
@@ -118,13 +123,11 @@ def check_ci_status():
 # Process Monitoring
 # ============================================================
 
+
 def check_process(process_name):
     """Check if a process is running."""
     try:
-        result = subprocess.run(
-            ["pgrep", "-f", process_name],
-            capture_output=True, text=True, timeout=5
-        )
+        result = subprocess.run(["pgrep", "-f", process_name], capture_output=True, text=True, timeout=5)
         pids = result.stdout.strip().split("\n") if result.stdout.strip() else []
         return len(pids) > 0, pids
     except Exception:
@@ -156,6 +159,7 @@ def check_all_processes():
 # ============================================================
 # Log File Monitoring
 # ============================================================
+
 
 def check_log_for_errors(log_file, error_patterns=None):
     """Check a log file for recent errors."""
@@ -210,6 +214,7 @@ def check_all_logs():
 # System Resource Monitoring
 # ============================================================
 
+
 def check_system_resources():
     """Check system resource usage."""
     log("Checking system resources...")
@@ -249,6 +254,7 @@ def check_system_resources():
 # Report Generation
 # ============================================================
 
+
 def generate_report(ci_status, process_status, log_status, system_status):
     """Generate a comprehensive monitoring report."""
     report = {
@@ -269,6 +275,7 @@ def generate_report(ci_status, process_status, log_status, system_status):
 # ============================================================
 # Main Monitor Loop
 # ============================================================
+
 
 def main():
     """Main monitoring loop."""
@@ -324,6 +331,7 @@ def main():
         except Exception as e:
             alert(f"Monitor iteration failed: {e}", "ERROR")
             import traceback
+
             traceback.print_exc()
 
         print(f"\n💤 Sleeping {CHECK_INTERVAL}s...")

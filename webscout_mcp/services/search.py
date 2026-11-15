@@ -26,7 +26,7 @@ from ..core.cache import Cache
 from ..core.config import Config
 from ..core.exceptions import AllBackendsFailedError, SearchError, SearchParseError
 from ..logging_config import get_logger
-from ..search_health import SearchHealthManager
+from ..observability.search_health import SearchHealthManager
 
 log = get_logger(__name__)
 

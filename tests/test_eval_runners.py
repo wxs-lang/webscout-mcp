@@ -156,7 +156,15 @@ async def test_fetch_runner_records_decision_from_service(isolated_dbs, monkeypa
         # The call must have originated inside the production service (a
         # fetch_service.py frame in the stack), never from the eval driver.
         frames = [f.filename for f in traceback.extract_stack()]
-        calls.append({"in_service": any("webscout_mcp/fetch_service.py" in f for f in frames)})
+        calls.append(
+            {
+                # Match the file name, not a full path: the module has moved
+                # between layers during the step-7 reorganization and may move
+                # again; what the assertion means is "the production service
+                # made this call", not "it lives at this exact path".
+                "in_service": any(f.replace("\\", "/").endswith("fetch_service.py") for f in frames)
+            }
+        )
         return real(**kwargs)
 
     with mock.patch("webscout_mcp.decision_adapter.record_fetch_decision", side_effect=spy) as m:

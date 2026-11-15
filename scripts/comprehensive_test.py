@@ -94,6 +94,7 @@ CRAWL_URLS = [
 # Test Result Tracking
 # ============================================================
 
+
 class TestMetrics:
     """Track test metrics and statistics."""
 
@@ -135,13 +136,15 @@ class TestMetrics:
         print(log_entry)
 
         # Append to history
-        self.test_history.append({
-            "timestamp": timestamp,
-            "test": test_name,
-            "status": "pass" if passed else ("skip" if skipped else "fail"),
-            "latency_ms": latency_ms,
-            "error": str(error) if error else None,
-        })
+        self.test_history.append(
+            {
+                "timestamp": timestamp,
+                "test": test_name,
+                "status": "pass" if passed else ("skip" if skipped else "fail"),
+                "latency_ms": latency_ms,
+                "error": str(error) if error else None,
+            }
+        )
 
     def get_summary(self):
         """Get test summary statistics."""
@@ -176,6 +179,7 @@ class TestMetrics:
 # ============================================================
 # Test Functions
 # ============================================================
+
 
 async def test_web_search(search_service, metrics, query, language, region):
     """Test web_search tool."""
@@ -223,7 +227,7 @@ async def test_cache_operations(cache, metrics):
     test_name = "cache_stats"
     start = time.time()
     try:
-        stats = cache.get_stats() if hasattr(cache, 'get_stats') else {}
+        stats = cache.get_stats() if hasattr(cache, "get_stats") else {}
         latency = (time.time() - start) * 1000
         passed = isinstance(stats, dict)
         metrics.record_result(test_name, passed, latency)
@@ -235,7 +239,7 @@ async def test_cache_operations(cache, metrics):
     test_name = "cache_clear"
     start = time.time()
     try:
-        if hasattr(cache, 'clear'):
+        if hasattr(cache, "clear"):
             cache.clear()
         latency = (time.time() - start) * 1000
         metrics.record_result(test_name, True, latency)
@@ -281,6 +285,7 @@ async def test_rss_parse(metrics, feed_url):
     start = time.time()
     try:
         import httpx
+
         async with httpx.AsyncClient(timeout=15) as client:
             response = await client.get(feed_url)
             content = response.text
@@ -323,6 +328,7 @@ async def test_broken_links(fetcher, metrics, url):
         content = result.get("content", "") if isinstance(result, dict) else str(result)
         # Count links in content (basic)
         import re
+
         links = re.findall(r'href=["\']([^"\']+)["\']', content)
         latency = (time.time() - start) * 1000
         passed = isinstance(links, list)
@@ -338,6 +344,7 @@ async def test_web_crawl(metrics, url):
     start = time.time()
     try:
         import httpx
+
         async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
             response = await client.get(url)
             status_code = response.status_code
@@ -369,6 +376,7 @@ async def test_web_extract(fetcher, metrics, url):
 # ============================================================
 # Main Test Runner
 # ============================================================
+
 
 async def run_full_test_suite():
     """Run the full test suite covering all MCP tools."""
@@ -449,11 +457,13 @@ async def run_full_test_suite():
             print(f"\n{'─' * 80}")
             print(f"📊 ITERATION {iteration} SUMMARY")
             print(f"{'─' * 80}")
-            print(f"  Total: {summary['total_tests']} | "
-                  f"Passed: {summary['passed']} | "
-                  f"Failed: {summary['failed']} | "
-                  f"Skipped: {summary['skipped']} | "
-                  f"Pass Rate: {summary['pass_rate']}%")
+            print(
+                f"  Total: {summary['total_tests']} | "
+                f"Passed: {summary['passed']} | "
+                f"Failed: {summary['failed']} | "
+                f"Skipped: {summary['skipped']} | "
+                f"Pass Rate: {summary['pass_rate']}%"
+            )
             print(f"  Elapsed: {summary['elapsed_seconds']}s")
 
             # Memory usage

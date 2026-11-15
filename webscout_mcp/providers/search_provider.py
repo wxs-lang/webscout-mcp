@@ -30,37 +30,6 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-from ..core.errors import StandardErrorCode
-from ..services.search import SearchResult
-
-
-class SearchStatus(str, Enum):
-    """Status of a search request."""
-
-    SUCCESS = "success"
-    EMPTY = "empty"
-    ERROR = "error"
-
-
-class SearchFailureKind(str, Enum):
-    """Internal, deterministic failure category for a search provider.
-
-    Used by the SearchRecovery classifier. NOT part of the public MCP
-    response; it lives alongside error_type so we can distinguish
-    auth / rate-limit / parser / network / server without relying on
-    provider-specific strings.
-    """
-
-    TIMEOUT = "timeout"
-    RATE_LIMITED = "rate_limited"
-    AUTH = "auth"
-    PARSER = "parser"
-    NETWORK = "network"
-    SERVER = "server"
-    CONFIG = "config"
-    PROVIDER = "provider"
-    INVALID_REQUEST = "invalid_request"
-
 
 class ProviderHealthStatus(str, Enum):
     """Health status of a provider."""
@@ -141,132 +110,6 @@ class ProviderHealth:
 
 
 @dataclass
-class SearchResponse:
-    """Standardized search response.
-
-    All search providers return this standardized response object,
-    ensuring consistent behavior and easy aggregation by SearchService.
-    """
-
-    query: str
-    provider: str
-    results: list[SearchResult] = field(default_factory=list)
-    status: SearchStatus = SearchStatus.SUCCESS
-    latency_ms: float = 0.0
-    error_type: StandardErrorCode | None = None
-    error_message: str | None = None
-    retryable: bool = False
-    failure_kind: SearchFailureKind | None = None
-    extra: dict[str, Any] = field(default_factory=dict)
-
-    def __post_init__(self) -> None:
-        # Auto-detect empty results
-        if self.status == SearchStatus.SUCCESS and not self.results:
-            self.status = SearchStatus.EMPTY
-
-        # Auto-detect retryable from error type
-        if self.error_type and not self.retryable:
-            from ..core.errors import RETRYABLE_ERROR_CODES
-
-            if self.error_type in RETRYABLE_ERROR_CODES:
-                self.retryable = True
-
-    @property
-    def is_success(self) -> bool:
-        """Check if the search was successful (has results)."""
-        return self.status == SearchStatus.SUCCESS and bool(self.results)
-
-    @property
-    def is_empty(self) -> bool:
-        """Check if the search returned no results."""
-        return self.status == SearchStatus.EMPTY
-
-    @property
-    def is_error(self) -> bool:
-        """Check if the search failed."""
-        return self.status == SearchStatus.ERROR
-
-    @classmethod
-    def success(
-        cls,
-        query: str,
-        provider: str,
-        results: list[SearchResult],
-        latency_ms: float = 0.0,
-    ) -> SearchResponse:
-        """Create a successful search response."""
-        return cls(
-            query=query,
-            provider=provider,
-            results=results,
-            status=SearchStatus.SUCCESS,
-            latency_ms=latency_ms,
-        )
-
-    @classmethod
-    def empty(
-        cls,
-        query: str,
-        provider: str,
-        latency_ms: float = 0.0,
-    ) -> SearchResponse:
-        """Create an empty search response."""
-        return cls(
-            query=query,
-            provider=provider,
-            results=[],
-            status=SearchStatus.EMPTY,
-            latency_ms=latency_ms,
-        )
-
-    @classmethod
-    def error(
-        cls,
-        query: str,
-        provider: str,
-        error_type: StandardErrorCode,
-        error_message: str = "",
-        latency_ms: float = 0.0,
-        retryable: bool | None = None,
-        failure_kind: SearchFailureKind | None = None,
-    ) -> SearchResponse:
-        """Create an error search response."""
-        return cls(
-            query=query,
-            provider=provider,
-            results=[],
-            status=SearchStatus.ERROR,
-            latency_ms=latency_ms,
-            error_type=error_type,
-            error_message=error_message,
-            retryable=retryable if retryable is not None else False,
-            failure_kind=failure_kind,
-        )
-
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary for serialization."""
-        return {
-            "query": self.query,
-            "provider": self.provider,
-            "results": [
-                {
-                    "position": r.position,
-                    "title": r.title,
-                    "url": r.url,
-                    "snippet": r.snippet,
-                    "backend": r.backend,
-                }
-                for r in self.results
-            ],
-            "status": self.status.value,
-            "latency_ms": self.latency_ms,
-            "error_type": self.error_type.value if self.error_type else None,
-            "error_message": self.error_message,
-            "retryable": self.retryable,
-            "result_count": len(self.results),
-        }
-
-
 class SearchProvider(ABC):
     """Abstract base class for all search providers.
 
@@ -338,3 +181,18 @@ class SearchProvider(ABC):
     def get_health(self) -> ProviderHealth:
         """Get the current cached health status."""
         return self._health
+
+
+# SearchResult is defined in services/search.py and re-exported here so
+# historical `from webscout_mcp.providers.search_provider import SearchResult`
+# call sites keep working.
+from ..services.search import SearchResult  # noqa: E402,F401
+
+# SearchStatus / SearchResponse moved to services/transfer_types.py
+# (layer direction fix); re-exported here for compatibility.
+# SearchFailureKind also moved down (SearchResponse references it).
+from ..services.transfer_types import (  # noqa: E402,F401
+    SearchFailureKind,  # noqa: E402,F401
+    SearchResponse,
+    SearchStatus,
+)

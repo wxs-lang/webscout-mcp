@@ -71,10 +71,7 @@ def log(message):
 def is_process_running(pattern):
     """Check if a process matching the pattern is running."""
     try:
-        result = subprocess.run(
-            ["pgrep", "-f", pattern],
-            capture_output=True, text=True, timeout=5
-        )
+        result = subprocess.run(["pgrep", "-f", pattern], capture_output=True, text=True, timeout=5)
         pids = result.stdout.strip().split("\n") if result.stdout.strip() else []
         # Filter out the watchdog itself
         pids = [p for p in pids if p]

@@ -1,4 +1,3 @@
-# WebScout MCP — 总目标合理性评判与升级建议
 
 > 评判日期：**2026-10-25**
 > 评判对象：[`GOAL.md`](GOAL.md)（总目标 v1.0，2026-10-25 归档）
@@ -416,7 +415,7 @@ with httpx.Client(
 | **4** | `content_quality` / `broken_links` 移出 Core | F1 / 5.3 | ✅ **已完成**（v2.5–v2.6 期间移入 `extras/`，MCP 工具面冻结兼容） |
 | **5** | Phase 5：自愈策略收敛成可观测策略表 | 5.4 | ✅ **已完成 2026-11-14**（v2.8.0 `provider_activity` 落地第一块；本步完成收敛：阈值/marker 单源化到 `recovery_policy` + identity 双向断言 + 第 17 个 MCP 工具 `recovery_policy` 暴露策略表与 drift 警告。classifer 读表驱动的重构留给 A/B 验证后的后续变更） |
 | **6** | 清理未合并分支 + 修正 `REFACTOR_PLAN.md` 勾选 + 统一进度口径 | 4.2 / 4.3 / 5.4 | ✅ **已完成 2026-10-25** |
-| 7 | （可选）五层架构重组 | 4.1 | 📋 **规划完成**（[docs/ARCHITECTURE_REORG.md](docs/ARCHITECTURE_REORG.md)：现状实测 + 六层映射 + shim 分批迁移策略 + 验收判据；批 1 叶子移动机械可做，批 3 枢纽移动放连续时段） |
+| 7 | （可选）五层架构重组 | 4.1 | ✅ **已完成 2026-11-15**（批 1-6 全部合并：顶层真实模块 103 → 5，层内 99，**七层**结构 `core < security < observability < services < providers < orchestration < server`；实施中修正了原计划的一层命名错误。见 [docs/ARCHITECTURE_REORG.md](docs/ARCHITECTURE_REORG.md) §5.1 执行结果） |
 
 第 1 步已完成。第 2 步的结论是**不需要合并任何东西** —— Phase 4 早在 9-20 就交付了，缺的只是验收证据。
 
@@ -451,3 +450,4 @@ with httpx.Client(
 | 2026-11-14 | v1.8 | **Phase 5 完成（自愈策略收敛为数据）**：阈值与 marker 集单源化到 `recovery_policy`（recovery/fetch_escalation 绑定表对象，identity 测试双向断言；EXTRACTION_COLLAPSE 两阈值补登记）；新增第 17 个 MCP 工具 `recovery_policy`（零参只读，返回渲染表 + drift 警告，COMPATIBILITY §Health & Monitoring 稳定性 beta）；`recovery_policy` 顶层不导入分类器模块，导入图无环；`build_policy_table` 本地导入做校验。行为零变化（绑定值等于旧字面量），7 个钉工具数的测试同步 16→17。工具面 16→17 是有意扩容，A/B 语料判定不受影响 |
 | 2026-11-14 | v1.9 | **第 7 步进入规划**：[docs/ARCHITECTURE_REORG.md](docs/ARCHITECTURE_REORG.md) 落笔 —— 现状实测（103 文件/35,911 行；62 个零 fan-in 叶子可先移；`logging_config` fan-in 53 是枢纽成本大头）、六层目标结构、与项目已验证风格一致的迁移策略（shim 先行 + identity/A/B 门 + 分层分批 PR）、验收判据。执行留待下一个连续工作时段，批 1（叶子移动）机械可做 |
 | 2026-11-14 | v2.1 | **第 7 步批 1+2 合并（#182，CI 4/4）**：31 个模块进入六层包（core 8 / security 2+protector / providers 3+tls2 / services 13 / eval 3 / server 3 / observability 2+telemetry）。旧路径全部 sys.modules 别名 shim 保护，零新增测试失败（20 预存，比基线少 3）。四轮 CI 各抓一类移动连带盲区：per-file-ignores 路径键控、ruff format 行宽、函数内缩进导入深度、generate_docs 默认路径 —— 均已修。剩余：批 3（12 个高 fan-in 枢纽）+ shim 退役 || 2026-11-14 | v2.0 | **存储持久连接（借鉴 deepseek-ai/dsh-superagent Store 设计）**：decision_store 持久连接 + synchronous=NORMAL WAL + close()/drain 语义（aclose_services 关停挂钩）。record_event 5.92 → 0.83ms/条（−86%，较最初 8.16 累计 −90%）。契约测试演进：rmtree 契约转显式 close()，回滚探针改纯 DML（DDL 隐式提交证明不了回滚）。晚间 A/B 复验：G1/G2 PASS（双臂 50/50 持平，晚间代理抖动两臂同抖），G3 fast-path 比值 x2.33 —— 剩余尾部确认为代理路径抖动，存储层已不再是因子 |
+| 2026-11-15 | v2.2 | **第 7 步完成（批 1-6 全部合并）**：顶层真实模块 **103 → 5**，层内模块 99。实施中发现六层计划有一层命名错误：`fetch_service`/`search_service`/`jev_shadow`/`recovery` 依赖 `providers.*`（把 providers 组装成端到端服务），必须位于 providers 之上 —— 原计划称之为 services，但 services 须在 providers 之下。最终结构为**七层**：`core < security < observability < services < providers < orchestration < server`。留根 5 个：3 个共享基座（`logging_config` fan-in 37、`recovery_policy` 15、`fetch_provider` 9，每层都依赖）+ 2 个入口（`__main__`、`_version`）。依赖方向由脚本守卫机械验证（向上依赖直接 abort）。81 个 shim 保留但升级为 `DeprecationWarning`（内部引用已全部指向真实路径，262 处外部引用继续可用）。全程零新增测试失败（3411 passed / 20 预存）。# WebScout MCP — 总目标合理性评判与升级建议

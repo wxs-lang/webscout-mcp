@@ -58,6 +58,13 @@ jobs:
           # exactly what happened when CHALLENGE was added.
           git diff --exit-code MODULE_STATUS.md docs/tools.md docs/RECOVERY_POLICY.md
 
+      # The seven-layer structure must stay true, not just have been true on
+      # the day it was built. Two upward dependencies survived the whole
+      # reorganization because the move-time guard only inspected modules it
+      # was moving; this checks the END state on every push.
+      - name: Check layer discipline
+        run: python scripts/check_layers.py
+
       - name: Upload ruff results
         if: always()
         uses: actions/upload-artifact@v7
