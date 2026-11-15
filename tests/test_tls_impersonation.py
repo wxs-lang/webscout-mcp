@@ -341,7 +341,7 @@ def test_caller_rejects_a_challenge_page_as_content():
     """
     import pathlib
 
-    source = pathlib.Path("webscout_mcp/fetcher.py").read_text(encoding="utf-8")
+    source = pathlib.Path("webscout_mcp/services/fetcher.py").read_text(encoding="utf-8")
     assert "if imp_status and imp_body:" not in source, (
         "a bare truthiness check accepts a 401 challenge page as content"
     )
