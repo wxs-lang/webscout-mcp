@@ -5,6 +5,69 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v3.0.0 (2026-11-15)
+
+Step 7 of the GOAL_REVIEW roadmap: the flat 103-module package is now a
+seven-layer structure with mechanically enforced dependency direction.
+
+    core < security < observability < services < providers < orchestration < server
+
+### Structure
+
+- **Top-level real modules: 103 -> 5.** The five remaining are the shared hub
+  base (`logging_config` fan-in 37, `recovery_policy` 15, `fetch_provider` 9 -
+  imported from every layer, so they belong at the root) plus `__main__` and
+  `_version` (entry points).
+- **99 modules inside layers:** core 18, security 2, observability 5,
+  services 26, providers 19, orchestration 4, server 6, plus eval 8 and
+  extras 11 as side branches.
+
+### The plan had a layer wrong
+
+The six-layer plan called the composing layer "services", but
+`fetch_service` / `search_service` / `jev_shadow` / `recovery` depend on
+`providers.*` - they assemble providers into end-to-end behaviour and must
+sit above them. `services` has to stay below providers (providers import
+services 23 times). The real structure is seven layers; `orchestration` is
+the name for what the plan intended.
+
+### Enforcement, not just folders
+
+`scripts/check_layers.py` scans every module and exits non-zero on any
+upward import or side-branch leak; `tests/test_layer_discipline.py` runs it
+against the real package and feeds it a synthetic violation to prove it
+detects one; `quality.yml` gates on it.
+
+That checker earned its place immediately: it found **two real upward edges**
+that survived the entire migration, because the move-time guard only
+inspected modules being moved. Both were data-class imports
+(`CrawlResult`, `SearchResponse`) and are fixed by moving the types down to
+`services/transfer_types.py` with provider-side re-exports.
+
+### Compatibility
+
+81 `sys.modules` shims remain at the historical flat paths, all emitting
+`DeprecationWarning`. Internal imports point at real layer paths; 262
+external references (tests/scripts) keep working unchanged. A shim costs one
+`sys.modules` assignment per process - no runtime overhead.
+
+### Fixed along the way
+
+- `extras/rag_optimizer` reported `processing_time_ms=0.0` for sub-10us
+  retrievals (`round(..., 2)` collapsed it) - now `perf_counter` with 4
+  decimals and a non-zero floor.
+- `test_eval_runners` asserted a call-stack frame contained the literal path
+  `webscout_mcp/fetch_service.py`; it now matches the file name, which is
+  stable across layer moves. This had been failing since before the
+  reorganization started.
+- `test_content_extraction` (two tests) had been failing on a fixture shape
+  trafilatura rejects; the extractor fallback fixed them.
+
+### Numbers
+
+3417 passing / 19 failures, all pre-existing or known-flaky (the baseline
+before this work was 3305 passing / 23 failing).
+
 ## Unreleased
 
 ### Added
