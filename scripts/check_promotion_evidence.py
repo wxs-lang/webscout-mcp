@@ -30,6 +30,7 @@ import json
 import os
 import re
 import sys
+
 # timezone.utc, not datetime.UTC: the latter is 3.11+, and this project
 # supports 3.10 (REFACTOR_PLAN.md#L211).
 from datetime import datetime, timezone

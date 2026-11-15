@@ -157,13 +157,13 @@ async def run_search_test(search_service: SearchService, metrics: StabilityMetri
         request = SearchRequest(query=query, max_results=5)
         result = await asyncio.wait_for(search_service.search(request), timeout=timeout)
         latency = (time.time() - start) * 1000
-        provider = getattr(result, 'provider', 'unknown')
-        success = result.is_success if hasattr(result, 'is_success') else result.status == 'success'
-        error = getattr(result, 'error_type', None) if not success else None
+        provider = getattr(result, "provider", "unknown")
+        success = result.is_success if hasattr(result, "is_success") else result.status == "success"
+        error = getattr(result, "error_type", None) if not success else None
         metrics.record_search(success, latency, provider, str(error) if error else None)
 
         status = "✅" if success else "❌"
-        result_count = len(getattr(result, 'results', [])) if success else 0
+        result_count = len(getattr(result, "results", [])) if success else 0
         print(f"  {status} Search: {query[:40]:40s} | {latency:6.0f}ms | {provider} | {result_count} results")
         return success
     except asyncio.TimeoutError:
@@ -187,7 +187,7 @@ async def run_fetch_test(fetcher: Fetcher, metrics: StabilityMetrics, url: str, 
         latency = (time.time() - start) * 1000
 
         # Check if result has content
-        content_len = len(getattr(result, 'content', '')) if result else 0
+        content_len = len(getattr(result, "content", "")) if result else 0
         success = result is not None and content_len > 0
 
         error = None if success else ("empty_content" if content_len == 0 else "fetch_failed")
@@ -214,29 +214,38 @@ def print_report(metrics: StabilityMetrics, iteration: int):
     print("\n" + "=" * 80)
     print(f"📊 STABILITY REPORT - Iteration {iteration} | Elapsed: {stats['elapsed_hours']}h")
     print("=" * 80)
-    print(f"  Search: {stats['search']['success']}/{stats['search']['total']} "
-          f"({stats['search']['success_rate']}%) | "
-          f"P50: {stats['search']['p50_ms']}ms | P95: {stats['search']['p95_ms']}ms")
-    print(f"  Fetch:  {stats['fetch']['success']}/{stats['fetch']['total']} "
-          f"({stats['fetch']['success_rate']}%) | "
-          f"P50: {stats['fetch']['p50_ms']}ms | P95: {stats['fetch']['p95_ms']}ms")
+    print(
+        f"  Search: {stats['search']['success']}/{stats['search']['total']} "
+        f"({stats['search']['success_rate']}%) | "
+        f"P50: {stats['search']['p50_ms']}ms | P95: {stats['search']['p95_ms']}ms"
+    )
+    print(
+        f"  Fetch:  {stats['fetch']['success']}/{stats['fetch']['total']} "
+        f"({stats['fetch']['success_rate']}%) | "
+        f"P50: {stats['fetch']['p50_ms']}ms | P95: {stats['fetch']['p95_ms']}ms"
+    )
     print(f"  Rate:   {stats['requests_per_hour']} requests/hour")
 
-    if stats['search']['errors']:
+    if stats["search"]["errors"]:
         print(f"  Search errors: {stats['search']['errors']}")
-    if stats['fetch']['errors']:
+    if stats["fetch"]["errors"]:
         print(f"  Fetch errors: {stats['fetch']['errors']}")
 
     print("=" * 80 + "\n")
 
     # Save report to file
     report_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stability_report.json")
-    with open(report_file, 'w') as f:
-        json.dump({
-            "timestamp": datetime.now().isoformat(),
-            "iteration": iteration,
-            "stats": stats,
-        }, f, indent=2, ensure_ascii=False)
+    with open(report_file, "w") as f:
+        json.dump(
+            {
+                "timestamp": datetime.now().isoformat(),
+                "iteration": iteration,
+                "stats": stats,
+            },
+            f,
+            indent=2,
+            ensure_ascii=False,
+        )
 
 
 async def main():
@@ -290,6 +299,7 @@ async def main():
                 # Catch any unexpected errors in an iteration so the test continues
                 print(f"  ⚠️  Iteration {iteration} error: {type(e).__name__}: {str(e)[:80]}")
                 import traceback
+
                 traceback.print_exc()
 
             # Wait before next iteration (with jitter to avoid thundering herd)
@@ -303,6 +313,7 @@ async def main():
     except Exception as e:
         print(f"\n\n❌ Fatal error: {type(e).__name__}: {e}")
         import traceback
+
         traceback.print_exc()
     finally:
         # Final report
@@ -315,12 +326,17 @@ async def main():
 
         # Save final results
         final_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stability_final.json")
-        with open(final_file, 'w') as f:
-            json.dump({
-                "end_time": datetime.now().isoformat(),
-                "total_iterations": iteration,
-                "final_stats": metrics.get_stats(),
-            }, f, indent=2, ensure_ascii=False)
+        with open(final_file, "w") as f:
+            json.dump(
+                {
+                    "end_time": datetime.now().isoformat(),
+                    "total_iterations": iteration,
+                    "final_stats": metrics.get_stats(),
+                },
+                f,
+                indent=2,
+                ensure_ascii=False,
+            )
 
         print(f"\n✅ Results saved to: {final_file}")
 

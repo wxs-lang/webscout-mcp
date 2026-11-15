@@ -56,7 +56,8 @@ def collect(pkg: str) -> dict[tuple[str, str], set[tuple[str, str]]]:
             if not f.endswith(".py") or f == "__init__.py":
                 continue
             name = f[:-3]
-            src = open(os.path.join(root, f), encoding="utf-8", errors="replace").read()
+            with open(os.path.join(root, f), encoding="utf-8", errors="replace") as fh:
+                src = fh.read()
             deps: set[tuple[str, str]] = set()
             for m in re.finditer(r"^from \.\.(\w+)\.(\w+) import", src, re.MULTILINE):
                 deps.add((m.group(1), m.group(2)))

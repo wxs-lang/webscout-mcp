@@ -41,16 +41,34 @@ CHECK_INTERVAL = 300  # 5 minutes
 
 # Keywords that indicate error emails
 ERROR_KEYWORDS = [
-    "error", "failed", "failure", "build failed", "ci failed",
-    "pypi", "publish failed", "github", "action", "workflow",
-    "exception", "traceback", "bug", "issue", "alert",
-    "失败", "错误", "报错", "异常",
+    "error",
+    "failed",
+    "failure",
+    "build failed",
+    "ci failed",
+    "pypi",
+    "publish failed",
+    "github",
+    "action",
+    "workflow",
+    "exception",
+    "traceback",
+    "bug",
+    "issue",
+    "alert",
+    "失败",
+    "错误",
+    "报错",
+    "异常",
 ]
 
 # Project-related keywords
 PROJECT_KEYWORDS = [
-    "webscout", "webscout-mcp", "wxs-lang",
-    "github.com/wxs-lang", "pypi.org/project/webscout",
+    "webscout",
+    "webscout-mcp",
+    "wxs-lang",
+    "github.com/wxs-lang",
+    "pypi.org/project/webscout",
 ]
 
 # Output file for detected errors
@@ -63,6 +81,7 @@ STATE_FILE = Path(__file__).parent.parent / ".email_monitor_state.json"
 # ============================================================
 # Email Decoding Helpers
 # ============================================================
+
 
 def decode_email_header(header_value):
     """Decode email header that may contain encoded words."""
@@ -117,6 +136,7 @@ def get_email_body(msg):
 # State Management
 # ============================================================
 
+
 def load_state():
     """Load processed email IDs from state file."""
     if STATE_FILE.exists():
@@ -141,6 +161,7 @@ def save_state(state):
 # Error Detection
 # ============================================================
 
+
 def is_error_email(subject, body, sender):
     """Check if email is related to project errors."""
     text = f"{subject} {body} {sender}".lower()
@@ -153,8 +174,11 @@ def is_error_email(subject, body, sender):
 
     # Also check for GitHub action failure patterns
     github_patterns = [
-        r"workflow.*fail", r"build.*fail", r"action.*fail",
-        r"run.*fail", r"ci.*fail",
+        r"workflow.*fail",
+        r"build.*fail",
+        r"action.*fail",
+        r"run.*fail",
+        r"ci.*fail",
     ]
     is_github_error = any(re.search(p, text) for p in github_patterns)
 
@@ -165,9 +189,9 @@ def log_error_email(email_id, subject, sender, date, body):
     """Log detected error email to output file."""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     log_entry = f"""
-{'='*80}
+{"=" * 80}
 ⚠️  ERROR EMAIL DETECTED
-{'='*80}
+{"=" * 80}
 Time:     {timestamp}
 Email ID: {email_id}
 Date:     {date}
@@ -176,7 +200,7 @@ Subject:  {subject}
 
 Body (first 500 chars):
 {body[:500]}
-{'='*80}
+{"=" * 80}
 """
     try:
         with open(OUTPUT_FILE, "a") as f:
@@ -192,6 +216,7 @@ Body (first 500 chars):
 # ============================================================
 # IMAP Connection
 # ============================================================
+
 
 def connect_imap():
     """Connect to QQ Mail IMAP server."""
@@ -287,13 +312,14 @@ def check_new_emails(mail, state):
 # Main Loop
 # ============================================================
 
+
 def main():
     """Main monitoring loop."""
     print("=" * 80)
     print("📧 QQ Email Monitor - Project Error Notification Monitor")
     print("=" * 80)
     print(f"Email: {QQ_EMAIL_USER}")
-    print(f"Check interval: {CHECK_INTERVAL}s ({CHECK_INTERVAL//60} minutes)")
+    print(f"Check interval: {CHECK_INTERVAL}s ({CHECK_INTERVAL // 60} minutes)")
     print(f"Output log: {OUTPUT_FILE}")
     print("=" * 80)
     print()
@@ -305,9 +331,9 @@ def main():
     print()
 
     while True:
-        print(f"\n{'─'*80}")
+        print(f"\n{'─' * 80}")
         print(f"🔍 Checking emails at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}...")
-        print(f"{'─'*80}")
+        print(f"{'─' * 80}")
 
         mail = connect_imap()
         if mail:
