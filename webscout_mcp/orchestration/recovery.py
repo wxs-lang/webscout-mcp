@@ -95,6 +95,41 @@ LOGIN_WALL_SCAN_CHARS = 48_000
 _LOGIN_WALL_MARKERS = _LOGIN_WALL_MARKERS_table  # single-sourced: recovery_policy.MARKER_SETS
 
 
+# --- Policy-table-driven action and confidence ---------------------------
+#
+# classify_recovery picks a reason at each branch; the ACTION that reason
+# implies and its representative confidence come from the policy table, so a
+# rule change is a data change. Sites whose confidence legitimately varies by
+# trigger pass it explicitly — the divergence is deliberate and visible.
+_POLICY_BY_REASON: dict[str, object] = {}
+
+
+def _policy_rule(reason):
+    """The table row for a reason. A missing row is a defect, not a default."""
+    if not _POLICY_BY_REASON:
+        from ..recovery_policy import REASON_RULES as _rules
+
+        _POLICY_BY_REASON.update({r.reason: r for r in _rules})
+    row = _POLICY_BY_REASON.get(reason.value)
+    if row is None:
+        raise KeyError(
+            f"no recovery_policy.REASON_RULES entry for {reason.value}; "
+            f"the policy table is meant to be complete (see test_policy_table.py)"
+        )
+    return row
+
+
+def _d(reason, action=None, confidence=None, **details):
+    """Build a decision, taking action/confidence from the policy table."""
+    row = _policy_rule(reason)
+    return RecoveryDecision(
+        reason=reason,
+        action=RecoveryAction(row.action) if action is None else action,
+        confidence=float(row.confidence) if confidence is None else confidence,
+        details=details,
+    )
+
+
 class RecoveryReason(str, Enum):
     """Why the current result is (or is not) sufficient."""
 
@@ -167,10 +202,6 @@ class RecoveryDecision:
         }
 
 
-def _d(reason: RecoveryReason, action: RecoveryAction, confidence: float, **details: Any) -> RecoveryDecision:
-    return RecoveryDecision(reason=reason, action=action, confidence=confidence, details=details)
-
-
 def _script_ratio(html: str) -> float:
     import re
 
@@ -219,11 +250,11 @@ def classify_recovery(response: FetchResponse) -> RecoveryDecision:
 
     # ---- 1. protocol / terminal status -----------------------------------
     if status == 451:
-        return _d(RecoveryReason.LEGAL_OR_GEO_BLOCK, RecoveryAction.STOP, 0.95, **details)
+        return _d(RecoveryReason.LEGAL_OR_GEO_BLOCK, **details)
     if status in (401, 407):
-        return _d(RecoveryReason.AUTH_REQUIRED, RecoveryAction.REQUIRE_AUTH, 0.95, **details)
+        return _d(RecoveryReason.AUTH_REQUIRED, **details)
     if status == 429 or error_code == StandardErrorCode.FETCH_RATE_LIMITED:
-        return _d(RecoveryReason.RATE_LIMITED, RecoveryAction.RETRY_LATER, 0.9, **details)
+        return _d(RecoveryReason.RATE_LIMITED, **details)
 
     # 202 means "accepted for processing, not completed", so it cannot be COMPLETE_CONTENT
     # by default. Measured on amazon.com: a 202 carried "JavaScript is disabled ... verify
@@ -246,23 +277,23 @@ def classify_recovery(response: FetchResponse) -> RecoveryDecision:
             grade = "usable"
         details["content_grade"] = grade
         if grade == "usable":
-            return _d(RecoveryReason.COMPLETE_CONTENT, RecoveryAction.ACCEPT, 0.8, **details)
+            return _d(RecoveryReason.COMPLETE_CONTENT, confidence=0.8, **details)
         details.update(escalation=EscalationReason.SOFT_BLOCK.value)
-        return _d(RecoveryReason.SOFT_BLOCK, RecoveryAction.BROWSER, 0.85, **details)
+        return _d(RecoveryReason.SOFT_BLOCK, confidence=0.85, **details)
 
     # ---- 2. transport / server failures ----------------------------------
     if error_code == StandardErrorCode.FETCH_TIMEOUT or "timeout" in error_text or status in (408, 504):
-        return _d(RecoveryReason.TIMEOUT, RecoveryAction.RETRY, 0.85, **details)
+        return _d(RecoveryReason.TIMEOUT, **details)
     if error_code == StandardErrorCode.FETCH_SSL_ERROR or "ssl" in error_text or "certificate" in error_text:
-        return _d(RecoveryReason.TLS_FAILURE, RecoveryAction.PROVIDER_FALLBACK, 0.85, **details)
+        return _d(RecoveryReason.TLS_FAILURE, **details)
     if (
         error_code in (StandardErrorCode.FETCH_DNS_ERROR, StandardErrorCode.FETCH_CONNECTION_ERROR)
         or "dns" in error_text
         or "connect" in error_text
     ):
-        return _d(RecoveryReason.NETWORK_FAILURE, RecoveryAction.RETRY, 0.8, **details)
+        return _d(RecoveryReason.NETWORK_FAILURE, **details)
     if status >= 500 or error_code == StandardErrorCode.FETCH_SERVER_ERROR:
-        return _d(RecoveryReason.SERVER_ERROR, RecoveryAction.RETRY, 0.8, **details)
+        return _d(RecoveryReason.SERVER_ERROR, **details)
 
     # ---- 3. access denial -------------------------------------------------
     # 403 has three distinct classes:
@@ -277,31 +308,31 @@ def classify_recovery(response: FetchResponse) -> RecoveryDecision:
         raw_html = getattr(response, "raw_html", "") or response.content or ""
         if _looks_like_challenge(raw_html):
             details.update(escalation=EscalationReason.SOFT_BLOCK.value)
-            return _d(RecoveryReason.SOFT_BLOCK, RecoveryAction.BROWSER, 0.9, **details)
+            return _d(RecoveryReason.SOFT_BLOCK, **details)
         if _is_non_html(response.content_type):
             details["content_type"] = response.content_type
-            return _d(RecoveryReason.ACCESS_DENIED, RecoveryAction.STOP, 0.8, **details)
+            return _d(RecoveryReason.ACCESS_DENIED, confidence=0.8, **details)
         if _looks_like_login_wall(raw_html):
             details.update(escalation="LOGIN_WALL")
-            return _d(RecoveryReason.ACCESS_DENIED, RecoveryAction.STOP, 0.85, **details)
+            return _d(RecoveryReason.ACCESS_DENIED, **details)
         if len(raw_html.strip()) >= _MIN_403_HTML_BYTES:
             details.update(escalation=EscalationReason.SOFT_BLOCK.value, body_chars=len(raw_html))
-            return _d(RecoveryReason.SOFT_BLOCK, RecoveryAction.BROWSER, 0.7, **details)
-        return _d(RecoveryReason.ACCESS_DENIED, RecoveryAction.STOP, 0.8, **details)
+            return _d(RecoveryReason.SOFT_BLOCK, confidence=0.7, **details)
+        return _d(RecoveryReason.ACCESS_DENIED, confidence=0.8, **details)
     if status == 404 or error_code == StandardErrorCode.FETCH_NOT_FOUND:
-        return _d(RecoveryReason.ACCESS_DENIED, RecoveryAction.STOP, 0.85, **details)
+        return _d(RecoveryReason.ACCESS_DENIED, **details)
     if error_code == StandardErrorCode.FETCH_ROBOTS_DENIED or "robots" in error_text:
-        return _d(RecoveryReason.ACCESS_DENIED, RecoveryAction.STOP, 0.9, **details)
+        return _d(RecoveryReason.ACCESS_DENIED, confidence=0.9, **details)
     # Any other hard error without a more specific class: do not invent one.
     if response.error is not None and not response.is_success:
         if response.retryable:
-            return _d(RecoveryReason.NETWORK_FAILURE, RecoveryAction.RETRY, 0.5, **details)
-        return _d(RecoveryReason.ACCESS_DENIED, RecoveryAction.STOP, 0.5, **details)
+            return _d(RecoveryReason.NETWORK_FAILURE, confidence=0.5, **details)
+        return _d(RecoveryReason.ACCESS_DENIED, confidence=0.5, **details)
 
     # ---- 4. non-HTML content uses dedicated parsers ----------------------
     if _is_non_html(response.content_type):
         details["content_type"] = response.content_type
-        return _d(RecoveryReason.UNSUPPORTED_CONTENT_TYPE, RecoveryAction.ACCEPT, 0.8, **details)
+        return _d(RecoveryReason.UNSUPPORTED_CONTENT_TYPE, **details)
 
     # ---- 4b. an HTML body we could not extract is not article text ------
     # Every length-based judgement below becomes wrong when the "content" is
@@ -344,7 +375,7 @@ def classify_recovery(response: FetchResponse) -> RecoveryDecision:
             output_limit_chars=meta.get("output_limit_chars"),
             omitted_chars=meta.get("omitted_chars"),
         )
-        return _d(RecoveryReason.OUTPUT_TRUNCATED, RecoveryAction.CONTINUE_CONTENT, 0.95, **details)
+        return _d(RecoveryReason.OUTPUT_TRUNCATED, **details)
 
     # ---- 5b. login wall on any successful status -------------------------
     # A login wall is not browser-recoverable: rendition cannot supply credentials. This
@@ -358,7 +389,7 @@ def classify_recovery(response: FetchResponse) -> RecoveryDecision:
         raw_body = getattr(response, "raw_html", "") or response.content or ""
         if _looks_like_login_wall(raw_body):
             details.update(escalation="LOGIN_WALL")
-            return _d(RecoveryReason.AUTH_REQUIRED, RecoveryAction.REQUIRE_AUTH, 0.85, **details)
+            return _d(RecoveryReason.AUTH_REQUIRED, confidence=0.85, **details)
 
     # ---- 6. browser-related signals (reuse escalation, no duplication) ---
     esc = should_escalate_to_browser(response)
@@ -373,7 +404,7 @@ def classify_recovery(response: FetchResponse) -> RecoveryDecision:
     if not body.strip():
         # HTTP success but no extractable content and no browser signal —
         # evidence is insufficient, prefer AMBIGUOUS over a false browser call.
-        return _d(RecoveryReason.AMBIGUOUS, RecoveryAction.NONE, 0.4, **details)
+        return _d(RecoveryReason.AMBIGUOUS, **details)
 
     if unextracted_html:
         # Empty extraction on markup has two very different meanings, and a
@@ -415,11 +446,11 @@ def classify_recovery(response: FetchResponse) -> RecoveryDecision:
                     "raw markup — a browser render would return the same bytes"
                 ),
             )
-            return _d(RecoveryReason.COMPLETE_SHORT_PAGE, RecoveryAction.ACCEPT, 0.8, **details)
+            return _d(RecoveryReason.COMPLETE_SHORT_PAGE, confidence=0.8, **details)
         # The body exists but is markup, not text: we downloaded the page and
         # could not read it. That is the content-poor case B2 describes, not a
         # complete short page and not a longer article to continue into.
-        return _d(RecoveryReason.LOW_CONTENT_DENSITY, RecoveryAction.BROWSER, 0.7, **details)
+        return _d(RecoveryReason.LOW_CONTENT_DENSITY, confidence=0.7, **details)
 
     raw_html = getattr(response, "raw_html", "") or ""
     script_ratio = _script_ratio(raw_html)
@@ -434,7 +465,7 @@ def classify_recovery(response: FetchResponse) -> RecoveryDecision:
             and script_ratio > _HIGH_SCRIPT_RATIO
         )
         if thin_shell:
-            return _d(RecoveryReason.AMBIGUOUS, RecoveryAction.NONE, 0.45, **details)
+            return _d(RecoveryReason.AMBIGUOUS, confidence=0.45, **details)
 
         # A big page that yielded almost no text did not extract. Measured: medium.com's
         # 52 KB produced a 134-char nav bar and was accepted as a complete short page, so a
@@ -447,9 +478,9 @@ def classify_recovery(response: FetchResponse) -> RecoveryDecision:
             details["body_to_raw_ratio"] = round(len(body) / max(len(raw_html), 1), 5)
             return _d(RecoveryReason.AMBIGUOUS, RecoveryAction.BROWSER, 0.6, **details)
 
-        return _d(RecoveryReason.COMPLETE_SHORT_PAGE, RecoveryAction.ACCEPT, 0.8, **details)
+        return _d(RecoveryReason.COMPLETE_SHORT_PAGE, confidence=0.8, **details)
 
-    return _d(RecoveryReason.COMPLETE_CONTENT, RecoveryAction.ACCEPT, 0.85, **details)
+    return _d(RecoveryReason.COMPLETE_CONTENT, confidence=0.85, **details)
 
 
 # RecoveryReason -> legacy browser EscalationReason, for the compatibility
