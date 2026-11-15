@@ -481,9 +481,6 @@ def evaluate(
         fast_p95 = pipeline.p95_excluding_recovery or pipeline.p95_ms
         ratio = fast_p95 / baseline.p95_ms
         delta_ms = fast_p95 - baseline.p95_ms
-        ratio_ok = ratio <= max_p95_ratio
-        delta_ok = ratio <= max_p95_ratio_ceiling and delta_ms <= max_p95_delta_ms
-        fast_ok = ratio_ok or delta_ok
 
         recovery_rate = pipeline.recovery_rate
         rate_ok = recovery_rate <= max_recovery_rate
@@ -503,7 +500,6 @@ def evaluate(
             [o for o in obs if o.arm == "baseline"],
         )
         over_budget: list[str] = []
-        rendered_bad: list[str] = []
         stratum_notes: list[str] = []
         for stratum, deltas in sorted(stratum_deltas.items()):
             budget = STRATUM_LATENCY_BUDGET_MS.get(stratum, STRATUM_LATENCY_BUDGET_FALLBACK_MS)
@@ -511,8 +507,7 @@ def evaluate(
             if budget is None:
                 stratum_notes.append(f"{stratum} n={len(deltas)} (output-judged)")
                 continue
-            ok = med <= budget
-            if not ok:
+            if med > budget:
                 over_budget.append(f"{stratum} {med:+.0f}ms > {budget:.0f}ms")
             stratum_notes.append(f"{stratum} n={len(deltas)} {med:+.0f}ms/{budget:.0f}ms")
 
@@ -520,7 +515,6 @@ def evaluate(
         # producing less is not. Needs the arm summaries, which summarise the
         # whole corpus, so the check is coarse on purpose.
         stratum_ok = not over_budget
-        fast_ok = stratum_ok
 
         passed = stratum_ok and rate_ok and recovery_payoff_ok
         detail = (
