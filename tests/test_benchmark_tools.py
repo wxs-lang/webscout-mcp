@@ -18,6 +18,11 @@ import sys
 
 import pytest
 
+# This module drives the live tool surface in a subprocess, so every test
+# here needs a working outbound HTTPS path — not merely resolvable DNS
+# (see requires_outbound_https in _env_capabilities.py).
+pytestmark = pytest.mark.usefixtures("requires_outbound_https")
+
 REPO = pathlib.Path(__file__).resolve().parents[1]
 SCRIPT = REPO / "scripts" / "benchmark_tools.py"
 

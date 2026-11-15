@@ -198,6 +198,11 @@ class Crawl4AIBrowserBackend(BrowserFetchProvider):
             headers = {"Accept": "application/json"}
             if self.api_token:
                 headers["Authorization"] = f"Bearer {self.api_token}"
+            # httpx parses NO_PROXY when the client is built; a bracketed
+            # IPv6 entry there raises InvalidURL before any request.
+            from ..core.no_proxy import sanitize_no_proxy
+
+            sanitize_no_proxy()
             self._client = httpx.AsyncClient(timeout=self.timeout, headers=headers)
         return self._client
 

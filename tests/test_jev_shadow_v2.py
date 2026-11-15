@@ -33,7 +33,7 @@ def test_schema_version_is_v2():
     assert JEV_DECISION_SCHEMA_VERSION == "2"
 
 
-def test_default_db_path_cwd_independent(tmp_path, monkeypatch):
+def test_default_db_path_cwd_independent(tmp_path, monkeypatch, requires_posix_semantics):
     monkeypatch.delenv("JEV_DB", raising=False)
     monkeypatch.delenv("WEBSCOUT_JEV_DB", raising=False)
     monkeypatch.delenv("XDG_DATA_HOME", raising=False)
