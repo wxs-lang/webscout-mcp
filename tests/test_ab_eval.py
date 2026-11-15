@@ -38,12 +38,13 @@ def _arm_pair(
     baseline_ms: float = 100.0,
     pipeline_chars: int = 5000,
     baseline_chars: int = 5000,
+    stratum: str = "article",
 ) -> list[ArmObservation]:
     obs: list[ArmObservation] = []
     for i in range(n):
         obs.append(
             ArmObservation(
-                case_id=f"c{i}",
+                case_id=f"{i:03d}:{stratum}",
                 arm="pipeline",
                 ok=True,
                 returned_chars=pipeline_chars if i < pipeline_usable else 50,
@@ -52,7 +53,7 @@ def _arm_pair(
         )
         obs.append(
             ArmObservation(
-                case_id=f"c{i}",
+                case_id=f"{i:03d}:{stratum}",
                 arm="baseline",
                 ok=True,
                 returned_chars=baseline_chars if i < baseline_usable else 50,
