@@ -1,6 +1,6 @@
 # 架构重组执行计划（GOAL_REVIEW 第 7 步）
 
-> 状态：**规划中（未执行）**
+> 状态：**已执行完成（2026-11-15，批 1-6 全部合并）**
 > 规划日期：2026-11-14
 > 对标判据：GOAL_REVIEW 缺陷 4.1（`webscout_mcp/` 顶层 103 个 .py、35,911 行，
 > 计划中的六层子包一个都没建）
@@ -80,6 +80,66 @@ recovery_policy v2.9.0）是：**兼容 shim + identity/perf 门 + A/B 语料复
 - 批 3（枢纽移动）：`logging_config` 的 53 个导入方是主成本；
   shim 使其可控但 PR diff 巨大。
 - **建议时机**：下一次连续工作时段执行批 1；批 3 放在无其他并行变更时。
+
+## 5.1 执行结果（2026-11-15）
+
+| 项 | 计划 | 实际 |
+|---|---|---|
+| 层数 | 六层 | **七层**（见下） |
+| 顶层真实模块 | 逐层收敛 | **103 → 5** |
+| 层内模块 | — | 99 |
+| 测试 | 行为零变化 | 3411 passed / 20 预存失败（零新增） |
+
+### 层的修正：六层 → 七层
+
+实施到批 6 时，依赖分析揭示了计划中的一个命名错误：
+
+`fetch_service`、`search_service`、`jev_shadow`、`recovery` 依赖
+`providers.provider_registry` / `providers.search_provider` 等 —— 它们的职责是
+**把 providers 组装成端到端服务**，因此必须位于 providers **之上**。原计划把这一层
+称作 `services`，但 `services` 必须待在 providers **之下**（providers 会 import
+services 的工具，如 `services.fetch_escalation`）。
+
+最终结构：
+
+```
+core < security < observability < services < providers < orchestration < server
+```
+
+各层模块数：
+
+| 层 | 模块数 |
+|---|---|
+| core | 18 |
+| security | 2 |
+| observability | 5 |
+| services | 26 |
+| providers | 19 |
+| orchestration | 4 |
+| server | 6 |
+| eval（旁支，不参与主层序） | 8 |
+| extras（冻结，见 COMPATIBILITY.md） | 11 |
+
+### 留在包根的 5 个
+
+| 模块 | 理由 |
+|---|---|
+| `logging_config` | fan-in 37，每层都导入 —— 放进任何一层都会让该层被全层依赖 |
+| `recovery_policy` | fan-in 15，同上 |
+| `fetch_provider` | fan-in 9，同上 |
+| `__main__` | 入口点 |
+| `_version` | setuptools-scm 生成 |
+
+前三个是**共享基座**：层序之外的基础设施，留根是设计而非遗漏。
+
+### shim 的最终形态
+
+81 个 `sys.modules` 别名 shim 保留，全部升级为带 `DeprecationWarning`：
+
+- 内部 80 处引用已改写为真实层路径（批 5），内部代码不再依赖 shim
+- 262 处 tests/scripts 外部引用继续通过扁平路径工作，并收到迁移提示
+- 成本：每进程一次 `sys.modules` 赋值，无运行时开销
+- 与项目既有约定一致（`config`/`cache`/`errors`/`utils` 早已如此）
 
 ## 6. 版本记录
 
