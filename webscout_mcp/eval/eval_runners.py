@@ -19,10 +19,10 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from ..decision_event import canonical_url_hash, query_hash
+from ..core.decision_event import canonical_url_hash, query_hash
 from ..fetch_provider import FetchRequest
 from ..logging_config import get_logger
-from ..search_provider import SearchRequest
+from ..providers.search_provider import SearchRequest
 
 log = get_logger(__name__)
 

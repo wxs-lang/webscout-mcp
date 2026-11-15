@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
-from ..metadata_sanitize import sanitize_metadata
+from ..core.metadata_sanitize import sanitize_metadata
 
 
 class WebResultStatus(str, Enum):

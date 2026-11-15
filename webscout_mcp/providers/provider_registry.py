@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from ..logging_config import get_logger
-from ..provider_router import ProviderCapability, ProviderCostTier, ProviderRouter
+from ..providers.provider_router import ProviderCapability, ProviderCostTier, ProviderRouter
 
 log = get_logger(__name__)
 

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..plugin_system import (
+from ..server.plugin_system import (
     AlertChannelPlugin,
     ExtractorPlugin,
     PostProcessorPlugin,

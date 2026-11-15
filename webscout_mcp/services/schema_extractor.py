@@ -40,7 +40,7 @@ from typing import Any
 from bs4 import BeautifulSoup
 
 from ..logging_config import get_logger
-from ..metadata_extractor import extract_metadata
+from ..services.metadata_extractor import extract_metadata
 
 log = get_logger(__name__)
 

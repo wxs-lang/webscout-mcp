@@ -46,18 +46,18 @@ except ImportError:
 
 from ..core.cache import Cache
 from ..core.config import Config
-from ..crawler import Crawler
-from ..extractor import DataExtractor, ExtractionRule
 from ..extras.content_quality import ContentQualityAnalyzer
-from ..fetcher import Fetcher
 from ..logging_config import get_logger, setup_logging
-from ..metadata_extractor import MetadataExtractor
-from ..robots import RobotsChecker
-from ..rss_parser import fetch_and_parse_feed
-from ..schema_extractor import extract_by_schema
-from ..search import SearchEngine
+from ..providers.crawler import Crawler
+from ..providers.robots import RobotsChecker
 from ..search_service import create_search_service_from_config
-from ..startup_check import StartupSelfCheck
+from ..server.startup_check import StartupSelfCheck
+from ..services.extractor import DataExtractor, ExtractionRule
+from ..services.fetcher import Fetcher
+from ..services.metadata_extractor import MetadataExtractor
+from ..services.rss_parser import fetch_and_parse_feed
+from ..services.schema_extractor import extract_by_schema
+from ..services.search import SearchEngine
 
 log = get_logger(__name__)
 

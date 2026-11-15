@@ -16,7 +16,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from ..decision_event import (
+from ..core.decision_event import (
     DecisionDomain,
     DecisionEvent,
     DecisionStage,

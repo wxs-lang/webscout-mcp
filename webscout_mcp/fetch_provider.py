@@ -20,7 +20,7 @@ from typing import Any
 
 from .core.errors import StandardErrorCode
 from .logging_config import get_logger
-from .search_provider import ProviderHealth, ProviderHealthStatus
+from .providers.search_provider import ProviderHealth, ProviderHealthStatus
 
 log = get_logger(__name__)
 

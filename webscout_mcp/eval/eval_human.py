@@ -28,8 +28,8 @@ import time
 from pathlib import Path
 from typing import Any
 
-from ..labels import allowed_human_labels
 from ..logging_config import get_logger
+from ..services.labels import allowed_human_labels
 
 log = get_logger(__name__)
 

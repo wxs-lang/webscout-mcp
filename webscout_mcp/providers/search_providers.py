@@ -17,11 +17,11 @@ from __future__ import annotations
 from typing import Any
 
 from ..logging_config import get_logger
-from ..search import BingBackend, DuckDuckGoHTMLBackend
-from ..search_provider import SearchProvider
-from ..search_provider_adapter import SearchBackendAdapter
-from ..searxng_provider import SearXNGSearchProvider
-from ..tavily_provider import TavilySearchProvider
+from ..providers.search_provider import SearchProvider
+from ..providers.search_provider_adapter import SearchBackendAdapter
+from ..providers.searxng_provider import SearXNGSearchProvider
+from ..providers.tavily_provider import TavilySearchProvider
+from ..services.search import BingBackend, DuckDuckGoHTMLBackend
 
 log = get_logger(__name__)
 

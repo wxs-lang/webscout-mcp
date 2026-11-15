@@ -23,8 +23,7 @@ import httpx
 
 from ..core.errors import StandardErrorCode
 from ..logging_config import get_logger
-from ..search import SearchResult
-from ..search_provider import (
+from ..providers.search_provider import (
     ProviderHealth,
     SearchFailureKind,
     SearchProvider,
@@ -32,6 +31,7 @@ from ..search_provider import (
     SearchResponse,
     SearchStatus,
 )
+from ..services.search import SearchResult
 
 log = get_logger(__name__)
 

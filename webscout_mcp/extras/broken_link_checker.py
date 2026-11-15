@@ -23,7 +23,7 @@ from urllib.parse import urljoin, urlparse
 import httpx
 
 from ..logging_config import get_logger
-from ..url_safety import UrlSafetyResult, check_url_safe
+from ..security.url_safety import UrlSafetyResult, check_url_safe
 
 log = get_logger(__name__)
 

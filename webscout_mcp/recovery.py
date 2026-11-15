@@ -36,13 +36,6 @@ from enum import Enum
 from typing import Any
 
 from .core.errors import StandardErrorCode
-from .fetch_escalation import (
-    _NON_HTML_PREFIXES,
-    EscalationReason,
-    FetchEscalationDecision,
-    _looks_like_challenge,
-    should_escalate_to_browser,
-)
 from .fetch_provider import FetchResponse
 
 # Content types that have dedicated parsers — never a browser repair.
@@ -76,6 +69,13 @@ from .recovery_policy import (
 )
 from .recovery_policy import (
     THIN_SHELL_TEXT_CHARS as _THIN_SHELL_TEXT_CHARS,
+)
+from .services.fetch_escalation import (
+    _NON_HTML_PREFIXES,
+    EscalationReason,
+    FetchEscalationDecision,
+    _looks_like_challenge,
+    should_escalate_to_browser,
 )
 
 # Strong login-wall markers. A 403 page that explicitly demands

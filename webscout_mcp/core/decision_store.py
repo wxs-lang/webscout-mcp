@@ -30,9 +30,9 @@ from contextlib import closing, contextmanager
 from pathlib import Path
 from typing import Any
 
-from ..decision_event import DecisionEvent, _scrub_dict, _scrub_text
+from ..core.decision_event import DecisionEvent, _scrub_dict, _scrub_text
+from ..core.replay_case import _validate_label_source
 from ..logging_config import get_logger
-from ..replay_case import _validate_label_source
 
 log = get_logger(__name__)
 

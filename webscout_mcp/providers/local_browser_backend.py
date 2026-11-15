@@ -41,8 +41,8 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
-from ..browser_fetcher import BrowserConfig, BrowserFetcher
 from ..fetch_provider import BrowserFetchProvider, FetchRequest, FetchResponse
+from ..providers.browser_fetcher import BrowserConfig, BrowserFetcher
 
 log = logging.getLogger(__name__)
 

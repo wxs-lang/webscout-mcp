@@ -16,7 +16,7 @@ from urllib.parse import urljoin
 import httpx
 from bs4 import BeautifulSoup
 
-from ..url_safety import check_url_safe
+from ..security.url_safety import check_url_safe
 
 log = logging.getLogger(__name__)
 

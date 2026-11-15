@@ -19,8 +19,8 @@ from bs4 import BeautifulSoup
 
 from ..core.config import Config
 from ..core.utils import normalize_url
-from ..fetcher import Fetcher, FetchResult
 from ..logging_config import get_logger
+from ..services.fetcher import Fetcher, FetchResult
 
 log = get_logger(__name__)
 
