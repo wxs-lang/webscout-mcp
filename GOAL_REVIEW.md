@@ -410,7 +410,7 @@ with httpx.Client(
 | 序 | 动作 | 对应判据 | 状态 |
 |---|---|---|---|
 | **1** | 审查并合入 PR #83（`broken_links` SSRF） | D1 / D3 | ✅ **已完成 2026-10-25**（main `6517ffc`） |
-| **2** | 确认 Phase 4 归属：content sufficiency **已合入**（PR #54），只需补 A/B 复测 | G1 / G2 | ⚠️ 已澄清，待复测 |
+| **2** | 确认 Phase 4 归属：content sufficiency **已合入**（PR #54），只需补 A/B 复测 | G1 / G2 | ✅ **已完成 2026-11-13**（归属已澄清；所需 A/B 复测由第 3 步执行：G1 可用率 −1.67pp 在容差内、G2 双臂零错误，见 [docs/AB_RETEST_20261113.md](docs/AB_RETEST_20261113.md)） |
 | **3** | 跑 A/B 复测，用 G1/G3/G4 验收 | G1 / G3 / G4 | ✅ **已完成 2026-11-13**（fetch：G1/G2 PASS，−7.3pp 未复现，G3 分层化后可见恢复机制健康 + fast-path 尾延迟单列；search G4：43/43、p50 533ms 不劣于历史基线，判据改为绝对 SLO。报告：[docs/AB_RETEST_20261113.md](docs/AB_RETEST_20261113.md) + [docs/AB_SEARCH_RETEST_20261113.md](docs/AB_SEARCH_RETEST_20261113.md)） |
 | **4** | `content_quality` / `broken_links` 移出 Core | F1 / 5.3 | ✅ **已完成**（v2.5–v2.6 期间移入 `extras/`，MCP 工具面冻结兼容） |
 | **5** | Phase 5：自愈策略收敛成可观测策略表 | 5.4 | ✅ **已完成 2026-11-14**（v2.8.0 `provider_activity` 落地第一块；本步完成收敛：阈值/marker 单源化到 `recovery_policy` + identity 双向断言 + 第 17 个 MCP 工具 `recovery_policy` 暴露策略表与 drift 警告。classifer 读表驱动的重构留给 A/B 验证后的后续变更） |
