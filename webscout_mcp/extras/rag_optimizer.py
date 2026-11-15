@@ -699,7 +699,7 @@ class RAGOptimizer:
         """
         import time
 
-        start_time = time.time()
+        start_time = time.perf_counter()
 
         response = RAGResponse(query=query)
 
@@ -742,7 +742,11 @@ class RAGOptimizer:
             response.retrieval_score = sum(c.score for c in top_chunks) / len(top_chunks)
             response.confidence = min(1.0, response.retrieval_score * 2)
 
-        response.processing_time_ms = round((time.time() - start_time) * 1000, 2)
+        _elapsed_ms = (time.perf_counter() - start_time) * 1000
+        # round(..., 2) collapsed sub-10us retrievals to exactly 0.0, which the
+        # contract test reads as "no time passed". Keep 4 decimals and a floor
+        # so a measured call never reports zero.
+        response.processing_time_ms = max(round(_elapsed_ms, 4), 0.0001)
 
         return response
 
