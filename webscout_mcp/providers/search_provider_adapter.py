@@ -12,15 +12,15 @@ from __future__ import annotations
 import time
 
 from ..core.errors import StandardErrorCode
-from ..exceptions import SearchParseError
-from ..search import SearchBackend
-from ..search_provider import (
+from ..core.exceptions import SearchParseError
+from ..providers.search_provider import (
     ProviderHealth,
     SearchFailureKind,
     SearchProvider,
     SearchRequest,
     SearchResponse,
 )
+from ..services.search import SearchBackend
 
 
 class SearchBackendAdapter(SearchProvider):

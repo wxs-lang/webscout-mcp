@@ -14,7 +14,7 @@ from typing import Any
 from bs4 import BeautifulSoup
 
 from ..core.config import Config
-from ..fetcher import Fetcher
+from ..services.fetcher import Fetcher
 
 
 @dataclass

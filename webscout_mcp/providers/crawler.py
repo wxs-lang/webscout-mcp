@@ -34,12 +34,12 @@ from bs4 import BeautifulSoup
 
 from .. import observability as obs
 from ..core.config import Config
+from ..core.url_canonicalize import canonical_url_key
 from ..core.utils import normalize_url
-from ..fetcher import Fetcher, FetchResult
 from ..logging_config import get_logger
-from ..robots import RobotsChecker
-from ..url_canonicalize import canonical_url_key
-from ..url_safety import check_url_safe
+from ..providers.robots import RobotsChecker
+from ..security.url_safety import check_url_safe
+from ..services.fetcher import Fetcher, FetchResult
 
 log = get_logger(__name__)
 

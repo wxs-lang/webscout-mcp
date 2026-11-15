@@ -21,7 +21,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from ..jev_store import is_valid_jev_prediction
+from ..services.jev_store import is_valid_jev_prediction
 
 JevQuestion = Literal["needs_escalation", "result_usable", "result_relevant"]
 

@@ -28,8 +28,8 @@ from typing import Any
 
 from ..core.cache import Cache
 from ..core.config import Config
-from ..fetcher import Fetcher
 from ..logging_config import get_logger
+from ..services.fetcher import Fetcher
 
 log = get_logger(__name__)
 

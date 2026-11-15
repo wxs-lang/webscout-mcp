@@ -16,7 +16,7 @@ import uuid
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-from ..decision_event import LabelSource
+from ..core.decision_event import LabelSource
 
 _VALID_LABEL_SOURCES = {e.value for e in LabelSource}
 

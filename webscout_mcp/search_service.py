@@ -21,17 +21,16 @@ from dataclasses import dataclass
 from typing import Any
 
 from .core.errors import StandardErrorCode
+from .core.runtime_context import PROCESS_RUN_ID, new_trace_id
 from .logging_config import get_logger
-from .provider_router import ProviderCapability, ProviderCostTier, ProviderRouter
-from .runtime_context import PROCESS_RUN_ID, new_trace_id
-from .search_health import SearchHealthManager
-from .search_provider import (
+from .providers.provider_router import ProviderCapability, ProviderCostTier, ProviderRouter
+from .providers.search_provider import (
     SearchFailureKind,
     SearchProvider,
     SearchRequest,
     SearchResponse,
 )
-from .search_recovery import (
+from .providers.search_recovery import (
     SearchRecoveryAction,
     SearchRecoveryDecision,
     SearchRecoveryReason,
@@ -40,6 +39,7 @@ from .search_recovery import (
     classify_search_recovery,
     classify_unavailable,
 )
+from .search_health import SearchHealthManager
 
 log = get_logger(__name__)
 

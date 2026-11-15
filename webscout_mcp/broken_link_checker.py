@@ -26,7 +26,7 @@ from .extras.broken_link_checker import (  # noqa: F401
     LinkCheckResult,
     check_broken_links,
 )
-from .url_safety import check_url_safe  # noqa: F401
+from .security.url_safety import check_url_safe  # noqa: F401
 
 # Re-exported so code that patches the old path keeps working:
 #     patch("webscout_mcp.broken_link_checker.check_url_safe")

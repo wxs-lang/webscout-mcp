@@ -25,9 +25,9 @@ from typing import Any
 
 import httpx
 
-from ..exceptions import SearchError
+from ..core.exceptions import SearchError
 from ..logging_config import get_logger
-from ..search import SearchBackend, SearchResult
+from ..services.search import SearchBackend, SearchResult
 
 log = get_logger(__name__)
 

@@ -35,7 +35,7 @@ from ..fetch_provider import (
 )
 from ..logging_config import get_logger
 from ..observability import record_fetch_attempt, record_ssrf_block
-from ..url_safety import assert_redirect_chain_safe
+from ..security.url_safety import assert_redirect_chain_safe
 
 log = get_logger(__name__)
 

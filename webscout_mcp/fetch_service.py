@@ -18,11 +18,10 @@ import time
 from dataclasses import dataclass, field, replace
 from typing import Any
 
-from .content_grading import assess
-from .fetch_escalation import FetchEscalationDecision
+from .core.content_grading import assess
+from .core.runtime_context import PROCESS_RUN_ID, new_trace_id
 from .fetch_provider import FetchProvider, FetchRequest, FetchResponse
 from .logging_config import get_logger
-from .normalization import fetch_response_to_web_result
 from .observability import (
     record_content_quality,
     record_continuation,
@@ -31,8 +30,8 @@ from .observability import (
     record_recovery_classification,
     record_recovery_execution,
 )
-from .provider_registry import ProviderRegistry
-from .provider_router import ProviderCapability, ProviderRouter
+from .providers.provider_registry import ProviderRegistry
+from .providers.provider_router import ProviderCapability, ProviderRouter
 from .recovery import (
     RecoveryAction,
     RecoveryDecision,
@@ -40,8 +39,9 @@ from .recovery import (
     classify_recovery,
     recovery_to_legacy_escalation,
 )
-from .runtime_context import PROCESS_RUN_ID, new_trace_id
-from .web_result import WebResult
+from .services.fetch_escalation import FetchEscalationDecision
+from .services.normalization import fetch_response_to_web_result
+from .services.web_result import WebResult
 
 log = get_logger(__name__)
 

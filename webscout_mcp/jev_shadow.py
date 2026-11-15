@@ -23,18 +23,18 @@ import uuid
 from collections import deque
 from typing import Any
 
-from .fetch_escalation import FetchEscalationDecision
 from .fetch_provider import FetchResponse
-from .jev_client import (
+from .logging_config import get_logger
+from .observability import safe_host
+from .providers.search_provider import SearchResult
+from .services.fetch_escalation import FetchEscalationDecision
+from .services.jev_client import (
     JEV_DECISION_SCHEMA_VERSION,
     JevClient,
     JevDecision,
     stable_hash,
 )
-from .jev_store import append_record
-from .logging_config import get_logger
-from .observability import safe_host
-from .search_provider import SearchResult
+from .services.jev_store import append_record
 
 log = get_logger(__name__)
 

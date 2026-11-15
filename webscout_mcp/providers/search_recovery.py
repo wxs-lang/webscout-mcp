@@ -13,7 +13,7 @@ from enum import Enum
 from typing import Any
 
 from ..core.errors import StandardErrorCode
-from ..search_provider import SearchFailureKind, SearchResponse, SearchStatus
+from ..providers.search_provider import SearchFailureKind, SearchResponse, SearchStatus
 
 
 class SearchRecoveryReason(str, Enum):

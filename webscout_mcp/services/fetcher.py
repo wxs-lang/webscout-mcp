@@ -18,9 +18,9 @@ import httpx
 
 from ..core.cache import Cache
 from ..core.config import Config
+from ..core.user_agent import UserAgentRotator
 from ..core.utils import TokenBucket, normalize_url
-from ..url_safety import check_url_safe
-from ..user_agent import UserAgentRotator
+from ..security.url_safety import check_url_safe
 
 logger = logging.getLogger(__name__)
 

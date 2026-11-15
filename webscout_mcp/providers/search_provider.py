@@ -31,7 +31,7 @@ from enum import Enum
 from typing import Any
 
 from ..core.errors import StandardErrorCode
-from ..search import SearchResult
+from ..services.search import SearchResult
 
 
 class SearchStatus(str, Enum):

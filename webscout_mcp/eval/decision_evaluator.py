@@ -17,8 +17,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
-from ..labels import action_matches, outcome_holds, split_label
-from ..replay_case import ReplayCase
+from ..core.replay_case import ReplayCase
+from ..services.labels import action_matches, outcome_holds, split_label
 
 
 @dataclass

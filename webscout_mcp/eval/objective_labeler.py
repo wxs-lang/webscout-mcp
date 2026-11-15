@@ -18,8 +18,8 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-from ..decision_event import LabelSource
-from ..labels import (
+from ..core.decision_event import LabelSource
+from ..services.labels import (
     BROWSER_MATERIAL_GAIN_MIN_EXTRA_CHARS,
     BROWSER_MATERIAL_GAIN_MIN_RATIO,
     fetch_browser_failed,

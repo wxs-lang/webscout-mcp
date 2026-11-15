@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ..logging_config import get_logger
-from ..search_provider import SearchRequest
+from ..providers.search_provider import SearchRequest
 
 log = get_logger(__name__)
 

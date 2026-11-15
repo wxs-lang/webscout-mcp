@@ -14,11 +14,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..core.metadata_sanitize import sanitize_metadata
 from ..fetch_provider import FetchResponse
 from ..logging_config import get_logger
-from ..metadata_sanitize import sanitize_metadata
-from ..search_provider import SearchResponse, SearchStatus
-from ..web_result import (
+from ..providers.search_provider import SearchResponse, SearchStatus
+from ..services.web_result import (
     BACKEND_CRAWL4AI,
     BACKEND_FAST_HTTP,
     BACKEND_SEARCH,
