@@ -20,6 +20,7 @@ When ``allow_private`` is True (opt-in only), all of the above is skipped.
 from __future__ import annotations
 
 import ipaddress
+import os
 import socket
 from dataclasses import dataclass
 from urllib.parse import urlparse
@@ -60,6 +61,33 @@ def _ip_is_public(ip_str: str) -> bool:
     # are neither private nor reserved according to ipaddress, but are not
     # globally routable. SSRF protection must fail closed for those too.
     return ip.is_global
+
+
+# 198.18.0.0/15 is the RFC 2544 benchmark range. Transparent proxy stacks
+# (Clash, iKuuu, sing-box) reuse it for fake-IP answers: they hand the client a
+# placeholder address and resolve the real one themselves when the request
+# arrives. An answer in this range therefore means "somebody upstream intended
+# to resolve this, not me".
+_FAKE_IP_NET = ipaddress.ip_network("198.18.0.0/15")
+
+
+def _proxy_in_effect() -> bool:
+    """True when an HTTP(S) proxy will carry the request.
+
+    httpx reads these through urllib at client construction, so the same
+    variables decide both "is a proxy used" and "will DNS happen remotely".
+    """
+    for var in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"):
+        if (os.environ.get(var) or "").strip():
+            return True
+    return False
+
+
+def _is_fake_ip(ip: str) -> bool:
+    try:
+        return ipaddress.ip_address(ip) in _FAKE_IP_NET
+    except ValueError:
+        return False
 
 
 def _resolve_host(host: str) -> list[str]:
@@ -111,7 +139,29 @@ def check_url_safe(url: str, *, allow_private: bool = False) -> UrlSafetyResult:
     ips = _resolve_host(host_l)
     if not ips:
         return UrlSafetyResult(False, f"DNS resolution failed for {host}")
+
     bad = [ip for ip in ips if not _ip_is_public(ip)]
+
+    # A fake-IP answer is evidence of local interception, not of a dangerous
+    # target: with a proxy configured, httpx forwards the HOSTNAME and the proxy
+    # resolves it, so this address is never contacted. Without this, every fetch
+    # behind a transparent proxy fails as "SSRF blocked" — measured on this
+    # machine: example.com, docs.python.org and www.python.org all resolve to
+    # 198.18.x.x, so the server could fetch nothing at all.
+    #
+    # The exemption is deliberately narrow:
+    #   - only when EVERY non-public answer is a fake-IP placeholder; a single
+    #     real private address (10/8, 192.168, 169.254, ::1) keeps the URL
+    #     refused, because a proxy does not make an internal target safe;
+    #   - only when a proxy is actually configured, since otherwise the local
+    #     answer IS the address that would be dialled.
+    if bad and _proxy_in_effect() and all(_is_fake_ip(ip) for ip in bad):
+        return UrlSafetyResult(
+            True,
+            f"ok (proxy resolves: local answer is a transparent-proxy fake-IP placeholder {','.join(bad[:3])})",
+            ips,
+        )
+
     if bad:
         return UrlSafetyResult(
             False,
