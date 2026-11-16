@@ -365,7 +365,64 @@ def create_server(config: Config | None = None) -> MCPServer:
             )
         )
         out = route.legacy_out(max_chars=max_chars)
-        return json.dumps(out, ensure_ascii=False, indent=2)
+
+        # Compact, not pretty: the consumer is an agent parsing JSON, and
+        # indent=2 spent roughly a third of the character budget on whitespace.
+        def _dump(payload: dict) -> str:
+            return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+
+        # The docstring promises "each call returns at most max_chars chars" for
+        # the whole call, not merely for the content field. Honour it by finding
+        # the largest content prefix that fits, with the continuation flags
+        # already set so they are part of the measured budget.
+        content = out.get("content") or ""
+        cont = out.get("continuation")
+        if isinstance(cont, dict):
+            cont["has_more"] = True
+            cont["content_truncated_to_fit"] = True
+
+        out["content"] = ""
+        floor = len(_dump(out))
+        if floor > max_chars:
+            # Metadata alone exceeds the budget. Say so with the real size and the
+            # floor, so the caller can budget realistically next time instead of
+            # wondering why the cap did not apply. A silently invalid or emptied
+            # answer would be worse than a stated overshoot.
+            out["envelope_floor_chars"] = floor
+            out["max_chars_exceeded_by_metadata"] = True
+            # chars_returned must equal the text actually returned. Setting it
+            # after every other field, then restating once, converges because its
+            # own digits only change length at powers of ten.
+            out["chars_returned"] = len(_dump(out))
+            out["chars_returned"] = len(_dump(out))
+            return _dump(out)
+
+        # Bisect the largest prefix that fits. Serialised length is monotone in
+        # the prefix length, so this converges in ~log2(len) dumps.
+        #
+        # The diagnostic fields added after the search cost characters themselves
+        # (measured: 55 for `chars_returned` + `content_available_chars`), so the
+        # search target reserves room for them. Without the reserve the envelope
+        # overshoots by exactly their length — which is what the previous attempt
+        # did.
+        RESERVE = 64
+        target = max_chars - RESERVE
+        lo, hi, best = 0, len(content), ""
+        while lo <= hi:
+            mid = (lo + hi) // 2
+            out["content"] = content[:mid]
+            if len(_dump(out)) <= target:
+                best = content[:mid]
+                lo = mid + 1
+            else:
+                hi = mid - 1
+        out["content"] = best
+        if len(best) < len(content):
+            out["content_available_chars"] = len(content)
+            # Set last, then restate once: it must report the size received.
+            out["chars_returned"] = len(_dump(out))
+            out["chars_returned"] = len(_dump(out))
+        return _dump(out)
 
     @mcp.tool()
     async def web_crawl(
@@ -396,7 +453,22 @@ def create_server(config: Config | None = None) -> MCPServer:
 
     @mcp.tool()
     async def web_extract(url: str, rules: str) -> str:
-        """Extract structured data from a web page using CSS selectors."""
+        """Extract structured data from a web page using CSS selectors.
+
+        ``rules`` is a JSON-encoded ARRAY of rule objects (a JSON string, not a
+        Python object — the tool argument is typed as a string):
+
+            [{"name": "title", "selector": "h1"},
+             {"name": "links", "selector": "a", "attr": "href", "many": true}]
+
+        Fields: ``name`` is the key in the result, ``selector`` is a CSS selector,
+        ``attr`` optionally reads an attribute instead of text, and ``many``
+        collects every match instead of the first.
+
+        Use ``web_extract_schema`` instead when you would rather describe the
+        SHAPE you want and let the tool pick the source (json-ld, meta, semantic
+        HTML) than write selectors yourself.
+        """
         try:
             rules_data = json.loads(rules)
             if not isinstance(rules_data, list):
