@@ -110,6 +110,74 @@ def _empty_fetch_reason(result: object) -> str:
     return "; ".join(parts) if parts else "the fetch returned an empty body"
 
 
+def render_fetch_result(payload: dict, max_chars: int) -> str:
+    """Serialise a fetch result so the whole CALL fits ``max_chars``.
+
+    Extracted from the web_fetch tool body: the size contract is about the
+    serialised envelope, and testing it should not require building a server.
+    Compact JSON, the largest content prefix that fits, and an explicit report
+    when the request is physically impossible.
+    """
+
+    # Compact, not pretty: the consumer is an agent parsing JSON, and
+    # indent=2 spent roughly a third of the character budget on whitespace.
+    def _dump(p: dict) -> str:
+        return json.dumps(p, ensure_ascii=False, separators=(",", ":"))
+
+    # The docstring promises "each call returns at most max_chars chars" for
+    # the whole call, not merely for the content field. Honour it by finding
+    # the largest content prefix that fits, with the continuation flags
+    # already set so they are part of the measured budget.
+    content = payload.get("content") or ""
+    cont = payload.get("continuation")
+    if isinstance(cont, dict):
+        cont["has_more"] = True
+        cont["content_truncated_to_fit"] = True
+
+    payload["content"] = ""
+    floor = len(_dump(payload))
+    if floor > max_chars:
+        # Metadata alone exceeds the budget. Say so with the real size and the
+        # floor, so the caller can budget realistically next time instead of
+        # wondering why the cap did not apply. A silently invalid or emptied
+        # answer would be worse than a stated overshoot.
+        payload["envelope_floor_chars"] = floor
+        payload["max_chars_exceeded_by_metadata"] = True
+        # chars_returned must equal the text actually returned. Setting it
+        # after every other field, then restating once, converges because its
+        # own digits only change length at powers of ten.
+        payload["chars_returned"] = len(_dump(payload))
+        payload["chars_returned"] = len(_dump(payload))
+        return _dump(payload)
+
+    # Bisect the largest prefix that fits. Serialised length is monotone in
+    # the prefix length, so this converges in ~log2(len) dumps.
+    #
+    # The diagnostic fields added after the search cost characters themselves
+    # (measured: 55 for `chars_returned` + `content_available_chars`), so the
+    # search target reserves room for them. Without the reserve the envelope
+    # overshoots by exactly their length — which is what the previous attempt
+    # did.
+    RESERVE = 64
+    target = max_chars - RESERVE
+    lo, hi, best = 0, len(content), ""
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        payload["content"] = content[:mid]
+        if len(_dump(payload)) <= target:
+            best = content[:mid]
+            lo = mid + 1
+        else:
+            hi = mid - 1
+    payload["content"] = best
+    if len(best) < len(content):
+        payload["content_available_chars"] = len(content)
+        # Set last, then restate once: it must report the size received.
+        payload["chars_returned"] = len(_dump(payload))
+        payload["chars_returned"] = len(_dump(payload))
+    return _dump(payload)
+
+
 def create_server(config: Config | None = None) -> MCPServer:
     """Create and configure the MCP server."""
     setup_logging()
@@ -365,7 +433,7 @@ def create_server(config: Config | None = None) -> MCPServer:
             )
         )
         out = route.legacy_out(max_chars=max_chars)
-        return json.dumps(out, ensure_ascii=False, indent=2)
+        return render_fetch_result(out, max_chars)
 
     @mcp.tool()
     async def web_crawl(
@@ -396,7 +464,22 @@ def create_server(config: Config | None = None) -> MCPServer:
 
     @mcp.tool()
     async def web_extract(url: str, rules: str) -> str:
-        """Extract structured data from a web page using CSS selectors."""
+        """Extract structured data from a web page using CSS selectors.
+
+        ``rules`` is a JSON-encoded ARRAY of rule objects (a JSON string, not a
+        Python object — the tool argument is typed as a string):
+
+            [{"name": "title", "selector": "h1"},
+             {"name": "links", "selector": "a", "attr": "href", "many": true}]
+
+        Fields: ``name`` is the key in the result, ``selector`` is a CSS selector,
+        ``attr`` optionally reads an attribute instead of text, and ``many``
+        collects every match instead of the first.
+
+        Use ``web_extract_schema`` instead when you would rather describe the
+        SHAPE you want and let the tool pick the source (json-ld, meta, semantic
+        HTML) than write selectors yourself.
+        """
         try:
             rules_data = json.loads(rules)
             if not isinstance(rules_data, list):
