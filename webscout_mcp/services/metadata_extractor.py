@@ -25,6 +25,12 @@ MAX_RAW_META_TAGS = 200
 MAX_JSON_LD_ENTRIES = 50
 MAX_IMAGES = 100
 MAX_LINKS = 200
+
+# How many links the RESULT carries. Collection and output are separate budgets:
+# MAX_LINKS bounds parsing work, this bounds the answer. Measured need: a
+# metadata lookup is a title/description call; 200 links made it a 25k-character
+# answer, which is context an agent cannot afford for a 73-character fact.
+MAX_LINKS_IN_RESULT = 8
 MAX_JSON_LD_DEPTH = 3  # recursion depth for @graph / nested arrays
 
 
@@ -115,7 +121,9 @@ class PageMetadata:
                 "tags": self.article_tags,
             },
             "images": self.images,
-            "links": self.links,
+            "links": self.links[:MAX_LINKS_IN_RESULT],
+            "link_count": len(self.links),
+            "links_truncated": len(self.links) > MAX_LINKS_IN_RESULT,
         }
 
     def get_best_title(self) -> str:
