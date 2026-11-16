@@ -556,7 +556,7 @@ class SearchOptimizer:
         Returns:
             SearchResponse with ranked results.
         """
-        start_time = time.time()
+        start_time = time.perf_counter()
         max_results = max_results or self.max_results
         backends = backends or self.backends
         original_query = query
@@ -580,7 +580,7 @@ class SearchOptimizer:
         if self.enable_cache:
             cached = self.cache.get(original_query, max_results, backends)
             if cached:
-                cached.response_time_ms = round((time.time() - start_time) * 1000, 2)
+                cached.response_time_ms = max(round((time.perf_counter() - start_time) * 1000, 4), 0.0001)
                 return cached
 
         # Perform search (concurrent if async, sequential otherwise)
@@ -643,7 +643,7 @@ class SearchOptimizer:
 
         response.results = result_items
         response.total_results = len(result_items)
-        response.response_time_ms = round((time.time() - start_time) * 1000, 2)
+        response.response_time_ms = max(round((time.perf_counter() - start_time) * 1000, 4), 0.0001)
 
         # Calculate overall confidence
         if response.results:

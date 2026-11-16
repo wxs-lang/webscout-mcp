@@ -369,7 +369,7 @@ class BrokenLinkChecker:
             result.is_mixed_content = True
 
         # Perform HTTP request
-        start_time = time.time()
+        start_time = time.perf_counter()
         try:
             redirect_count = 0
             current_url = url
@@ -487,7 +487,7 @@ class BrokenLinkChecker:
             result.status = "error"
             result.error_message = f"Error: {exc}"
 
-        result.response_time_ms = round((time.time() - start_time) * 1000, 2)
+        result.response_time_ms = max(round((time.perf_counter() - start_time) * 1000, 4), 0.0001)
         return result
 
     def _is_valid_url(self, url: str) -> bool:
@@ -519,7 +519,7 @@ class BrokenLinkChecker:
         import time
 
         report = BrokenLinkReport(base_url=base_url)
-        start_time = time.time()
+        start_time = time.perf_counter()
 
         # Extract links
         links = self.extract_links(html, base_url)
