@@ -950,6 +950,19 @@ def _diff_verdicts(previous: dict, before_previous: dict, current: dict) -> dict
     previous_egress = ((previous.get("context") or {}).get("egress") or "").strip()
     egress_mismatch = bool(current_egress and previous_egress and current_egress != previous_egress)
 
+    # A live verdict depends on capability as much as on location. Measured on
+    # main: two consecutive CI runs, both egress=datacenter, same commit - one
+    # reported `live: amazon pass`, the next `degraded` because that runner could
+    # not launch a Playwright browser ("BrowserType.launch: Executable doesn't
+    # exist"). The diff called it a regression and failed the job, and main stayed
+    # red for days. Same reasoning as an egress mismatch, so the same rule.
+    _ctx_cur = current.get("context") or {}
+    _ctx_prev = previous.get("context") or {}
+    _browser_cur = _ctx_cur.get("browser_available")
+    _browser_prev = _ctx_prev.get("browser_available")
+    capability_mismatch = bool(_browser_cur is not None and _browser_prev is not None and _browser_cur != _browser_prev)
+    incomparable = egress_mismatch or capability_mismatch
+
     before = _verdict_map(previous)
     after = _verdict_map(current)
     regressions: list[dict] = []
@@ -991,15 +1004,21 @@ def _diff_verdicts(previous: dict, before_previous: dict, current: dict) -> dict
         elif new_rank < old_rank:
             recoveries.append({"name": name, "from": old, "to": verdict})
 
-    if egress_mismatch:
+    if incomparable:
         # Reclassified, not dropped: the reader still sees what moved, with the reason it
         # cannot be attributed to the code.
+        _why = []
+        if egress_mismatch:
+            _why.append(f"egress {previous_egress} -> {current_egress}")
+        if capability_mismatch:
+            _why.append(f"browser {_browser_prev} -> {_browser_cur}")
+        reason = "; ".join(_why)
         for item in regressions:
-            item["reason"] = f"egress {previous_egress} -> {current_egress}"
+            item["reason"] = reason
             flapping.append(item)
         regressions = []
         for item in contract_breaks:
-            item["reason"] = f"egress {previous_egress} -> {current_egress}"
+            item["reason"] = reason
             flapping.append(item)
         contract_breaks = []
 
@@ -1008,6 +1027,9 @@ def _diff_verdicts(previous: dict, before_previous: dict, current: dict) -> dict
         "flapping": flapping,
         "egress": {"previous": previous_egress, "current": current_egress},
         "egress_mismatch": egress_mismatch,
+        "capability": {"previous_browser": _browser_prev, "current_browser": _browser_cur},
+        "capability_mismatch": capability_mismatch,
+        "incomparable": incomparable,
         "contract_breaks": contract_breaks,
         "recoveries": recoveries,
         "newly_skipped": newly_skipped,
@@ -1054,6 +1076,33 @@ def _print_history(diff: dict, previous: dict, current_label: str) -> None:
         print(f"  new         {name}")
     for name in diff["disappeared"]:
         print(f"  gone        {name}")
+
+
+def _browser_available() -> bool:
+    """Can this process launch a Playwright browser?
+
+    Recorded in the run context because it changes live verdicts: a runner with a
+    browser can read amazon.com, one without it cannot, and the logs name the
+    reason ("BrowserType.launch: Executable doesn't exist"). Two runs on the same
+    egress class but different capability produced pass vs degraded and the diff
+    called it a regression - it was a missing browser.
+
+    Import-only check on purpose: launching a browser to find out would cost
+    seconds per run and could itself fail for unrelated reasons.
+    """
+    try:
+        from playwright.sync_api import sync_playwright  # noqa: F401
+    except ImportError:
+        return False
+    # The package can be installed while its browsers are not; check the usual
+    # locations without starting anything.
+    import pathlib
+
+    for base in ("~/.cache/ms-playwright", "~/Library/Caches/ms-playwright", "~/AppData/Local/ms-playwright"):
+        p = pathlib.Path(base).expanduser()
+        if p.is_dir() and any(p.iterdir()):
+            return True
+    return False
 
 
 def _egress_context() -> dict[str, str]:
@@ -1220,6 +1269,9 @@ def main() -> int:
             "live": bool(args.live),
             "python": sys.version.split()[0],
             "platform": sys.platform,
+            # Capability, not identity: a browser changes what a live scenario can
+            # report, and two runners differing here are not comparable.
+            "browser_available": _browser_available(),
             **_egress_context(),
         }
         previous, before_previous = _record_run(args.history, data, context)
