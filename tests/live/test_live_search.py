@@ -37,6 +37,40 @@ from webscout_mcp.search import SearchEngine
 from webscout_mcp.search_provider import SearchProvider, SearchRequest, SearchResponse
 from webscout_mcp.search_service import SearchService, SearchServiceConfig
 
+# Markers that mean "this environment could not reach the network", as opposed to
+# "the fallback logic is broken". Kept as data so the decision can be tested
+# without a network, and so adding a case is a one-line change with a reason.
+_TRANSPORT_MARKERS = (
+    "connect",
+    "timeout",
+    "timed out",
+    "temporary failure",
+    "name resolution",
+    "connection reset",
+    "connection aborted",
+    "ssl",
+    "tls",
+    "proxy",
+    "unreachable",
+    "refused",
+    "blocked",
+)
+
+
+def _looks_like_transport_failure(exc: BaseException) -> bool:
+    """True when an exception means the network was unavailable.
+
+    A blocked egress (CI runners are refused by Bing and DuckDuckGo) tells us
+    nothing about whether fallback works, so the caller skips instead of failing.
+    An AssertionError never matches: a fallback that silently did not trigger on a
+    reachable network is the regression this test exists to catch.
+    """
+    if isinstance(exc, AssertionError):
+        return False
+    text = f"{type(exc).__name__}: {exc}".lower()
+    return any(marker in text for marker in _TRANSPORT_MARKERS)
+
+
 # ============================================================
 # Test queries - fixed set for consistent measurement
 # ============================================================
@@ -629,6 +663,26 @@ class TestLiveFallback:
                 error=str(e)[:100],
             )
             live_report.add_fallback_result(test_result)
+
+            # A transport failure means this environment cannot verify fallback
+            # behaviour at all - both providers refused us before the fallback
+            # logic could be observed. That is the same category the code above
+            # already treats as "a real network finding, not a test failure", so
+            # skipping is consistent rather than permissive.
+            #
+            # This job exists to accumulate evidence for the Beta->Stable bar; a
+            # daily red run on a blocked IP destroys that record without saying
+            # anything about the code. A skipped run still records a data point and
+            # keeps the reason attached.
+            #
+            # Anything that is NOT a transport problem still fails: an assertion
+            # that the fallback never triggered on a reachable network is exactly
+            # the regression this test is for.
+            if _looks_like_transport_failure(e):
+                pytest.skip(
+                    f"network blocked before fallback could be observed ({type(e).__name__}); "
+                    f"this environment cannot verify fallback behaviour"
+                )
             pytest.fail(f"Fallback test crashed for '{query}': {e}")
 
 
