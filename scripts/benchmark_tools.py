@@ -934,6 +934,24 @@ def _was_worse(earlier: dict, name: str, baseline: str) -> bool:
     return _VERDICT_RANK.get(prior, 0) > _VERDICT_RANK.get(baseline, 0)
 
 
+# A live scenario detail reads, verbatim from CI logs:
+#   "134 chars, grade=empty, outcome=browser_failed"
+# That is direct evidence about the RUN, not a guess from missing metadata: the
+# pipeline wanted a browser and the runner had none. Such a run cannot be compared
+# against one that had a browser, and the comparison must not produce a regression.
+_BROWSER_EVIDENCE = "browser_failed"
+
+
+def _live_browser_failed(run: dict) -> set[str]:
+    """Scenario names in `run` whose detail says the browser was unavailable."""
+    live = (run or {}).get("live") or {}
+    out: set[str] = set()
+    for sc in live.get("scenarios") or []:
+        if _BROWSER_EVIDENCE in (sc.get("detail") or ""):
+            out.add(sc.get("name") or "")
+    return {n for n in out if n}
+
+
 def _diff_verdicts(previous: dict, before_previous: dict, current: dict) -> dict[str, list]:
     """Compare two runs.
 
@@ -1021,6 +1039,20 @@ def _diff_verdicts(previous: dict, before_previous: dict, current: dict) -> dict
             item["reason"] = reason
             flapping.append(item)
         contract_breaks = []
+
+    # Per-scenario version of the same idea, applied even when the run-level
+    # capability fields are absent (records written before they existed). The
+    # evidence is in the scenario's own detail, so it works across the upgrade.
+    browser_failed = _live_browser_failed(current)
+    if browser_failed:
+        still_regressions = []
+        for item in regressions:
+            if item.get("name") in browser_failed:
+                item["reason"] = f"{_BROWSER_EVIDENCE} in this run"
+                flapping.append(item)
+            else:
+                still_regressions.append(item)
+        regressions = still_regressions
 
     return {
         "regressions": regressions,
