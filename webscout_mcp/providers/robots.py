@@ -20,6 +20,7 @@ from urllib.robotparser import RobotFileParser
 import httpx
 
 from ..core.config import Config
+from ..core.no_proxy import async_client as _guarded_async_client
 from ..logging_config import get_logger
 
 log = get_logger(__name__)
@@ -63,7 +64,7 @@ class RobotsChecker:
                 proxies["https://"] = self.config.proxy_https
             if proxies:
                 client_kwargs["proxies"] = proxies
-            self._client = httpx.AsyncClient(**client_kwargs)
+            self._client = _guarded_async_client(**client_kwargs)
         return self._client
 
     async def close(self) -> None:

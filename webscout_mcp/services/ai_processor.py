@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from ..core.no_proxy import client as _guarded_client
 from ..logging_config import get_logger
 
 log = get_logger(__name__)
@@ -105,9 +106,10 @@ class AIProcessor:
     def _check_ollama(self) -> bool:
         """Check if Ollama is available locally."""
         try:
-            import httpx
-
-            response = httpx.get("http://localhost:11434/api/tags", timeout=5.0)
+            # httpx.get() builds a Client internally, so it reads NO_PROXY and can
+            # hit the bracketed-IPv6 crash like any other construction.
+            with _guarded_client(timeout=5.0) as probe:
+                response = probe.get("http://localhost:11434/api/tags")
             return response.status_code == 200
         except Exception:
             return False
@@ -131,16 +133,15 @@ class AIProcessor:
         return self._client
 
     def _create_ollama_client(self):
-        """Create Ollama client."""
-        try:
-            import httpx
+        """Create the Ollama client through the NO_PROXY-guarded factory."""
+        import importlib.util
 
-            return httpx.Client(
-                base_url="http://localhost:11434",
-                timeout=self.config.timeout,
-            )
-        except ImportError:
+        if importlib.util.find_spec("httpx") is None:
             raise ImportError("httpx is required for Ollama backend")
+        return _guarded_client(
+            base_url="http://localhost:11434",
+            timeout=self.config.timeout,
+        )
 
     def _create_openai_client(self):
         """Create OpenAI client."""

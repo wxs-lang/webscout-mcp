@@ -610,6 +610,7 @@ class TestLiveFallback:
         """Test that forced Bing failure triggers DuckDuckGo fallback attempt."""
         start_time = time.time()
         # Check total_fallbacks > 0 (not incremental), because service is session-scoped
+        unverified_reason = None
 
         try:
             request = SearchRequest(query=query, max_results=5)
@@ -639,9 +640,15 @@ class TestLiveFallback:
             )
             live_report.add_fallback_result(test_result)
 
-            # Primary assertion: fallback was triggered
-            assert fallback_triggered, (
-                f"Fallback never triggered for '{query}': total={fallback_search_service.total_fallbacks}"
+            # Recorded here, asserted AFTER the try/except. An assertion inside the
+            # try block gets caught by the handler below, reported as "crashed",
+            # and its real message is lost — which is exactly how this defect hid
+            # for two rounds: the diagnosis was "crashed" when the truth was
+            # "fallback never triggered, total=0".
+            unverified_reason = (
+                None
+                if fallback_triggered
+                else f"Fallback never triggered for '{query}': total={fallback_search_service.total_fallbacks}"
             )
 
             # Additional info: log whether DDG actually succeeded
@@ -684,6 +691,13 @@ class TestLiveFallback:
                     f"this environment cannot verify fallback behaviour"
                 )
             pytest.fail(f"Fallback test crashed for '{query}': {e}")
+
+        # Asserted outside the handler: an assertion failure here means the fallback
+        # logic never ran on a reachable network, which is the regression this test
+        # exists to catch. Inside the try block the handler would relabel it as a
+        # crash and bury the diagnosis.
+        if unverified_reason:
+            pytest.fail(unverified_reason)
 
 
 def test_save_live_report(live_report):

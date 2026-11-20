@@ -25,6 +25,7 @@ from bs4 import BeautifulSoup
 from ..core.cache import Cache
 from ..core.config import Config
 from ..core.exceptions import AllBackendsFailedError, SearchError, SearchParseError
+from ..core.no_proxy import async_client as _guarded_async_client
 from ..logging_config import get_logger
 from ..observability.search_health import SearchHealthManager
 
@@ -151,7 +152,7 @@ class SearchBackend(ABC):
                 proxies["https://"] = self.config.proxy_https
             if proxies:
                 client_kwargs["proxies"] = proxies
-            self._client = httpx.AsyncClient(**client_kwargs)
+            self._client = _guarded_async_client(**client_kwargs)
             self._client_loop = current_loop
         return self._client
 

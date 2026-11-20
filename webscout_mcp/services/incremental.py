@@ -18,6 +18,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from ..core.config import Config
+from ..core.no_proxy import async_client as _guarded_async_client
 from ..core.utils import normalize_url
 from ..logging_config import get_logger
 from ..services.fetcher import Fetcher, FetchResult
@@ -83,7 +84,7 @@ class IncrementalCrawler:
                 proxies["https://"] = self.config.proxy_https
             if proxies:
                 client_kwargs["proxies"] = proxies
-            self._client = httpx.AsyncClient(**client_kwargs)
+            self._client = _guarded_async_client(**client_kwargs)
         return self._client
 
     async def close(self) -> None:

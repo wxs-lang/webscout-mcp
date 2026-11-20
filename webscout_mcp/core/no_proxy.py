@@ -108,3 +108,28 @@ def _is_ipv4_entry(entry: str) -> bool:
         return True
     except Exception:
         return False
+
+
+def async_client(**kwargs):
+    """Build an ``httpx.AsyncClient`` the process environment can actually support.
+
+    Every httpx client construction reads NO_PROXY, so every construction is a
+    place the bracketed-IPv6 crash can happen. Ten modules in this package build
+    clients; guarding them individually has already failed three times (the
+    fetcher, crawl4ai, searxng). The guard therefore belongs here, and callers
+    should use this factory rather than ``httpx.AsyncClient`` directly.
+
+    Signature: identical to ``httpx.AsyncClient``; arguments are forwarded.
+    """
+    import httpx
+
+    sanitize_no_proxy()
+    return httpx.AsyncClient(**kwargs)
+
+
+def client(**kwargs):
+    """Sync counterpart of :func:`async_client`."""
+    import httpx
+
+    sanitize_no_proxy()
+    return httpx.Client(**kwargs)
