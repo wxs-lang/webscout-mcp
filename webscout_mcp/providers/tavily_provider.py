@@ -16,6 +16,7 @@ from typing import Any
 import httpx
 
 from ..core.errors import StandardErrorCode
+from ..core.no_proxy import async_client as _guarded_async_client
 from ..logging_config import get_logger
 from ..providers.search_provider import (
     ProviderHealth,
@@ -60,7 +61,7 @@ class TavilySearchProvider(SearchProvider):
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create httpx async client."""
         if self._client is None:
-            self._client = httpx.AsyncClient(
+            self._client = _guarded_async_client(
                 timeout=self.timeout,
                 headers={
                     "User-Agent": "webscout-mcp/1.0",

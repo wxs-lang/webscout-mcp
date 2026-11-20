@@ -14,6 +14,7 @@ from xml.etree import ElementTree as ET
 import httpx
 
 from ..core.config import Config
+from ..core.no_proxy import async_client as _guarded_async_client
 from ..core.utils import normalize_url
 from ..logging_config import get_logger
 
@@ -66,7 +67,7 @@ class SitemapParser:
                 proxies["https://"] = self.config.proxy_https
             if proxies:
                 client_kwargs["proxies"] = proxies
-            self._client = httpx.AsyncClient(**client_kwargs)
+            self._client = _guarded_async_client(**client_kwargs)
         return self._client
 
     async def close(self) -> None:

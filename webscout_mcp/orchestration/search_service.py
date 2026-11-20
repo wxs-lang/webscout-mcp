@@ -642,6 +642,20 @@ class SearchService:
             report["dynamic_routing"] = self.router.get_health_report()
         return report
 
+    def fallback_attempted(self) -> bool:
+        """True when at least one request left a provider and tried another.
+
+        Distinct from ``total_fallbacks``, which counts only the cases where the
+        next provider ACCEPTED — "how often the fallback rescued us", the number
+        ``fallback_rate`` reports. On an egress where every provider refuses us, a
+        fallback can be attempted, fail, and leave ``total_fallbacks`` at zero; a
+        caller asking "did the recovery path run at all" needs this instead.
+
+        Derived from ``fallback_reasons``, which records why a provider was left,
+        so it costs nothing extra to maintain.
+        """
+        return bool(self.fallback_reasons)
+
     def get_provider_health(self, name: str) -> dict[str, Any] | None:
         """Get health information for a specific provider."""
         backend = self.health_manager.get_backend(name)

@@ -598,7 +598,7 @@ class TestLiveFallback:
     Note: We do NOT assert that DuckDuckGo must succeed, because DuckDuckGo
     may also be rate-limited or blocked in CI environments. Instead, we verify
     that:
-    1. The fallback logic was actually triggered (total_fallbacks > 0)
+    1. The fallback path was actually exercised (a provider was left for another)
     2. The system handled the failure gracefully (no crash)
     3. If DuckDuckGo succeeds, verify provider and results
     4. If DuckDuckGo also fails, record it as a real network finding
@@ -609,7 +609,8 @@ class TestLiveFallback:
     async def test_bing_failure_ddg_fallback_live(self, fallback_search_service, live_report, query):
         """Test that forced Bing failure triggers DuckDuckGo fallback attempt."""
         start_time = time.time()
-        # Check total_fallbacks > 0 (not incremental), because service is session-scoped
+        # Check fallback_attempted() (not incremental), because service is session-scoped
+        unverified_reason = None
 
         try:
             request = SearchRequest(query=query, max_results=5)
@@ -617,7 +618,14 @@ class TestLiveFallback:
             latency_ms = (time.time() - start_time) * 1000
 
             # Key verification: fallback logic was triggered
-            fallback_triggered = fallback_search_service.total_fallbacks > 0
+            # Key verification: the fallback path was exercised.
+            #
+            # `total_fallbacks` counts only the cases where the next provider
+            # ACCEPTED (it feeds `fallback_rate`, "fraction rescued by fallback"),
+            # so on a CI egress where DuckDuckGo is refused too, the fallback runs
+            # and the counter stays 0. Using it here reported "fallback never
+            # triggered" when the truth was "triggered and failed".
+            fallback_triggered = fallback_search_service.fallback_attempted()
             # fallback_triggered already set above
 
             # If DuckDuckGo succeeded, verify provider and results
@@ -634,14 +642,25 @@ class TestLiveFallback:
                 result_count=len(response.results),
                 provider=response.provider,
                 error=(
-                    None if success else f"Fallback never triggered (total={fallback_search_service.total_fallbacks})"
+                    None
+                    if success
+                    else f"Fallback path not exercised (total_fallbacks={fallback_search_service.total_fallbacks})"
                 ),
             )
             live_report.add_fallback_result(test_result)
 
-            # Primary assertion: fallback was triggered
-            assert fallback_triggered, (
-                f"Fallback never triggered for '{query}': total={fallback_search_service.total_fallbacks}"
+            # Recorded here, asserted AFTER the try/except. An assertion inside the
+            # try block gets caught by the handler below, reported as "crashed",
+            # and its real message is lost — which is exactly how this defect hid
+            # for two rounds: the diagnosis was "crashed" when the truth was
+            # "fallback never triggered, total=0".
+            unverified_reason = (
+                None
+                if fallback_triggered
+                else (
+                    f"Fallback path not exercised for '{query}': no provider was left "
+                    f"for another (total_fallbacks={fallback_search_service.total_fallbacks})"
+                )
             )
 
             # Additional info: log whether DDG actually succeeded
@@ -684,6 +703,13 @@ class TestLiveFallback:
                     f"this environment cannot verify fallback behaviour"
                 )
             pytest.fail(f"Fallback test crashed for '{query}': {e}")
+
+        # Asserted outside the handler: an assertion failure here means the fallback
+        # logic never ran on a reachable network, which is the regression this test
+        # exists to catch. Inside the try block the handler would relabel it as a
+        # crash and bury the diagnosis.
+        if unverified_reason:
+            pytest.fail(unverified_reason)
 
 
 def test_save_live_report(live_report):

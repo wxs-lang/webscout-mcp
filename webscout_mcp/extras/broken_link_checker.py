@@ -22,6 +22,8 @@ from urllib.parse import urljoin, urlparse
 
 import httpx
 
+from ..core.no_proxy import async_client as _guarded_async_client
+from ..core.no_proxy import client as _guarded_client
 from ..logging_config import get_logger
 from ..security.url_safety import UrlSafetyResult, check_url_safe
 
@@ -256,7 +258,7 @@ class BrokenLinkChecker:
             if not safety.resolved_ips:
                 return None, current_url, "SSRF blocked: safety check did not provide a resolved IP"
 
-            async with httpx.AsyncClient(
+            async with _guarded_async_client(
                 timeout=self.timeout,
                 follow_redirects=False,
                 verify=self.verify_ssl,
@@ -393,7 +395,7 @@ class BrokenLinkChecker:
             else:
                 headers = {"User-Agent": self.user_agent}
 
-                with httpx.Client(
+                with _guarded_client(
                     timeout=self.timeout,
                     follow_redirects=False,
                     verify=self.verify_ssl,

@@ -16,6 +16,7 @@ from urllib.parse import urljoin
 import httpx
 from bs4 import BeautifulSoup
 
+from ..core.no_proxy import async_client as _guarded_async_client
 from ..security.url_safety import check_url_safe
 
 log = logging.getLogger(__name__)
@@ -388,7 +389,7 @@ def _create_safe_client(
         if not result.safe:
             raise ValueError(f"SSRF blocked: {result.reason}")
 
-    return httpx.AsyncClient(
+    return _guarded_async_client(
         timeout=timeout,
         follow_redirects=True,
         max_redirects=max_redirects,
