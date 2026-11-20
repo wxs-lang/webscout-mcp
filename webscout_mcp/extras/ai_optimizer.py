@@ -477,7 +477,7 @@ class AIOptimizer:
         Returns:
             AIResponse with processed result.
         """
-        start_time = time.time()
+        start_time = time.perf_counter()
         response = AIResponse()
 
         # Get prompt template
@@ -498,7 +498,7 @@ class AIOptimizer:
         if self.enable_caching:
             cached = self.model_optimizer.get_cached_response(cache_key)
             if cached:
-                cached.processing_time_ms = round((time.time() - start_time) * 1000, 2)
+                cached.processing_time_ms = max(round((time.perf_counter() - start_time) * 1000, 4), 0.0001)
                 return cached
 
         # Call AI function
@@ -539,7 +539,7 @@ class AIOptimizer:
             response.hallucination_score = hallucination_score
             response.confidence = max(0, 1.0 - hallucination_score)
 
-        response.processing_time_ms = round((time.time() - start_time) * 1000, 2)
+        response.processing_time_ms = max(round((time.perf_counter() - start_time) * 1000, 4), 0.0001)
 
         # Track usage and cache
         self.model_optimizer.track_usage(response.model, response.total_tokens)

@@ -561,7 +561,7 @@ class BrokenLinkChecker:
             if result.is_mixed_content:
                 report.mixed_content_links += 1
 
-        report.check_duration_ms = round((time.time() - start_time) * 1000, 2)
+        report.check_duration_ms = max(round((time.perf_counter() - start_time) * 1000, 4), 0.0001)
         return report
 
     def get_broken_links(self, report: BrokenLinkReport) -> list[LinkCheckResult]:

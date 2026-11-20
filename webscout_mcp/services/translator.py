@@ -287,7 +287,7 @@ class Translator:
             log.warning("Translation backend not available, returning original text")
             return result
 
-        start_time = time.time()
+        start_time = time.perf_counter()
 
         try:
             # Chunk long text
@@ -310,7 +310,7 @@ class Translator:
             result.translated_text = text
             result.confidence = 0.0
 
-        result.processing_time_ms = round((time.time() - start_time) * 1000, 2)
+        result.processing_time_ms = max(round((time.perf_counter() - start_time) * 1000, 4), 0.0001)
 
         # Cache result
         if self.enable_cache and result.translated_text:

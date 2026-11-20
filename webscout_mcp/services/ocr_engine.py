@@ -180,7 +180,7 @@ class OCREngine:
             log.warning("OCR backend not available")
             return result
 
-        start_time = time.time()
+        start_time = time.perf_counter()
 
         try:
             # Preprocess image
@@ -215,7 +215,7 @@ class OCREngine:
             result.text = ""
             result.confidence = 0.0
 
-        result.processing_time_ms = round((time.time() - start_time) * 1000, 2)
+        result.processing_time_ms = max(round((time.perf_counter() - start_time) * 1000, 4), 0.0001)
         return result
 
     def _recognize_tesseract(self, image_path: str, result: OCRResult) -> None:
