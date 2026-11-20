@@ -598,7 +598,7 @@ class TestLiveFallback:
     Note: We do NOT assert that DuckDuckGo must succeed, because DuckDuckGo
     may also be rate-limited or blocked in CI environments. Instead, we verify
     that:
-    1. The fallback logic was actually triggered (total_fallbacks > 0)
+    1. The fallback path was actually exercised (a provider was left for another)
     2. The system handled the failure gracefully (no crash)
     3. If DuckDuckGo succeeds, verify provider and results
     4. If DuckDuckGo also fails, record it as a real network finding
@@ -609,7 +609,7 @@ class TestLiveFallback:
     async def test_bing_failure_ddg_fallback_live(self, fallback_search_service, live_report, query):
         """Test that forced Bing failure triggers DuckDuckGo fallback attempt."""
         start_time = time.time()
-        # Check total_fallbacks > 0 (not incremental), because service is session-scoped
+        # Check fallback_attempted() (not incremental), because service is session-scoped
         unverified_reason = None
 
         try:
@@ -618,7 +618,14 @@ class TestLiveFallback:
             latency_ms = (time.time() - start_time) * 1000
 
             # Key verification: fallback logic was triggered
-            fallback_triggered = fallback_search_service.total_fallbacks > 0
+            # Key verification: the fallback path was exercised.
+            #
+            # `total_fallbacks` counts only the cases where the next provider
+            # ACCEPTED (it feeds `fallback_rate`, "fraction rescued by fallback"),
+            # so on a CI egress where DuckDuckGo is refused too, the fallback runs
+            # and the counter stays 0. Using it here reported "fallback never
+            # triggered" when the truth was "triggered and failed".
+            fallback_triggered = fallback_search_service.fallback_attempted()
             # fallback_triggered already set above
 
             # If DuckDuckGo succeeded, verify provider and results
@@ -635,7 +642,9 @@ class TestLiveFallback:
                 result_count=len(response.results),
                 provider=response.provider,
                 error=(
-                    None if success else f"Fallback never triggered (total={fallback_search_service.total_fallbacks})"
+                    None
+                    if success
+                    else f"Fallback path not exercised (total_fallbacks={fallback_search_service.total_fallbacks})"
                 ),
             )
             live_report.add_fallback_result(test_result)
@@ -648,7 +657,10 @@ class TestLiveFallback:
             unverified_reason = (
                 None
                 if fallback_triggered
-                else f"Fallback never triggered for '{query}': total={fallback_search_service.total_fallbacks}"
+                else (
+                    f"Fallback path not exercised for '{query}': no provider was left "
+                    f"for another (total_fallbacks={fallback_search_service.total_fallbacks})"
+                )
             )
 
             # Additional info: log whether DDG actually succeeded
